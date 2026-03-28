@@ -8,13 +8,22 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata = {
   title: "Devis Sarange — Outil de devis menuiserie",
   description:
     "Application métier Sarange pour la génération de devis de menuiserie : fenêtres PVC, volets roulants, portes d'entrée.",
   icons: {
     icon: "/favicon.svg",
+    apple: "/app-emblem.png",
   },
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({ children }) {

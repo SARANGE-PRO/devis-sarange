@@ -1,0 +1,16 @@
+{
+  "name": "Devis Sarange",
+  "short_name": "Sarange",
+  "description": "Outil professionnel de devis menuiserie Sarange",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#F97316",
+  "icons": [
+    {
+      "src": "/app-emblem.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}

@@ -555,7 +555,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
               key={cat.id}
               onClick={() => handleCategoryChange(cat.id)}
               className={`flex items-center gap-2.5 px-5 py-3 sm:px-6 sm:py-3.5 rounded-xl text-base sm:text-sm font-bold transition-all duration-200 ${selectedCategory === cat.id
-                  ? 'bg-slate-900 text-white shadow-lg ring-2 ring-slate-900/10'
+                  ? 'bg-slate-900 text-white shadow-lg'
                   : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 shadow-sm'
                 }`}
             >
@@ -578,9 +578,9 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
               <button
                 key={prod.id}
                 onClick={() => handleProductChange(prod.id)}
-                className={`p-3 sm:p-4 rounded-2xl text-base sm:text-sm transition-all duration-200 border-2 text-center flex flex-col items-center justify-between min-h-[7rem] sm:min-h-[8rem] group ${selectedProduct === prod.id
-                    ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-md shadow-orange-500/20 ring-2 ring-orange-500/10 font-black'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 shadow-sm hover:shadow-md font-bold'
+                className={`p-3 sm:p-4 rounded-2xl text-base sm:text-sm font-bold transition-all duration-200 border-2 text-center flex flex-col items-center justify-between min-h-[7.5rem] sm:min-h-[8.5rem] group ${selectedProduct === prod.id
+                    ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-md'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 shadow-sm'
                   }`}
               >
                 {!prod.id.includes('gestion-dechets') && !prod.id.includes('custom') && (
