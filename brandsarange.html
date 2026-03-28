@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sarange - Design System & Brand Board</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .checkered-bg {
+            background-color: #ffffff;
+            background-image: linear-gradient(45deg, #f1f5f9 25%, transparent 25%), linear-gradient(-45deg, #f1f5f9 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f1f5f9 75%), linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        /* Utilitaires pour les exemples "Don'ts" */
+        .distort-x {
+            transform: scaleX(1.5);
+        }
+
+        .distort-y {
+            transform: scaleY(1.5);
+        }
+
+        .rotate-bad {
+            transform: rotate(-15deg);
+        }
+
+        /* Animation pour le chargement IA */
+        @keyframes pulse-orange {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
+        }
+
+        .animate-pulse-orange {
+            animation: pulse-orange 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 min-h-screen pb-32 text-slate-900">
+
+    <!-- NAV DE NAVIGATION RAPIDE -->
+    <nav class="fixed left-0 top-0 h-full w-64 bg-white border-r border-slate-200 hidden xl:block p-8 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-10">
+            <div
+                class="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-sm">
+                S<span class="text-orange-500">.</span></div>
+            <span class="font-bold tracking-tight text-slate-900">Design System</span>
+        </div>
+        <ul class="space-y-4 text-sm font-medium text-slate-500">
+            <li><a href="#section-logo" class="hover:text-orange-500 transition-colors block">1. Logotypes</a></li>
+            <li><a href="#section-symbol" class="hover:text-orange-500 transition-colors block">2. Symbole & Favicon</a>
+            </li>
+            <li><a href="#section-colors" class="hover:text-orange-500 transition-colors block">3. Couleurs</a></li>
+            <li><a href="#section-typo" class="hover:text-orange-500 transition-colors block">4. Typographie</a></li>
+            <li><a href="#section-ui" class="hover:text-orange-500 transition-colors block">5. Composants UI</a></li>
+            <li><a href="#section-donts" class="hover:text-orange-500 transition-colors block">6. Interdits</a></li>
+            <li><a href="#section-social" class="hover:text-orange-500 transition-colors block">7. Réseaux Sociaux</a>
+            </li>
+            <li><a href="#section-ai"
+                    class="text-orange-600 font-bold hover:text-orange-700 transition-colors block flex items-center gap-2"><i
+                        data-lucide="sparkles" width="14"></i> 8. Atelier IA</a></li>
+        </ul>
+        <div class="mt-12 pt-8 border-t border-slate-100">
+            <p class="text-xs text-slate-400">Version 2.3</p>
+            <p class="text-xs text-slate-400 mt-1">Intégration Gemini AI</p>
+        </div>
+    </nav>
+
+    <!-- CONTENU PRINCIPAL -->
+    <main class="xl:pl-64 max-w-7xl mx-auto px-6 py-12 space-y-24">
+
+        <!-- HEADER MOBILE/TABLET (Si Nav latérale cachée) -->
+        <header class="xl:hidden flex items-center gap-3 mb-12 border-b border-slate-200 pb-6">
+            <div
+                class="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center text-white font-black text-lg">
+                S<span class="text-orange-500">.</span></div>
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Sarange <span
+                    class="text-slate-400 font-normal">Brand Board</span></h1>
+        </header>
+
+        <!-- 1. LOGO PRINCIPAL -->
+        <section id="section-logo" class="scroll-mt-20">
+            <div class="flex items-center justify-between mb-8">
+                <h2 class="text-3xl font-bold text-slate-900">1. Logotypes</h2>
+                <span
+                    class="bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide">Principal</span>
+            </div>
+            <p class="text-slate-500 mb-8 max-w-2xl">Le logo principal est composé du lettrage "SARANGE" en police Inter
+                Black, avec un tracking serré (-0.05em) et un point final orange distinctif.</p>
+
+            <div class="grid lg:grid-cols-2 gap-8 mb-8">
+                <!-- VERSION CLAIRE (MODIFIÉ : Fond Blanc) -->
+                <div
+                    class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col group hover:shadow-md transition-shadow">
+                    <!-- Remplacement de .checkered-bg par bg-white -->
+                    <div class="p-12 flex items-center justify-center flex-1 bg-white min-h-[280px]">
+                        <svg viewBox="0 0 350 60"
+                            class="w-full h-auto max-w-[320px] transition-transform duration-500 group-hover:scale-105">
+                            <defs>
+                                <linearGradient id="textGradLight" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#0F172A" />
+                                    <stop offset="100%" stop-color="#475569" />
+                                </linearGradient>
+                            </defs>
+                            <text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48"
+                                fill="url(#textGradLight)" letter-spacing="-0.05em">SARANGE</text>
+                            <circle cx="232" cy="40" r="5" fill="#F97316" />
+                        </svg>
+                    </div>
+                    <div class="bg-slate-50 p-5 border-t border-slate-100 flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold text-slate-900">Positif (Sur fond clair)</p>
+                            <p class="text-xs text-slate-500 mt-0.5">Documents, Site Web (Section blanche)</p>
+                        </div>
+                        <button onclick="copy('svgFullLight')"
+                            class="text-xs font-bold text-slate-600 hover:text-orange-600 bg-white border border-slate-200 hover:border-orange-200 px-3 py-2 rounded-lg transition-colors shadow-sm">Copier
+                            SVG</button>
+                    </div>
+                </div>
+
+                <!-- VERSION SOMBRE -->
+                <div
+                    class="bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden shadow-xl flex flex-col group hover:shadow-2xl transition-shadow">
+                    <div class="p-12 flex items-center justify-center flex-1 min-h-[280px] relative">
+                        <div
+                            class="absolute inset-0 bg-gradient-to-br from-slate-800/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                        </div>
+                        <svg viewBox="0 0 350 60"
+                            class="w-full h-auto max-w-[320px] relative z-10 transition-transform duration-500 group-hover:scale-105">
+                            <defs>
+                                <linearGradient id="textGradDark" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#FFFFFF" />
+                                    <stop offset="100%" stop-color="#CBD5E1" />
+                                </linearGradient>
+                            </defs>
+                            <text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48"
+                                fill="url(#textGradDark)" letter-spacing="-0.05em">SARANGE</text>
+                            <circle cx="232" cy="40" r="5" fill="#F97316" />
+                        </svg>
+                    </div>
+                    <div class="bg-slate-800 p-5 border-t border-slate-700 flex justify-between items-center">
+                        <div>
+                            <p class="text-sm font-bold text-white">Négatif (Sur fond sombre)</p>
+                            <p class="text-xs text-slate-400 mt-0.5">Navbar Transparente, Footer, Dark Mode</p>
+                        </div>
+                        <button onclick="copy('svgFullDark')"
+                            class="text-xs font-bold text-orange-400 hover:text-white bg-white/5 hover:bg-orange-500 px-3 py-2 rounded-lg transition-colors border border-white/10 hover:border-orange-500">Copier
+                            SVG</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NOUVEAU : VARIANTES LOGO SIGNATURE -->
+            <div class="space-y-6">
+                <div class="flex items-center gap-2 mb-4">
+                    <h3 class="text-lg font-bold text-slate-900">Variantes Signature (Grand Format)</h3>
+                    <div class="h-px bg-slate-200 flex-1"></div>
+                </div>
+
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <!-- Variantes 1: Classique -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col group hover:shadow-md transition-shadow">
+                        <div class="p-8 flex flex-col items-center justify-center bg-white min-h-[200px]">
+                            <svg viewBox="0 0 350 90" class="w-full h-auto max-w-[350px]">
+                                <defs>
+                                    <linearGradient id="textGradSignature1" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" stop-color="#0F172A" />
+                                        <stop offset="100%" stop-color="#334155" />
+                                    </linearGradient>
+                                </defs>
+                                <text x="175" y="45" text-anchor="middle" font-family="'Inter', sans-serif"
+                                    font-weight="900" font-size="48" fill="url(#textGradSignature1)"
+                                    letter-spacing="-0.05em">SARANGE<tspan fill="#F97316">.</tspan></text>
+                                <text x="175" y="70" text-anchor="middle" font-family="'Inter', sans-serif"
+                                    font-weight="700" font-size="11.5" fill="#64748B" letter-spacing="0.04em"
+                                    style="text-transform: uppercase;">Fabricant de menuiseries sur mesure</text>
+                                <rect x="155" y="80" width="40" height="2" fill="#F97316" rx="1" />
+                            </svg>
+                        </div>
+                        <div class="bg-slate-50 p-4 border-t border-slate-100 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs font-bold text-slate-900">Variante A : Classique Centré</p>
+                                <p class="text-[10px] text-slate-500">Standard pour enseignes</p>
+                            </div>
+                            <button onclick="copy('svgSignatureV1')"
+                                class="text-xs font-bold text-slate-600 hover:text-orange-600 bg-white border border-slate-200 px-2 py-1.5 rounded transition-colors">Copier</button>
+                        </div>
+                    </div>
+
+                    <!-- Variantes 2: Badge -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col group hover:shadow-md transition-shadow">
+                        <div class="p-8 flex flex-col items-center justify-center bg-white min-h-[200px]">
+                            <svg viewBox="0 0 350 90" class="w-full h-auto max-w-[350px]">
+                                <text x="175" y="45" text-anchor="middle" font-family="'Inter', sans-serif"
+                                    font-weight="900" font-size="48" fill="#0F172A" letter-spacing="-0.05em">SARANGE
+                                    <tspan fill="#F97316">.</tspan></text>
+                                <rect x="35" y="58" width="280" height="22" rx="4" fill="#F97316" />
+                                <text x="175" y="73.5" text-anchor="middle" font-family="'Inter', sans-serif"
+                                    font-weight="700" font-size="11" fill="white" letter-spacing="0.05em"
+                                    style="text-transform: uppercase;">Fabricant de menuiseries sur mesure</text>
+                            </svg>
+                        </div>
+                        <div class="bg-slate-50 p-4 border-t border-slate-100 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs font-bold text-slate-900">Variante B : Badge Impact</p>
+                                <p class="text-[10px] text-slate-500">Haute visibilité / Véhicules</p>
+                            </div>
+                            <button onclick="copy('svgSignatureV2')"
+                                class="text-xs font-bold text-slate-600 hover:text-orange-600 bg-white border border-slate-200 px-2 py-1.5 rounded transition-colors">Copier</button>
+                        </div>
+                    </div>
+
+                    <!-- Variantes 3: Horizontal -->
+                    <div
+                        class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col group hover:shadow-md transition-shadow lg:col-span-2">
+                        <div class="p-8 flex flex-col items-center justify-center bg-white min-h-[120px]">
+                            <svg viewBox="0 0 600 60" class="w-full h-auto max-w-[500px]">
+                                <text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48"
+                                    fill="#0F172A" letter-spacing="-0.05em">SARANGE<tspan fill="#F97316">.</tspan>
+                                    </text>
+                                <rect x="245" y="10" width="2" height="40" fill="#CBD5E1" />
+                                <text x="265" y="38" font-family="'Inter', sans-serif" font-weight="700" font-size="14"
+                                    fill="#64748B" letter-spacing="0.05em" style="text-transform: uppercase;">Fabricant
+                                    de menuiseries sur mesure</text>
+                            </svg>
+                        </div>
+                        <div class="bg-slate-50 p-4 border-t border-slate-100 flex justify-between items-center">
+                            <div>
+                                <p class="text-xs font-bold text-slate-900">Variante C : Horizontal</p>
+                                <p class="text-[10px] text-slate-500">En-têtes de lettres, Footers larges</p>
+                            </div>
+                            <button onclick="copy('svgSignatureV3')"
+                                class="text-xs font-bold text-slate-600 hover:text-orange-600 bg-white border border-slate-200 px-2 py-1.5 rounded transition-colors">Copier</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 2. SYMBOLE & FAVICON -->
+        <section id="section-symbol" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">2. Symbole & Favicon</h2>
+
+            <div class="flex flex-col xl:flex-row gap-10">
+                <!-- LE LOGO -->
+                <div
+                    class="bg-white p-10 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center min-w-[300px]">
+                    <div
+                        class="w-40 h-40 rounded-full shadow-2xl mb-8 transform hover:scale-105 transition-transform duration-300">
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" fill="none"
+                            xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <linearGradient id="gradSarange" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stop-color="#FFFFFF" />
+                                    <stop offset="100%" stop-color="#CBD5E1" />
+                                </linearGradient>
+                            </defs>
+                            <circle cx="50" cy="50" r="50" fill="#0F172A" />
+                            <text x="45" y="53" text-anchor="middle" dominant-baseline="middle"
+                                font-family="'Inter', sans-serif" font-weight="900" font-size="65"
+                                fill="url(#gradSarange)" letter-spacing="-0.05em">S</text>
+                            <circle cx="69" cy="62" r="7" fill="#F97316" />
+                        </svg>
+                    </div>
+                    <button onclick="copy('svgSymbol')"
+                        class="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-full text-sm font-bold transition-all shadow-lg hover:shadow-xl">
+                        <i data-lucide="copy" width="16"></i> Copier le Code
+                    </button>
+                </div>
+
+                <!-- CONTEXTES D'UTILISATION -->
+                <div class="grid md:grid-cols-2 gap-6 w-full">
+
+                    <!-- Card: Google -->
+                    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3
+                            class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                            <i data-lucide="search" width="16"></i> Résultat Google</h3>
+                        <div class="font-arial">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div
+                                    class="w-7 h-7 rounded-full bg-slate-900 overflow-hidden shadow-sm shrink-0 relative">
+                                    <div
+                                        class="absolute inset-0 flex items-center justify-center text-[8px] text-white font-black pl-0.5 pt-0.5">
+                                        S<span class="text-orange-500">.</span></div>
+                                </div>
+                                <div class="flex flex-col leading-tight overflow-hidden">
+                                    <span class="text-[14px] text-[#202124] truncate">Sarange</span>
+                                    <span class="text-[12px] text-[#4d5156] truncate">https://www.sarange.fr</span>
+                                </div>
+                            </div>
+                            <div class="text-[#1a0dab] text-lg hover:underline cursor-pointer truncate">Fenêtres PVC,
+                                Volets & Portes d'entrée</div>
+                        </div>
+                    </div>
+
+                    <!-- Card: Mobile Icon -->
+                    <div class="bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-6">
+                        <div
+                            class="w-16 h-16 bg-slate-900 rounded-[14px] shadow-lg flex items-center justify-center relative overflow-hidden">
+                            <!-- Simplified SVG representation for HTML preview -->
+                            <div class="text-white font-black text-3xl mt-1 ml-0.5">S<span
+                                    class="text-orange-500">.</span></div>
+                            <!-- Shine effect -->
+                            <div
+                                class="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-white/10 to-transparent">
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-900">Icône d'App / PWA</h3>
+                            <p class="text-xs text-slate-500 mt-1">Le contraste Slate-900 assure une visibilité maximale
+                                sur les écrans d'accueil clairs et sombres.</p>
+                        </div>
+                    </div>
+
+                    <!-- Card: Social Profile -->
+                    <div
+                        class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm md:col-span-2 flex items-center gap-6">
+                        <div
+                            class="w-20 h-20 rounded-full bg-slate-900 border-4 border-white shadow-lg flex items-center justify-center overflow-hidden shrink-0">
+                            <div class="text-white font-black text-3xl mt-1 ml-1">S<span
+                                    class="text-orange-500">.</span></div>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wide mb-1">Profil Instagram /
+                                LinkedIn</h3>
+                            <p class="text-sm text-slate-600">Le logo centré dans un cercle fonctionne parfaitement pour
+                                les avatars de réseaux sociaux. Le fond sombre permet au point orange de "popper".</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. COULEURS -->
+        <section id="section-colors" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">3. Palette de Couleurs</h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- PRIMARY ORANGE -->
+                <div class="space-y-3">
+                    <div
+                        class="h-32 rounded-2xl bg-orange-500 shadow-lg shadow-orange-500/30 flex items-end p-4 relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity">
+                        </div>
+                        <span class="text-white font-bold font-mono">#F97316</span>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-900">Orange Action</h3>
+                        <p class="text-sm text-slate-500">Boutons primaires, Accents, CTA.</p>
+                        <div class="flex gap-2 mt-2">
+                            <span
+                                class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-mono">text-orange-500</span>
+                            <span
+                                class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-mono">bg-orange-500</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SLATE DARK -->
+                <div class="space-y-3">
+                    <div class="h-32 rounded-2xl bg-slate-900 shadow-lg flex items-end p-4 text-white">
+                        <span class="font-bold font-mono">#0F172A</span>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-900">Slate Dark</h3>
+                        <p class="text-sm text-slate-500">Texte principal, Arrière-plans foncés.</p>
+                        <div class="flex gap-2 mt-2">
+                            <span
+                                class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-mono">text-slate-900</span>
+                            <span
+                                class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-mono">bg-slate-900</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SLATE LIGHT (GRADIENT END) -->
+                <div class="space-y-3">
+                    <div class="h-32 rounded-2xl bg-slate-300 shadow-inner flex items-end p-4 text-slate-700">
+                        <span class="font-bold font-mono">#CBD5E1</span>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-900">Slate 300</h3>
+                        <p class="text-sm text-slate-500">Fin de dégradé du logo, bordures subtiles.</p>
+                        <div class="flex gap-2 mt-2">
+                            <span
+                                class="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-mono">text-slate-300</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- GRADIENTS -->
+            <div class="mt-8 bg-white p-6 rounded-2xl border border-slate-200">
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-4">Dégradés Officiels</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-16 h-16 rounded-xl bg-gradient-to-b from-slate-900 to-slate-600 shadow-sm border border-slate-100">
+                        </div>
+                        <div>
+                            <p class="font-bold text-slate-900">Logo Text Gradient</p>
+                            <p class="text-xs font-mono text-slate-500">from-slate-900 to-slate-600</p>
+                            <p class="text-xs text-slate-400">Pour le texte du logo sur fond clair</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-16 h-16 rounded-xl bg-gradient-to-b from-white to-slate-300 shadow-sm border border-slate-100 bg-slate-900">
+                        </div> <!-- Added bg-slate-900 to see white gradient -->
+                        <div>
+                            <p class="font-bold text-slate-900">Logo Negative Gradient</p>
+                            <p class="text-xs font-mono text-slate-500">from-white to-slate-300</p>
+                            <p class="text-xs text-slate-400">Pour le texte du logo sur fond sombre</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. TYPOGRAPHIE -->
+        <section id="section-typo" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">4. Typographie</h2>
+
+            <div class="flex flex-col lg:flex-row gap-12">
+                <!-- FONT DISPLAY -->
+                <div class="w-full lg:w-1/3 space-y-2">
+                    <h1
+                        class="text-[120px] leading-none font-black text-slate-900 tracking-tighter opacity-10 select-none">
+                        Aa</h1>
+                    <p class="text-4xl font-black text-slate-900">Inter</p>
+                    <p class="text-slate-500">Google Font (SIL Open Font License)</p>
+                    <div class="flex gap-2 mt-4">
+                        <span class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center font-bold">A</span>
+                        <span
+                            class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center font-bold italic">a</span>
+                        <span class="w-8 h-8 rounded bg-slate-100 flex items-center justify-center font-black">1</span>
+                    </div>
+                </div>
+
+                <!-- USAGE TABLE -->
+                <div class="flex-1 space-y-8">
+
+                    <!-- DISPLAY / LOGO -->
+                    <div class="pb-6 border-b border-slate-100">
+                        <span class="text-xs font-bold text-orange-500 uppercase tracking-widest">Logo & Display</span>
+                        <p class="text-5xl font-black text-slate-900 mt-2 tracking-tighter">SARANGE</p>
+                        <p class="text-xs font-mono text-slate-400 mt-2">Inter Black (900) • Tracking -0.05em •
+                            Uppercase</p>
+                    </div>
+
+                    <!-- HEADINGS -->
+                    <div class="pb-6 border-b border-slate-100">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Titres H1 - H3</span>
+                        <h2 class="text-3xl font-bold text-slate-900 mt-2">Fenêtres PVC & Aluminium</h2>
+                        <p class="text-xs font-mono text-slate-400 mt-2">Inter Bold (700) • Tracking -0.025em</p>
+                    </div>
+
+                    <!-- BODY -->
+                    <div class="pb-6 border-b border-slate-100">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Paragraphe /
+                            Body</span>
+                        <p class="text-slate-600 leading-relaxed mt-2">
+                            Nos menuiseries allient performance thermique et esthétique moderne. Découvrez notre gamme
+                            complète pour vos projets de rénovation ou de construction neuve.
+                        </p>
+                        <p class="text-xs font-mono text-slate-400 mt-2">Inter Regular (400) • Leading Relaxed</p>
+                    </div>
+
+                    <!-- UI ELEMENTS -->
+                    <div>
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Boutons & UI</span>
+                        <div class="flex gap-4 mt-2 items-center">
+                            <span class="text-sm font-bold text-slate-900">LIEN MENU</span>
+                            <span class="text-xs font-semibold text-slate-500">TAG / LABEL</span>
+                        </div>
+                        <p class="text-xs font-mono text-slate-400 mt-2">Inter Bold (700) ou Semibold (600)</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 5. COMPOSANTS UI -->
+        <section id="section-ui" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">5. Composants UI</h2>
+            <p class="text-slate-500 mb-8">Éléments interactifs extraits directement du code de la Navbar.</p>
+
+            <div class="grid lg:grid-cols-2 gap-8">
+
+                <!-- BOUTONS -->
+                <div class="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm space-y-8">
+                    <h3 class="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Boutons & Actions</h3>
+
+                    <!-- Primary CTA -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700 mb-1">Primary CTA</p>
+                            <p class="text-xs text-slate-400">Pour les conversions (Devis)</p>
+                        </div>
+                        <button
+                            class="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-full transition-all shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5">
+                            DEVIS GRATUIT
+                        </button>
+                    </div>
+
+                    <!-- Secondary / Phone -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700 mb-1">Phone Link</p>
+                            <p class="text-xs text-slate-400">Avec icône cercle</p>
+                        </div>
+                        <div class="flex items-center gap-2 group cursor-pointer">
+                            <div class="p-1.5 rounded-full bg-orange-100 group-hover:bg-orange-500 transition-colors">
+                                <i data-lucide="phone"
+                                    class="w-4 h-4 text-orange-600 group-hover:text-white transition-colors"></i>
+                            </div>
+                            <span
+                                class="font-bold text-sm tracking-wide text-slate-700 group-hover:text-orange-600 transition-colors">09
+                                86 71 34 44</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NAVIGATION -->
+                <div class="bg-slate-900 p-8 rounded-2xl border border-slate-700 shadow-xl space-y-8">
+                    <h3 class="text-lg font-bold text-white border-b border-slate-700 pb-2">Navigation (Dark Context)
+                    </h3>
+
+                    <!-- Nav Link Standard -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-300 mb-1">Nav Link</p>
+                            <p class="text-xs text-slate-500">État normal</p>
+                        </div>
+                        <span class="text-sm font-semibold text-white cursor-pointer">Fenêtres PVC</span>
+                    </div>
+
+                    <!-- Nav Link Hover -->
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm font-semibold text-slate-300 mb-1">Nav Link Hover</p>
+                            <p class="text-xs text-slate-500">Au survol</p>
+                        </div>
+                        <span class="text-sm font-semibold text-orange-500 cursor-pointer">Aluminium</span>
+                    </div>
+
+                    <!-- Mobile Menu Item -->
+                    <div class="flex items-center justify-between w-full">
+                        <div class="w-full">
+                            <p class="text-sm font-semibold text-slate-300 mb-2">Mobile Menu Item</p>
+                            <div
+                                class="w-full py-3 border-b border-white/10 text-white text-lg font-medium flex justify-between cursor-pointer hover:text-orange-500">
+                                Volets <i data-lucide="chevron-right" class="w-5 h-5 opacity-50"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 6. INTERDITS (DON'TS) -->
+        <section id="section-donts" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">6. Interdits (Don'ts)</h2>
+            <p class="text-slate-500 mb-8">Pour maintenir l'intégrité de la marque, évitez ces modifications.</p>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <!-- Don't 1: Stretch -->
+                <div class="space-y-3">
+                    <div
+                        class="bg-slate-100 rounded-xl h-32 flex items-center justify-center overflow-hidden border border-slate-200 relative">
+                        <div class="absolute top-2 right-2 text-red-500"><i data-lucide="x-circle"></i></div>
+                        <div class="distort-x font-black text-2xl text-slate-900 tracking-tighter">SARANGE.</div>
+                    </div>
+                    <p class="text-xs font-bold text-slate-900">Ne pas déformer</p>
+                </div>
+
+                <!-- Don't 2: Color Change -->
+                <div class="space-y-3">
+                    <div
+                        class="bg-slate-100 rounded-xl h-32 flex items-center justify-center overflow-hidden border border-slate-200 relative">
+                        <div class="absolute top-2 right-2 text-red-500"><i data-lucide="x-circle"></i></div>
+                        <!-- Wrong Colors -->
+                        <div class="flex items-baseline">
+                            <span class="font-black text-2xl text-blue-600 tracking-tighter">SARANGE</span>
+                            <span class="font-black text-2xl text-red-600">.</span>
+                        </div>
+                    </div>
+                    <p class="text-xs font-bold text-slate-900">Pas de nouvelles couleurs</p>
+                </div>
+
+                <!-- Don't 3: Remove Dot -->
+                <div class="space-y-3">
+                    <div
+                        class="bg-slate-100 rounded-xl h-32 flex items-center justify-center overflow-hidden border border-slate-200 relative">
+                        <div class="absolute top-2 right-2 text-red-500"><i data-lucide="x-circle"></i></div>
+                        <span class="font-black text-2xl text-slate-900 tracking-tighter">SARANGE</span>
+                    </div>
+                    <p class="text-xs font-bold text-slate-900">Ne pas enlever le point</p>
+                </div>
+
+                <!-- Don't 4: Rotation -->
+                <div class="space-y-3">
+                    <div
+                        class="bg-slate-100 rounded-xl h-32 flex items-center justify-center overflow-hidden border border-slate-200 relative">
+                        <div class="absolute top-2 right-2 text-red-500"><i data-lucide="x-circle"></i></div>
+                        <div class="rotate-bad flex items-baseline">
+                            <span class="font-black text-2xl text-slate-900 tracking-tighter">SARANGE</span>
+                            <span class="font-black text-2xl text-orange-500">.</span>
+                        </div>
+                    </div>
+                    <p class="text-xs font-bold text-slate-900">Ne pas incliner</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 7. RÉSEAUX SOCIAUX -->
+        <section id="section-social" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <h2 class="text-3xl font-bold text-slate-900 mb-8">7. Réseaux Sociaux & SEO Local</h2>
+
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- Cover LinkedIn / Facebook (PLEINE LARGEUR) -->
+                <div class="space-y-4 md:col-span-2">
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wide">Bannière LinkedIn / Facebook
+                    </h3>
+                    <!-- BANNER CONTAINER -->
+                    <div
+                        class="w-full aspect-[3/1] bg-slate-900 rounded-lg overflow-hidden relative flex p-5 md:p-6 items-center border border-slate-800 shadow-xl group">
+                        <!-- Background FX -->
+                        <div
+                            class="absolute top-0 right-0 w-64 h-64 bg-orange-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-orange-500/10 transition-colors duration-500">
+                        </div>
+
+                        <div class="flex w-full h-full gap-4 md:gap-6 relative z-10">
+                            <!-- Left: Brand & CTA -->
+                            <div
+                                class="flex flex-col justify-between w-[35%] shrink-0 border-r border-slate-800 pr-4 md:pr-6">
+                                <div class="flex items-baseline">
+                                    <span
+                                        class="text-xl md:text-2xl font-black text-white tracking-tighter">SARANGE</span>
+                                    <span class="text-xl md:text-2xl font-black text-orange-500">.</span>
+                                </div>
+                                <div class="space-y-3">
+                                    <div class="group/link cursor-pointer">
+                                        <div
+                                            class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs group-hover/link:text-orange-400 transition-colors">
+                                            <i data-lucide="globe" class="w-3 h-3 text-orange-500"></i> sarange.fr
+                                        </div>
+                                        <p
+                                            class="text-[9px] md:text-[10px] text-slate-500 pl-5 uppercase tracking-wide">
+                                            Devis en ligne</p>
+                                    </div>
+                                    <div class="group/link cursor-pointer">
+                                        <div
+                                            class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs group-hover/link:text-orange-400 transition-colors">
+                                            <i data-lucide="mail" class="w-3 h-3 text-orange-500"></i>
+                                            contact@sarange.fr
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Value Props Grid -->
+                            <div class="grid grid-cols-2 gap-3 md:gap-4 flex-1 items-center content-center">
+                                <!-- Item -->
+                                <div class="space-y-0.5">
+                                    <div class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs">
+                                        <i data-lucide="factory" class="w-3 h-3 text-orange-500"></i> Prix Direct Usine
+                                    </div>
+                                    <p class="text-[9px] md:text-[10px] text-slate-400 pl-5 leading-tight">Sans
+                                        intermédiaire</p>
+                                </div>
+                                <!-- Item -->
+                                <div class="space-y-0.5">
+                                    <div class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs">
+                                        <i data-lucide="ruler" class="w-3 h-3 text-orange-500"></i> Métrage Précis
+                                    </div>
+                                    <p class="text-[9px] md:text-[10px] text-slate-400 pl-5 leading-tight">Technique
+                                        certifiée</p>
+                                </div>
+                                <!-- Item -->
+                                <div class="space-y-0.5">
+                                    <div class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs">
+                                        <i data-lucide="hard-hat" class="w-3 h-3 text-orange-500"></i> Pose Expert
+                                    </div>
+                                    <p class="text-[9px] md:text-[10px] text-slate-400 pl-5 leading-tight">Equipe
+                                        SARANGE</p>
+                                </div>
+                                <!-- Item -->
+                                <div class="space-y-0.5">
+                                    <div class="flex items-center gap-2 text-white font-bold text-[10px] md:text-xs">
+                                        <i data-lucide="percent" class="w-3 h-3 text-orange-500"></i> TVA Réduite 5,5%
+                                    </div>
+                                    <p class="text-[9px] md:text-[10px] text-slate-400 pl-5 leading-tight">Selon
+                                        éligibilité</p>
+                                </div>
+                            </div>
+                            <!-- Vignette PagesJaunes (NOUVEAU - ALIGNÉ HERO) -->
+                            <div class="space-y-4">
+                                <h3
+                                    class="text-sm font-bold text-slate-500 uppercase tracking-wide flex items-center gap-2">
+                                    Vignette PagesJaunes <span
+                                        class="bg-yellow-100 text-yellow-700 text-[10px] px-2 py-0.5 rounded-full">Optimisé
+                                        SEO Mobile</span></h3>
+
+                                <!-- VIGNETTE CONTAINER -->
+                                <div
+                                    class="w-full max-w-[400px] aspect-[4/3] bg-slate-950 rounded-lg overflow-hidden relative flex flex-col items-center justify-between py-6 px-4 border border-slate-800 shadow-lg text-center group mx-auto md:mx-0">
+
+                                    <!-- Background FX (Subtil) -->
+                                    <div
+                                        class="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-800/50 to-slate-950 z-0">
+                                    </div>
+                                    <div
+                                        class="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-2xl z-0">
+                                    </div>
+
+                                    <!-- Top: Tagline (Source: Hero) -->
+                                    <div class="relative z-10 flex items-center gap-2 mb-2">
+                                        <div class="w-4 h-[2px] bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,1)]">
+                                        </div>
+                                        <span
+                                            class="text-[8px] font-bold text-orange-400 uppercase tracking-widest">Direct
+                                            Fabricant • Qualité/Prix</span>
+                                    </div>
+
+                                    <!-- Main Title Block -->
+                                    <div class="relative z-10 flex-1 flex flex-col items-center justify-center -mt-2">
+                                        <!-- FENÊTRES (Source: Hero H1) -->
+                                        <h2
+                                            class="text-5xl font-black text-white leading-[0.85] mb-3 uppercase drop-shadow-2xl tracking-tight bg-clip-text text-transparent bg-gradient-to-br from-white via-slate-100 to-slate-400">
+                                            FENÊTRES
+                                        </h2>
+
+                                        <!-- Subtitle & Badge (Source: Hero Sub) -->
+                                        <div class="flex items-center gap-3">
+                                            <span class="text-xl font-bold text-white tracking-tight">PVC & ALU</span>
+
+                                            <!-- Badge Style Hero: Orange Gradient + Black Text + Italic -->
+                                            <div class="relative group transform -skew-x-6">
+                                                <div
+                                                    class="absolute inset-0 bg-gradient-to-r from-orange-500 to-orange-400 rounded-sm shadow-[0_2px_10px_rgba(249,115,22,0.3)]">
+                                                </div>
+                                                <span
+                                                    class="relative z-10 px-2 py-0.5 block text-slate-950 font-black italic text-sm uppercase">
+                                                    SUR-MESURE
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bottom: Location & List (Source: Reference Image) -->
+                                    <div class="relative z-10 w-full flex flex-col items-center gap-3">
+                                        <!-- Location Pill -->
+                                        <div
+                                            class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md">
+                                            <i data-lucide="map-pin" class="w-3 h-3 text-orange-500"></i>
+                                            <span class="text-[10px] font-medium text-slate-200">Combs-la-Ville <span
+                                                    class="text-orange-500 font-bold">(77)</span></span>
+                                        </div>
+
+                                        <!-- Footer List -->
+                                        <p class="text-[9px] text-slate-500 font-medium tracking-wide uppercase">
+                                            Volets • Portes • Vérandas • Garages
+                                        </p>
+                                    </div>
+
+                                </div>
+
+                                <!-- Explanation Box -->
+                                <div
+                                    class="bg-slate-100 p-4 rounded-lg border border-slate-200 text-xs text-slate-600 space-y-2 max-w-[400px]">
+                                    <p class="font-bold text-slate-900 flex items-center gap-2"><i data-lucide="target"
+                                            class="w-3 h-3 text-orange-500"></i> Cohérence Hero & Image</p>
+                                    <ul
+                                        class="space-y-1 list-disc list-inside marker:text-orange-500 text-[11px] leading-relaxed">
+                                        <li><strong>Hiérarchie Identique :</strong> Tagline Fabricant > Titre > Badge >
+                                            Localisation.</li>
+                                        <li><strong>Badge "Hero" :</strong> Utilisation du texte noir sur fond orange
+                                            (plus lisible et fidèle au site).</li>
+                                        <li><strong>Localisation (77) :</strong> Ajouté pour rassurer le prospect local
+                                            immédiatement.</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                        </div>
+        </section>
+
+        <!-- 8. ATELIER IA (GEMINI) -->
+        <section id="section-ai" class="scroll-mt-20 border-t border-slate-200 pt-16">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg text-white shadow-lg">
+                    <i data-lucide="sparkles" width="24" height="24"></i>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-bold text-slate-900">8. Atelier de Rédaction</h2>
+                    <p class="text-sm text-slate-500">Propulsé par Gemini AI</p>
+                </div>
+            </div>
+
+            <p class="text-slate-500 mb-8 max-w-2xl">
+                Générez du contenu marketing instantanément qui respecte la voix de la marque Sarange : professionnel,
+                chaleureux et expert.
+            </p>
+
+            <div class="grid lg:grid-cols-5 gap-8">
+                <!-- FORMULAIRE -->
+                <div class="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-fit">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Sujet ou Contexte</label>
+                            <textarea id="ai-topic" rows="4"
+                                class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm resize-none"
+                                placeholder="Ex: Promotion de printemps sur les volets roulants solaires..."></textarea>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-bold text-slate-700 mb-2">Type de contenu</label>
+                            <div class="relative">
+                                <select id="ai-type"
+                                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 outline-none transition-all text-sm appearance-none bg-white">
+                                    <option value="section de site web">Section de Site Web (Titre + Paragraphe)
+                                    </option>
+                                    <option value="post réseaux sociaux">Post Réseaux Sociaux (Instagram/LinkedIn)
+                                    </option>
+                                    <option value="slogan">Slogan Accrocheur</option>
+                                </select>
+                                <div
+                                    class="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                    <i data-lucide="chevron-down" width="16"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button onclick="generateBrandContent()"
+                            class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 group">
+                            <i data-lucide="wand-2" width="18" class="group-hover:rotate-12 transition-transform"></i>
+                            Générer avec Gemini
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RÉSULTAT -->
+                <div class="lg:col-span-3">
+                    <div
+                        class="bg-slate-50 rounded-2xl border border-slate-200 h-full min-h-[300px] flex flex-col relative overflow-hidden">
+
+                        <!-- Header Résultat -->
+                        <div class="bg-white px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wide">Résultat
+                                Généré</span>
+                            <div class="flex gap-2">
+                                <button class="p-1.5 text-slate-400 hover:text-orange-500 transition-colors"
+                                    title="Copier">
+                                    <i data-lucide="copy" width="16"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Zone de contenu -->
+                        <div class="p-8 flex-1 relative">
+                            <!-- Placeholder -->
+                            <div id="ai-placeholder"
+                                class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-center p-8">
+                                <i data-lucide="bot" width="48" class="mb-4 opacity-50"></i>
+                                <p class="text-sm">L'IA est prête.<br>Entrez un sujet pour commencer.</p>
+                            </div>
+
+                            <!-- Loader -->
+                            <div id="ai-loading"
+                                class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-50 z-10">
+                                <div
+                                    class="w-12 h-12 bg-orange-500 rounded-full animate-pulse-orange mb-4 flex items-center justify-center text-white">
+                                    <i data-lucide="sparkles" width="24"></i>
+                                </div>
+                                <p class="text-sm font-bold text-slate-600 animate-pulse">Rédaction en cours...</p>
+                            </div>
+
+                            <!-- Output Content -->
+                            <div id="ai-output" class="hidden prose prose-slate max-w-none">
+                                <!-- Le contenu généré ira ici -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 mt-24 py-12 xl:pl-64">
+        <div class="max-w-7xl mx-auto px-6 text-center md:text-left">
+            <p class="text-slate-500 text-sm">© 2024 Sarange Design System. Document usage interne.</p>
+        </div>
+    </footer>
+
+    <!-- HIDDEN SVG TEXTAREAS -->
+    <textarea id="svgFullLight"
+        class="hidden"><svg viewBox="0 0 350 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="textGradLight" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0F172A"/><stop offset="100%" stop-color="#475569"/></linearGradient></defs><text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="url(#textGradLight)" letter-spacing="-0.05em">SARANGE</text><circle cx="232" cy="40" r="5" fill="#F97316"/></svg></textarea>
+    <textarea id="svgFullDark"
+        class="hidden"><svg viewBox="0 0 350 60" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="textGradDark" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#CBD5E1"/></linearGradient></defs><text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="url(#textGradDark)" letter-spacing="-0.05em">SARANGE</text><circle cx="232" cy="40" r="5" fill="#F97316"/></svg></textarea>
+    <textarea id="svgSymbol"
+        class="hidden"><svg width="512" height="512" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gradSarange" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#FFFFFF"/><stop offset="100%" stop-color="#CBD5E1"/></linearGradient></defs><circle cx="50" cy="50" r="50" fill="#0F172A"/><text x="45" y="53" text-anchor="middle" dominant-baseline="middle" font-family="'Inter', sans-serif" font-weight="900" font-size="65" fill="url(#gradSarange)" letter-spacing="-0.05em">S</text><circle cx="69" cy="62" r="7" fill="#F97316"/></svg></textarea>
+
+    <!-- New SVG TextAreas for Signature Variations -->
+    <textarea id="svgSignatureV1"
+        class="hidden"><svg viewBox="0 0 350 90" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="textGradSignature1" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="#0F172A"/><stop offset="100%" stop-color="#334155"/></linearGradient></defs><text x="175" y="45" text-anchor="middle" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="url(#textGradSignature1)" letter-spacing="-0.05em">SARANGE<tspan fill="#F97316">.</tspan></text><text x="175" y="70" text-anchor="middle" font-family="'Inter', sans-serif" font-weight="700" font-size="11.5" fill="#64748B" letter-spacing="0.04em" style="text-transform: uppercase;">Fabricant de menuiseries sur mesure</text><rect x="155" y="80" width="40" height="2" fill="#F97316" rx="1"/></svg></textarea>
+
+    <textarea id="svgSignatureV2"
+        class="hidden"><svg viewBox="0 0 350 90" xmlns="http://www.w3.org/2000/svg"><text x="175" y="45" text-anchor="middle" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="#0F172A" letter-spacing="-0.05em">SARANGE<tspan fill="#F97316">.</tspan></text><rect x="35" y="58" width="280" height="22" rx="4" fill="#F97316"/><text x="175" y="73.5" text-anchor="middle" font-family="'Inter', sans-serif" font-weight="700" font-size="11" fill="white" letter-spacing="0.05em" style="text-transform: uppercase;">Fabricant de menuiseries sur mesure</text></svg></textarea>
+
+    <textarea id="svgSignatureV3"
+        class="hidden"><svg viewBox="0 0 600 60" xmlns="http://www.w3.org/2000/svg"><text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="#0F172A" letter-spacing="-0.05em">SARANGE<tspan fill="#F97316">.</tspan></text><rect x="245" y="10" width="2" height="40" fill="#CBD5E1"/><text x="265" y="38" font-family="'Inter', sans-serif" font-weight="700" font-size="14" fill="#64748B" letter-spacing="0.05em" style="text-transform: uppercase;">Fabricant de menuiseries sur mesure</text></svg></textarea>
+
+    <script>
+        lucide.createIcons();
+
+        function copy(id) {
+            const content = document.getElementById(id).value;
+            navigator.clipboard.writeText(content.trim());
+            const btn = event.currentTarget;
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "Copié !";
+            setTimeout(() => btn.innerHTML = originalText, 2000);
+        }
+
+        // --- GEMINI INTEGRATION ---
+        async function generateBrandContent() {
+            const topic = document.getElementById('ai-topic').value;
+            const type = document.getElementById('ai-type').value;
+            const outputDiv = document.getElementById('ai-output');
+            const loadingDiv = document.getElementById('ai-loading');
+            const placeholder = document.getElementById('ai-placeholder');
+            const apiKey = ""; // La clé est injectée automatiquement par l'environnement
+
+            if (!topic) {
+                alert("Veuillez entrer un sujet.");
+                return;
+            }
+
+            // UI State: Loading
+            loadingDiv.classList.remove('hidden');
+            outputDiv.classList.add('hidden');
+            placeholder.classList.add('hidden');
+
+
+            // Prompt strict pour respecter la charte Sarange
+            const prompt = `
+            Rôle: Tu es le responsable marketing de "Sarange", une entreprise de menuiserie haut de gamme (Fenêtres PVC, Alu, Volets).
+            Ton de marque: Professionnel, chaleureux, expert, rassurant.
+            Interdits: Ne sois pas trop commercial ou agressif. N'utilise pas de jargon incompréhensible.
+            
+            Tâche: Rédige un contenu de type "${type}" sur le sujet : "${topic}".
+            
+            Formatage attendu:
+            - Si c'est pour le site web : Utilise des balises <h3> pour les titres et <p> pour les paragraphes. Utilise du gras <strong> pour les mots clés importants (Isolation, Rénovation, etc).
+            - Si c'est pour les réseaux sociaux : Inclus des emojis pertinents (🏠, ✨, 🔨) et une liste de hashtags à la fin.
+            
+            Langue: Français.
+            `;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error.message);
+                }
+
+                // Extraction du texte brut
+                let text = data.candidates[0].content.parts[0].text;
+
+                // Nettoyage Markdown basique pour l'affichage HTML
+                // (Gemini renvoie souvent du Markdown, on convertit juste les bases pour la démo)
+                text = text.replace(/### (.*)/g, '<h3 class="text-xl font-bold text-slate-900 mb-2 mt-4">$1</h3>');
+                text = text.replace(/## (.*)/g, '<h2 class="text-2xl font-bold text-slate-900 mb-3 mt-5">$1</h2>');
+                text = text.replace(/\*\*(.*?)\*\*/g, '<strong class="text-slate-900 font-bold">$1</strong>');
+                text = text.replace(/\n/g, '<br>');
+
+                outputDiv.innerHTML = text;
+                outputDiv.classList.remove('hidden');
+            } catch (e) {
+                outputDiv.innerHTML = `<div class="text-red-500 font-medium">Erreur : ${e.message}. Veuillez réessayer.</div>`;
+                outputDiv.classList.remove('hidden');
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+
+</html>

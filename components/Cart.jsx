@@ -8,17 +8,22 @@ import {
   Minus,
   Plus,
   Package,
+  Copy,
+  Pencil,
 } from 'lucide-react';
 import { calculateItemPrice } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 
-export default function Cart({ items, tvaRate, setTvaRate, onRemove, onUpdateQuantity, onNext }) {
+export default function Cart({ items, tvaRate, setTvaRate, onRemove, onDuplicate, onEdit, onUpdateQuantity, onNext, editingItemId }) {
   const totals = useMemo(() => {
     let totalHT = 0;
     items.forEach((item) => {
       const calc = calculateItemPrice(item);
       totalHT += calc.totalLine;
+      if (item.includePose) {
+        totalHT += calc.posePrice * item.quantity;
+      }
     });
     const tva = Math.round(totalHT * (tvaRate / 100) * 100) / 100;
     const totalTTC = Math.round((totalHT + tva) * 100) / 100;
@@ -63,7 +68,11 @@ export default function Cart({ items, tvaRate, setTvaRate, onRemove, onUpdateQua
           return (
             <div
               key={item.id}
-              className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow"
+              className={`rounded-xl border p-4 shadow-sm hover:shadow-md transition-all ${
+                editingItemId === item.id 
+                  ? 'bg-orange-50/50 border-orange-400 ring-4 ring-orange-500/10' 
+                  : 'bg-white border-slate-200'
+              }`}
             >
               <div className="flex items-start gap-4">
                 {/* Visual Thumbnail */}
@@ -108,12 +117,31 @@ export default function Cart({ items, tvaRate, setTvaRate, onRemove, onUpdateQua
                         {item.productLabel}
                       </p>
                     </div>
-                    <button
-                      onClick={() => onRemove(item.id)}
-                      className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center gap-0.5">
+                      {editingItemId !== item.id && (
+                        <button
+                          onClick={() => onEdit && onEdit(item.id)}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all shrink-0"
+                          title="Modifier cet article"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onDuplicate && onDuplicate(item.id)}
+                        className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all shrink-0"
+                        title="Dupliquer cet article"
+                      >
+                        <Copy size={14} />
+                      </button>
+                      <button
+                        onClick={() => onRemove(item.id)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                        title="Supprimer du panier"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5 ml-[22px]">
                     {item.productId === 'gestion-dechets' ? (
@@ -198,8 +226,13 @@ export default function Cart({ items, tvaRate, setTvaRate, onRemove, onUpdateQua
                 {/* Line Total */}
                 <div className="text-right">
                   <p className="text-sm font-black text-slate-900">
-                    {calc.totalLine.toFixed(2)} €
+                    {(calc.totalLine + (item.includePose ? calc.posePrice * item.quantity : 0)).toFixed(2)} €
                   </p>
+                  {item.includePose && (
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                      Dont pose {(calc.posePrice * item.quantity).toFixed(2)} €
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

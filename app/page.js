@@ -29,6 +29,7 @@ export default function Home() {
   const [cartItems, setCartItems] = useState([]);
   const [tvaRate, setTvaRate] = useState(10); // Default TVA 10%
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
 
   // Step 1: Client form submission
   const handleClientNext = (data) => {
@@ -38,7 +39,34 @@ export default function Home() {
 
   // Step 2: Cart management
   const handleAddToCart = (item) => {
-    setCartItems((prev) => [...prev, item]);
+    setCartItems((prev) => {
+      const existing = prev.findIndex(i => i.id === item.id);
+      if (existing >= 0) {
+        const copy = [...prev];
+        copy[existing] = item;
+        return copy;
+      }
+      return [...prev, item];
+    });
+    setEditingItem(null);
+  };
+
+  const handleDuplicateItem = (itemId) => {
+    const itemToDuplicate = cartItems.find(i => i.id === itemId);
+    if (itemToDuplicate) {
+      const newItem = {
+        ...itemToDuplicate,
+        id: Date.now().toString(),
+      };
+      setCartItems((prev) => [...prev, newItem]);
+    }
+  };
+
+  const handleEditItem = (itemId) => {
+    const itemToEdit = cartItems.find(i => i.id === itemId);
+    setEditingItem(itemToEdit || null);
+    // Smooth scroll to top for mobile
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleRemoveFromCart = (itemId) => {
@@ -150,19 +178,27 @@ export default function Home() {
             <div className="grid lg:grid-cols-5 gap-8 max-w-6xl mx-auto">
               {/* Product Selector - 3 cols */}
               <div className="lg:col-span-3">
-                <ProductSelector onAddToCart={handleAddToCart} cartItems={cartItems} />
+                <ProductSelector 
+                  onAddToCart={handleAddToCart} 
+                  cartItems={cartItems} 
+                  editingItem={editingItem}
+                  onCancelEdit={() => setEditingItem(null)}
+                />
               </div>
 
               {/* Cart - 2 cols */}
               <div className="lg:col-span-2">
-                <div className="sticky top-8">
+                <div className="lg:sticky lg:top-8">
                   <Cart
                     items={cartItems}
                     tvaRate={tvaRate}
                     setTvaRate={setTvaRate}
                     onRemove={handleRemoveFromCart}
+                    onDuplicate={handleDuplicateItem}
+                    onEdit={handleEditItem}
                     onUpdateQuantity={handleUpdateQuantity}
                     onNext={handleCartNext}
+                    editingItemId={editingItem?.id}
                   />
                 </div>
               </div>

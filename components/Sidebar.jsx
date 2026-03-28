@@ -1,5 +1,5 @@
 'use client';
-
+import Image from 'next/image';
 import { useState } from 'react';
 import {
   FilePlus,
@@ -35,19 +35,7 @@ export default function Sidebar({ isOpen, onClose }) {
       {/* Logo */}
       <div className="p-6 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-slate-900 flex items-center justify-center shrink-0 shadow-lg">
-            <span className="text-white font-black text-lg tracking-tighter leading-none">
-              S<span className="text-orange-500">.</span>
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-bold text-slate-900 tracking-tight text-lg leading-tight">
-              Devis
-            </span>
-            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest bg-slate-100 px-1.5 py-0.5 rounded-md inline-block w-max mt-0.5">
-              Sarange
-            </span>
-          </div>
+          <Image src="/logo.svg" alt="Sarange" width={150} height={32} className="h-8 w-auto" />
         </div>
         <button 
           onClick={onClose} 

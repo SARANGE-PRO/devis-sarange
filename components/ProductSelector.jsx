@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   LayoutGrid,
   ArrowLeftRight,
@@ -17,6 +17,7 @@ import {
   PackagePlus,
   ImagePlus,
   X,
+  Pencil,
 } from 'lucide-react';
 import {
   CATEGORIES,
@@ -25,6 +26,7 @@ import {
   getPriceForMm,
   getProductType,
   calculateSurface,
+  calculateItemPrice,
 } from '@/lib/products';
 import {
   GLAZING_OPTIONS,
@@ -41,7 +43,7 @@ import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 
 const ICONS = { LayoutGrid, ArrowLeftRight, DoorOpen, DoorClosed, Blinds, Recycle: WasteRecycleIcon, PackagePlus };
 
-export default function ProductSelector({ onAddToCart, cartItems = [] }) {
+export default function ProductSelector({ onAddToCart, cartItems = [], editingItem, onCancelEdit }) {
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [heightMm, setHeightMm] = useState('');
@@ -51,6 +53,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
   const [petitsBois, setPetitsBois] = useState(0);
   const [includePose, setIncludePose] = useState(false);
   const [remise, setRemise] = useState(0);
+  const [netMarginWanted, setNetMarginWanted] = useState(0);
   const [panneauDecoratif, setPanneauDecoratif] = useState(false);
   const [hasSousBassement, setHasSousBassement] = useState(false);
   const [sousBassementHeight, setSousBassementHeight] = useState(400);
@@ -74,6 +77,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
   const [customColor2fText, setCustomColor2fText] = useState('');
   const [customColor2fHex, setCustomColor2fHex] = useState('#4A4A4A');
   const [is2fPlaxage, setIs2fPlaxage] = useState(true);
+  const [isColorModalOpen, setIsColorModalOpen] = useState(false);
 
   const category = CATEGORIES.find((c) => c.id === selectedCategory);
   const product = selectedProduct
@@ -109,6 +113,42 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
   const isGlazed = isGlazedProduct(product) || (isPorte && !panneauDecoratif);
   const colorOptions = isVolet ? VOLET_COLOR_OPTIONS : COLOR_OPTIONS;
   const currentColorOption = colorOptions.find((c) => c.id === colorOption) || colorOptions[0];
+  const isColorConfigOption = (optionId) => optionId === 'bicoloration' || optionId === 'coloration-2f';
+  const requiresColorConfiguration = isColorConfigOption(colorOption);
+
+  const colorConfigurationSummary = useMemo(() => {
+    if (colorOption === 'blanc') return 'Standard';
+
+    if (colorOption === 'bicoloration') {
+      if (bicoType === 'standard_7016') return 'Blanc 9016 (Int) / Gris 7016 (Ext)';
+      if (bicoType === 'standard_chene') return 'Blanc 9016 (Int) / Chene dore plaxe (Ext)';
+
+      const intText = customColorIntText.trim() || 'Interieur a definir';
+      const extPrefix = isExtPlaxageBico ? 'Plaxage ' : '';
+      const extText = customColorExtText.trim() || 'Exterieur a definir';
+      return `${intText} / ${extPrefix}${extText}`;
+    }
+
+    if (colorOption === 'coloration-2f') {
+      if (color2fType === 'standard_7016') return 'Gris (7016) 2 faces';
+      if (color2fType === 'standard_chene') return 'Chene dore 2 faces';
+
+      const prefix = is2fPlaxage ? 'Plaxage 2 faces' : 'Coloration 2 faces';
+      const txt = customColor2fText.trim() || 'Couleur a definir';
+      return `${prefix} : ${txt}`;
+    }
+
+    return '';
+  }, [
+    colorOption,
+    bicoType,
+    customColorIntText,
+    isExtPlaxageBico,
+    customColorExtText,
+    color2fType,
+    is2fPlaxage,
+    customColor2fText,
+  ]);
 
   // Glazing computed values
   const selectedGlazing = getSelectedGlazing(glazingId);
@@ -136,6 +176,104 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     return calculateGlazingExtra({ selectedGlassPricePerM2: selectedGlazing.purchasePricePerM2, Ag: glassAreas.Ag });
   }, [isGlazed, glassAreas, selectedGlazing]);
 
+  const previewItem = useMemo(() => {
+    if (!product || !heightMm || !widthMm || !priceData || unitPrice === null) return null;
+    return {
+      productId: product.id,
+      sheetName: product.sheet,
+      heightMm: parseInt(heightMm),
+      widthMm: parseInt(widthMm),
+      quantity,
+      unitPrice,
+      colorOption: currentColorOption,
+      petitsBois: isVolet ? 0 : petitsBois,
+      includePose,
+      remise,
+      netMarginWanted,
+      panneauDecoratif: isPorte ? panneauDecoratif : false,
+      hasSousBassement: !isVolet && hasSousBassement,
+      sousBassementHeight: hasSousBassement ? sousBassementHeight : 0,
+      sashOptions: !isVolet ? sashOptions : {},
+      glazingExtra: isGlazed ? glazingExtra : 0,
+      hasLockingHandle: !isVolet && !isPorte ? hasLockingHandle : false,
+    };
+  }, [product, heightMm, widthMm, priceData, quantity, unitPrice, currentColorOption, petitsBois, includePose, remise, netMarginWanted, panneauDecoratif, hasSousBassement, sousBassementHeight, sashOptions, glazingExtra, hasLockingHandle, isVolet, isPorte, isGlazed]);
+
+  const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
+
+  // Hydrate state when editingItem changes
+  useEffect(() => {
+    if (editingItem) {
+      const cat = CATEGORIES.find(c => c.products.some(p => p.id === editingItem.productId));
+      if (cat) setSelectedCategory(cat.id);
+      setSelectedProduct(editingItem.productId);
+      setWidthMm(editingItem.widthMm?.toString() || '');
+      setHeightMm(editingItem.heightMm?.toString() || '');
+      setQuantity(editingItem.quantity || 1);
+      
+      if (editingItem.colorOption) {
+        setColorOption(editingItem.colorOption.id);
+      }
+      
+      if (editingItem.rawColorState) {
+        setBicoType(editingItem.rawColorState.bicoType || 'standard_7016');
+        setCustomColorIntText(editingItem.rawColorState.customColorIntText || '');
+        setCustomColorExtText(editingItem.rawColorState.customColorExtText || '');
+        setCustomColorIntHex(editingItem.rawColorState.customColorIntHex || '#FFFFFF');
+        setIsExtPlaxageBico(editingItem.rawColorState.isExtPlaxageBico || false);
+        
+        setColor2fType(editingItem.rawColorState.color2fType || 'standard_7016');
+        setCustomColor2fText(editingItem.rawColorState.customColor2fText || '');
+        setCustomColor2fHex(editingItem.rawColorState.customColor2fHex || '#4A4A4A');
+        setIs2fPlaxage(editingItem.rawColorState.is2fPlaxage !== undefined ? editingItem.rawColorState.is2fPlaxage : true);
+      }
+      
+      setPetitsBois(editingItem.petitsBois || 0);
+      setIncludePose(editingItem.includePose || false);
+      setRemise(editingItem.remise || 0);
+      setNetMarginWanted(Number(editingItem.netMarginWanted || 0));
+      setPanneauDecoratif(editingItem.panneauDecoratif || false);
+      setHasSousBassement(editingItem.hasSousBassement || false);
+      setSousBassementHeight(editingItem.sousBassementHeight || 400);
+      setSashOptions(editingItem.sashOptions || {});
+      setOpeningDirection(editingItem.openingDirection || 'standard');
+      setHasLockingHandle(editingItem.hasLockingHandle || false);
+      
+      if (editingItem.glazingOption) {
+        setGlazingId(editingItem.glazingOption.id);
+      }
+      
+      if (editingItem.productId === 'custom-product') {
+        setCustomLabel(editingItem.productLabel || '');
+        setCustomDescription(editingItem.customDescription || '');
+        setCustomPrice(editingItem.customPrice?.toString() || '');
+        setCustomImage(editingItem.customImage || null);
+      }
+    }
+  }, [editingItem]);
+
+  useEffect(() => {
+    if (!isColorModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setIsColorModalOpen(false);
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isColorModalOpen]);
+
+  const handleColorOptionSelect = (nextOptionId) => {
+    setColorOption(nextOptionId);
+    setIsColorModalOpen(isColorConfigOption(nextOptionId));
+  };
+
   const handleCategoryChange = (catId) => {
     setSelectedCategory(catId);
     setSelectedProduct(null);
@@ -146,6 +284,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     setPetitsBois(0);
     setIncludePose(false);
     setRemise(0);
+    setNetMarginWanted(0);
     setPanneauDecoratif(false);
     setOpeningDirection('standard');
     setGlazingId('dv_4_20_4_argon_we');
@@ -160,6 +299,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     setCustomColor2fText('');
     setCustomColor2fHex('#4A4A4A');
     setIs2fPlaxage(true);
+    setIsColorModalOpen(false);
   };
 
   const handleProductChange = (prodId) => {
@@ -171,6 +311,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     setPetitsBois(0);
     setIncludePose(false);
     setRemise(0);
+    setNetMarginWanted(0);
     setPanneauDecoratif(false);
     setOpeningDirection('standard');
     setGlazingId('dv_4_20_4_argon_we');
@@ -185,6 +326,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     setCustomColor2fText('');
     setCustomColor2fHex('#4A4A4A');
     setIs2fPlaxage(true);
+    setIsColorModalOpen(false);
   };
 
   const handleImageUpload = (e) => {
@@ -294,11 +436,18 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     if (!isWasteManagement && !isCustomProduct && (!heightMm || !widthMm || !unitPrice || !priceData)) return;
 
     const { marketingBase, marketingFinition, svgColor } = getMarketingDesignationText();
+    const itemId = editingItem ? editingItem.id : Date.now().toString();
+
+    // Raw color state to allow exact reproduction if edited again
+    const rawColorState = {
+      bicoType, customColorIntText, customColorExtText, customColorIntHex, isExtPlaxageBico,
+      color2fType, customColor2fText, customColor2fHex, is2fPlaxage
+    };
 
     let item;
     if (isWasteManagement) {
       item = {
-        id: Date.now().toString(),
+        id: itemId,
         productId: product.id,
         productLabel: product.label,
         sheetName: product.sheet,
@@ -307,10 +456,11 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
         unitPrice: wastePrice,
         includePose: false,
         remise: 0,
+        netMarginWanted: 0,
       };
     } else if (isCustomProduct) {
       item = {
-        id: Date.now().toString(),
+        id: itemId,
         productId: product.id,
         productLabel: customLabel,
         customDescription,
@@ -320,10 +470,11 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
         unitPrice: parseFloat(customPrice),
         includePose: false, // Custom products generally don't use the standard pose grid
         remise: 0,
+        netMarginWanted: 0,
       };
     } else {
       item = {
-        id: Date.now().toString(),
+        id: itemId,
         productId: product.id,
         productLabel: product.label,
         sheetName: product.sheet,
@@ -337,6 +488,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
         petitsBois: isVolet ? 0 : petitsBois,
         includePose,
         remise,
+        netMarginWanted,
         panneauDecoratif: isPorte ? panneauDecoratif : false,
         hasSousBassement: !isVolet && hasSousBassement,
         sousBassementHeight: hasSousBassement ? sousBassementHeight : 0,
@@ -352,6 +504,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
         marketingFinition,
         svgColor,
         hasLockingHandle: !isVolet && !isPorte ? hasLockingHandle : false,
+        rawColorState,
       };
     }
 
@@ -365,15 +518,34 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
     setPetitsBois(0);
     setIncludePose(false);
     setRemise(0);
+    setNetMarginWanted(0);
     setPanneauDecoratif(false);
     setHasSousBassement(false);
     setSashOptions({});
     setOpeningDirection('standard');
     setGlazingId('dv_4_20_4_argon_we');
+    setIsColorModalOpen(false);
   };
 
   return (
     <div className="space-y-6">
+      {editingItem && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
+              <Pencil size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-blue-900">Mode Édition</p>
+              <p className="text-xs text-blue-700">Vous modifiez actuellement <strong>{editingItem.productLabel}</strong>. Validez pour enregistrer sur cette ligne de devis.</p>
+            </div>
+          </div>
+          <button onClick={onCancelEdit} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+      )}
+
       {/* Category Tabs */}
       <div className="flex flex-wrap gap-2 pb-1">
         {CATEGORIES.map((cat) => {
@@ -395,9 +567,9 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
       </div>
 
       {/* Product Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         {/* Product Type Selection */}
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
           <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">
             Sélectionnez un modèle
           </label>
@@ -441,7 +613,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
         </div>
 
         {/* Visual Preview */}
-        {product && !isWasteManagement && (
+        {product && !isWasteManagement && !isCustomProduct && (
           <div className="px-6 pt-6 -mb-2">
             <MenuiserieVisual
               sheetName={product.sheet}
@@ -612,20 +784,26 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
               </div>
             )}
 
-            {unitPrice !== null && priceData && (
-              <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100 flex items-center justify-between">
+            {previewCalc && (
+              <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm">
                 <div>
                   <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">
-                    Prix unitaire HT
+                    Total HT avec options associées
                   </p>
                   <p className="text-2xl font-black text-slate-900 tracking-tight">
-                    {unitPrice.toFixed(2)} €
+                    {(previewCalc.totalLine + (includePose ? previewCalc.posePrice * quantity : 0)).toFixed(2)} €
                   </p>
+                  {includePose && (
+                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
+                      (dont Pose {(previewCalc.posePrice * quantity).toFixed(2)} €)
+                    </p>
+                  )}
                 </div>
-                <div className="text-right flex items-center h-full">
+                <div className="text-right flex flex-col justify-center items-end gap-1.5 h-full">
                   <p className="text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-orange-100">
                     L {widthMm} × H {heightMm} mm
                   </p>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mr-1">Qté : {quantity}</p>
                 </div>
               </div>
             )}
@@ -683,7 +861,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
               Options
             </label>
 
-            {/* Sens d'ouverture */}
+            {/* Sens d'ouverture / Poignée / Petits Bois  (options display intact) */}
             {!isVolet && !product.sheet.includes('Fixe') && (
               <div className="space-y-3 pb-2">
                 <label className="block text-sm font-semibold text-slate-700">
@@ -783,136 +961,58 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
                 <Palette size={14} className="text-slate-400" />
                 Coloration
               </label>
-              <div className="grid sm:grid-cols-2 gap-3">
-                {colorOptions.map((opt) => (
-                  <div key={opt.id} className="space-y-3 relative group">
-                    <label
-                      className={`flex items-start gap-4 p-4 h-full rounded-xl border-2 cursor-pointer transition-all ${colorOption === opt.id
-                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+              <div className="grid grid-cols-1 gap-3">
+                {colorOptions.map((opt) => {
+                  const isActive = colorOption === opt.id;
+                  const canConfigure = isColorConfigOption(opt.id);
+
+                  return (
+                    <div
+                      key={`clean-${opt.id}`}
+                      className={`rounded-xl border-2 transition-all ${isActive
+                        ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
+                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                         }`}
                     >
-                      <input
-                        type="radio"
-                        name="color"
-                        value={opt.id}
-                        checked={colorOption === opt.id}
-                        onChange={(e) => setColorOption(e.target.value)}
-                        className="w-5 h-5 mt-0.5 accent-orange-500 cursor-pointer shrink-0"
-                      />
-                      <div className="flex-1">
-                        <span className="text-base sm:text-sm font-bold text-slate-800 block">
-                          {opt.label}
-                        </span>
-                        <span className="text-sm text-slate-500 leading-snug mt-1 block">
-                          {opt.description}
-                        </span>
-                      </div>
-                    </label>
+                      <label className="flex items-start gap-4 p-4 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="color"
+                          value={opt.id}
+                          checked={isActive}
+                          onChange={(e) => handleColorOptionSelect(e.target.value)}
+                          className="w-5 h-5 mt-0.5 accent-orange-500 cursor-pointer shrink-0"
+                        />
+                        <div className="flex-1">
+                          <span className="text-base sm:text-sm font-bold text-slate-800 block">
+                            {opt.label}
+                          </span>
+                          <span className="text-sm text-slate-500 leading-snug mt-1 block">
+                            {opt.description}
+                          </span>
+                        </div>
+                      </label>
 
-                    {/* Sous-options pour Bicoloration */}
-                    {colorOption === 'bicoloration' && opt.id === 'bicoloration' && (
-                      <div className="pl-8 pr-4 pb-2 space-y-3 animate-fade-in">
-                        <select
-                          value={bicoType}
-                          onChange={(e) => setBicoType(e.target.value)}
-                          className="w-full p-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                        >
-                          <option value="standard_7016">Blanc 9016 (Int) / Gris 7016 (Ext)</option>
-                          <option value="standard_chene">Blanc 9016 (Int) / Chêne doré plaxé (Ext)</option>
-                          <option value="custom">Autre bicoloration...</option>
-                        </select>
+                      {isActive && (
+                        <div className="px-4 pb-4">
+                          <p className="text-xs font-semibold text-slate-500">
+                            Configuration: <span className="text-slate-700">{colorConfigurationSummary}</span>
+                          </p>
 
-                        {bicoType === 'custom' && (
-                          <div className="p-3 bg-white border border-slate-100 rounded-lg space-y-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Couleur Intérieure (ex: Blanc 9016)</label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={customColorIntText}
-                                  onChange={(e) => setCustomColorIntText(e.target.value)}
-                                  placeholder="Description couleur"
-                                  className="flex-1 p-2 text-xs border border-slate-200 rounded outline-none"
-                                />
-                                {customColorIntText && !customColorIntText.toLowerCase().includes('blanc') && (
-                                  <input
-                                    type="color"
-                                    value={customColorIntHex}
-                                    onChange={(e) => setCustomColorIntHex(e.target.value)}
-                                    className="w-8 h-8 rounded cursor-pointer"
-                                    title="Couleur pour le visuel SVG"
-                                  />
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Finition Extérieure</label>
-                              <div className="flex gap-2 items-center mb-1">
-                                <label className="text-[10px] flex items-center gap-1 cursor-pointer">
-                                  <input type="checkbox" checked={isExtPlaxageBico} onChange={(e) => setIsExtPlaxageBico(e.target.checked)} />
-                                  Plaxage
-                                </label>
-                              </div>
-                              <input
-                                type="text"
-                                value={customColorExtText}
-                                onChange={(e) => setCustomColorExtText(e.target.value)}
-                                placeholder="ex: Rouge 3004"
-                                className="w-full p-2 text-xs border border-slate-200 rounded outline-none"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Sous-options pour Coloration 2 faces */}
-                    {colorOption === 'coloration-2f' && opt.id === 'coloration-2f' && (
-                      <div className="pl-8 pr-4 pb-2 space-y-3 animate-fade-in">
-                        <select
-                          value={color2fType}
-                          onChange={(e) => setColor2fType(e.target.value)}
-                          className="w-full p-2 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                        >
-                          <option value="standard_7016">Gris (7016) 2 faces</option>
-                          <option value="standard_chene">Chêne doré 2 faces</option>
-                          <option value="custom">Autre coloration 2 faces...</option>
-                        </select>
-
-                        {color2fType === 'custom' && (
-                          <div className="p-3 bg-white border border-slate-100 rounded-lg space-y-3">
-                            <div>
-                              <label className="block text-xs font-semibold text-slate-600 mb-1">Type et Couleur 2 faces</label>
-                              <div className="flex gap-2 items-center mb-1">
-                                <label className="text-[10px] flex items-center gap-1 cursor-pointer">
-                                  <input type="checkbox" checked={is2fPlaxage} onChange={(e) => setIs2fPlaxage(e.target.checked)} />
-                                  Plaxage
-                                </label>
-                              </div>
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={customColor2fText}
-                                  onChange={(e) => setCustomColor2fText(e.target.value)}
-                                  placeholder="ex: Noir 9005"
-                                  className="flex-1 p-2 text-xs border border-slate-200 rounded outline-none"
-                                />
-                                <input
-                                  type="color"
-                                  value={customColor2fHex}
-                                  onChange={(e) => setCustomColor2fHex(e.target.value)}
-                                  className="w-8 h-8 rounded cursor-pointer"
-                                  title="Couleur pour le visuel SVG"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                          {canConfigure && (
+                            <button
+                              type="button"
+                              onClick={() => setIsColorModalOpen(true)}
+                              className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-orange-700 bg-orange-100 hover:bg-orange-200 transition-colors"
+                            >
+                              Configurer la coloration
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1050,6 +1150,23 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
             )}
 
             <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                Marge nette souhaitée (€)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={netMarginWanted}
+                onChange={(e) => setNetMarginWanted(Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full sm:w-56 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+              <p className="text-xs text-slate-400 mt-1">
+                Invisible pour le client. Le système compense automatiquement avant remise.
+              </p>
+            </div>
+
+            <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-semibold text-slate-700">
                   Remise appliquée
@@ -1096,6 +1213,160 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
           </div>
         )}
 
+        {requiresColorConfiguration && isColorModalOpen && (
+          <div
+            className="fixed inset-0 z-[80] bg-slate-900/45 backdrop-blur-sm p-4 sm:p-6 flex items-end sm:items-center justify-center"
+            onClick={() => setIsColorModalOpen(false)}
+          >
+            <div
+              className="w-full sm:max-w-xl max-h-[90vh] bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">Configuration</p>
+                  <h4 className="text-lg font-black text-slate-900">
+                    {colorOption === 'bicoloration' ? 'Bicoloration' : 'Coloration 2 faces'}
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsColorModalOpen(false)}
+                  className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                  aria-label="Fermer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
+                {colorOption === 'bicoloration' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Preset</label>
+                      <select
+                        value={bicoType}
+                        onChange={(e) => setBicoType(e.target.value)}
+                        className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
+                      >
+                        <option value="standard_7016">Blanc 9016 (Int) / Gris 7016 (Ext)</option>
+                        <option value="standard_chene">Blanc 9016 (Int) / Chene dore plaxe (Ext)</option>
+                        <option value="custom">Autre bicoloration...</option>
+                      </select>
+                    </div>
+
+                    {bicoType === 'custom' && (
+                      <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Couleur interieure</label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={customColorIntText}
+                              onChange={(e) => setCustomColorIntText(e.target.value)}
+                              placeholder="ex: Blanc 9016"
+                              className="flex-1 p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
+                            />
+                            {customColorIntText && !customColorIntText.toLowerCase().includes('blanc') && (
+                              <input
+                                type="color"
+                                value={customColorIntHex}
+                                onChange={(e) => setCustomColorIntHex(e.target.value)}
+                                className="w-10 h-10 rounded cursor-pointer border border-slate-200"
+                                title="Couleur pour le visuel SVG"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Finition exterieure</label>
+                          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 mb-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isExtPlaxageBico}
+                              onChange={(e) => setIsExtPlaxageBico(e.target.checked)}
+                              className="accent-orange-500"
+                            />
+                            Plaxage
+                          </label>
+                          <input
+                            type="text"
+                            value={customColorExtText}
+                            onChange={(e) => setCustomColorExtText(e.target.value)}
+                            placeholder="ex: Rouge 3004"
+                            className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {colorOption === 'coloration-2f' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Preset</label>
+                      <select
+                        value={color2fType}
+                        onChange={(e) => setColor2fType(e.target.value)}
+                        className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
+                      >
+                        <option value="standard_7016">Gris (7016) 2 faces</option>
+                        <option value="standard_chene">Chene dore 2 faces</option>
+                        <option value="custom">Autre coloration 2 faces...</option>
+                      </select>
+                    </div>
+
+                    {color2fType === 'custom' && (
+                      <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1">Type et couleur</label>
+                          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 mb-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={is2fPlaxage}
+                              onChange={(e) => setIs2fPlaxage(e.target.checked)}
+                              className="accent-orange-500"
+                            />
+                            Plaxage
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={customColor2fText}
+                              onChange={(e) => setCustomColor2fText(e.target.value)}
+                              placeholder="ex: Noir 9005"
+                              className="flex-1 p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
+                            />
+                            <input
+                              type="color"
+                              value={customColor2fHex}
+                              onChange={(e) => setCustomColor2fHex(e.target.value)}
+                              className="w-10 h-10 rounded cursor-pointer border border-slate-200"
+                              title="Couleur pour le visuel SVG"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="flex justify-end p-4 border-t border-slate-200 bg-slate-50">
+                <button
+                  type="button"
+                  onClick={() => setIsColorModalOpen(false)}
+                  className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 transition-colors"
+                >
+                  Valider
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Add to Cart */}
         {(unitPrice !== null || isWasteManagement || isCustomProduct) && (
           <div className="p-6">
@@ -1105,7 +1376,13 @@ export default function ProductSelector({ onAddToCart, cartItems = [] }) {
               className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-full transition-all duration-200 shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
             >
               <ShoppingCart size={18} />
-              {isWasteManagement ? 'Calculer et ajouter au devis' : (isCustomProduct ? 'Ajouter ce produit' : 'Ajouter au panier')}
+              {isWasteManagement 
+                ? (editingItem ? 'Mettre à jour le service' : 'Calculer et ajouter au devis') 
+                : (isCustomProduct 
+                  ? (editingItem ? 'Mettre à jour ce produit' : 'Ajouter ce produit') 
+                  : (editingItem ? 'Mettre à jour le produit' : 'Ajouter au panier')
+                )
+              }
             </button>
           </div>
         )}

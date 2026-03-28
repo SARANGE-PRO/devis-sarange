@@ -1,0 +1,11 @@
+<svg viewBox="0 0 280 60" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="textGradLight" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#0F172A" />
+            <stop offset="100%" stop-color="#475569" />
+        </linearGradient>
+    </defs>
+    <text x="0" y="45" font-family="'Inter', sans-serif" font-weight="900" font-size="48" fill="url(#textGradLight)" letter-spacing="-0.05em">
+        SARANGE<tspan fill="#F97316">.</tspan>
+    </text>
+</svg>

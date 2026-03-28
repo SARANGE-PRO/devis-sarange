@@ -12,6 +12,9 @@ export const metadata = {
   title: "Devis Sarange — Outil de devis menuiserie",
   description:
     "Application métier Sarange pour la génération de devis de menuiserie : fenêtres PVC, volets roulants, portes d'entrée.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }) {
