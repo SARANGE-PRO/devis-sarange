@@ -27,6 +27,9 @@ import {
   getProductType,
   calculateSurface,
   calculateItemPrice,
+  WASTE_FACTORS,
+  WASTE_PRICE_PER_KG,
+  getProductCategory,
 } from '@/lib/products';
 import {
   GLAZING_OPTIONS,
@@ -65,6 +68,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [customImage, setCustomImage] = useState(null);
+  const [repere, setRepere] = useState('');
+  const [showThermalData, setShowThermalData] = useState(true);
 
   // Advanced Color States
   const [bicoType, setBicoType] = useState('standard_7016');
@@ -97,16 +102,31 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
   // Waste Management Special Logic
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
-  const totalSurface = useMemo(() => {
+  const wasteCalculation = useMemo(() => {
     return cartItems.reduce((acc, item) => {
-      // Don't include other waste management lines in the calculation to avoid recursion
-      if (item.productId === 'gestion-dechets') return acc;
-      return acc + calculateSurface(item.widthMm, item.heightMm, item.quantity);
-    }, 0);
+      // Exclusion strict : Seuls les produits des catégories listées sont pris en compte
+      // Les produits "Hors Catalogue" (custom-product) et "Services" sont ignorés.
+      if (item.productId === 'gestion-dechets' || item.productId === 'custom-product') return acc;
+      
+      const categoryId = getProductCategory(item.productId);
+      const factor = WASTE_FACTORS[categoryId];
+      
+      if (factor) {
+        const surface = calculateSurface(item.widthMm, item.heightMm, item.quantity);
+        const weight = surface * factor;
+        const price = weight * WASTE_PRICE_PER_KG;
+        
+        return {
+          totalSurface: acc.totalSurface + surface,
+          totalWeight: acc.totalWeight + weight,
+          totalWastePrice: acc.totalWastePrice + price
+        };
+      }
+      return acc;
+    }, { totalSurface: 0, totalWeight: 0, totalWastePrice: 0 });
   }, [cartItems]);
 
-  const estimatedWeight = totalSurface * 40;
-  const wastePrice = totalSurface * 4;
+  const { totalSurface, totalWeight: estimatedWeight, totalWastePrice: wastePrice } = wasteCalculation;
 
   const isVolet = product && product.sheet.startsWith('Volet');
   const isPorte = product && product.sheet.startsWith('Porte Entrée');
@@ -249,6 +269,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
         setCustomPrice(editingItem.customPrice?.toString() || '');
         setCustomImage(editingItem.customImage || null);
       }
+      setRepere(editingItem.repere || '');
+      setShowThermalData(editingItem.showThermalData !== undefined ? editingItem.showThermalData : true);
     }
   }, [editingItem]);
 
@@ -300,6 +322,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
     setCustomColor2fHex('#4A4A4A');
     setIs2fPlaxage(true);
     setIsColorModalOpen(false);
+    setRepere('');
+    setShowThermalData(true);
   };
 
   const handleProductChange = (prodId) => {
@@ -327,6 +351,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
     setCustomColor2fHex('#4A4A4A');
     setIs2fPlaxage(true);
     setIsColorModalOpen(false);
+    setRepere('');
+    setShowThermalData(true);
   };
 
   const handleImageUpload = (e) => {
@@ -452,6 +478,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
         productLabel: product.label,
         sheetName: product.sheet,
         totalSurface,
+        totalWeight: estimatedWeight,
+        totalWastePrice: wastePrice,
         quantity: 1,
         unitPrice: wastePrice,
         includePose: false,
@@ -466,6 +494,7 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
         customDescription,
         customPrice: parseFloat(customPrice),
         customImage,
+        repere,
         quantity,
         unitPrice: parseFloat(customPrice),
         includePose: false, // Custom products generally don't use the standard pose grid
@@ -505,6 +534,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
         svgColor,
         hasLockingHandle: !isVolet && !isPorte ? hasLockingHandle : false,
         rawColorState,
+        repere,
+        showThermalData,
       };
     }
 
@@ -642,8 +673,8 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">Service Environnemental</h3>
             <p className="text-sm text-slate-500 max-w-sm">
-              Calcul automatique basé sur la surface totale des menuiseries du devis
-              (40 kg/m² et 0,10 €/kg).
+              Calcul automatique dynamique basé sur la catégorie des produits catalogués
+              (Fenêtres, Portes, Volets...) à {WASTE_PRICE_PER_KG.toFixed(2)} € / kg.
             </p>
           </div>
         )}
@@ -737,6 +768,23 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
           </div>
         )}
 
+        {/* Repère de localisation */}
+        {product && !isWasteManagement && (
+          <div className="p-6 border-b border-slate-100 bg-orange-50/30">
+            <label className="block text-sm font-bold text-slate-700 mb-1.5">
+              Repère (ex: SDB, Chambre 1, Cuisine)
+            </label>
+            <input
+              type="text"
+              placeholder="Localisation de la menuiserie..."
+              value={repere}
+              onChange={(e) => setRepere(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 shadow-sm"
+            />
+
+          </div>
+        )}
+
         {/* Dimensions */}
         {product && !isWasteManagement && !isCustomProduct && (
           <div className="p-6 border-b border-slate-100">
@@ -810,15 +858,30 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
 
             {/* Thermal Performance Badges */}
             {unitPrice !== null && isGlazed && thermalUw !== null && thermalSw !== null && (
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-3 flex items-center flex-wrap gap-2">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold text-blue-700">
                   🌡️ Uw = {thermalUw} W/m²K
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-lg text-xs font-bold text-amber-700">
                   ☀️ Sw = {thermalSw}
                 </span>
+
+                {/* Small toggle for thermal data visibility */}
+                <label className="inline-flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 cursor-pointer hover:bg-slate-100 transition-colors ml-1">
+                  <div className="relative inline-flex items-center cursor-pointer scale-90">
+                    <input 
+                      type="checkbox" 
+                      checked={showThermalData} 
+                      onChange={(e) => setShowThermalData(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:start-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-orange-500"></div>
+                  </div>
+                  Afficher sur devis
+                </label>
+
                 {glazingExtra > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-lg text-xs font-bold text-purple-700">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-lg text-xs font-bold text-purple-700 ml-auto sm:ml-0">
                     Vitrage : +{glazingExtra.toFixed(2)} € HT
                   </span>
                 )}

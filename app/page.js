@@ -212,6 +212,7 @@ export default function Home() {
               tvaRate={tvaRate}
               setTvaRate={setTvaRate}
               onGoBack={() => setCurrentStep(2)}
+              onUpdateItem={handleAddToCart}
               onNext={() => {
                 setCurrentStep(4);
                 void generateQuotePDF(clientData, cartItems, tvaRate);

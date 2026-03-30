@@ -1,11 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { calculateItemPrice } from '@/lib/products';
-import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, AlertCircle, Package } from 'lucide-react';
+import { calculateItemPrice, getItemPricingSummary } from '@/lib/products';
+import { generateDesignation } from '@/lib/designation-generator';
+import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, AlertCircle, Package, Pencil, Check, X } from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 
-export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRate, onGoBack, onNext }) {
+export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRate, onGoBack, onNext, onUpdateItem }) {
+  const [editingDesignationId, setEditingDesignationId] = useState(null);
+  const [tempDesignation, setTempDesignation] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
+
   const totals = useMemo(() => {
     let totalHT = 0;
     cartItems.forEach((item) => {
@@ -19,6 +23,22 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
     const totalTTC = Math.round((totalHT + tva) * 100) / 100;
     return { totalHT: Math.round(totalHT * 100) / 100, tva, totalTTC };
   }, [cartItems, tvaRate]);
+
+  const handleStartEdit = (item) => {
+    const calc = calculateItemPrice(item);
+    const pricing = getItemPricingSummary(item, calc);
+    const initialText = item.customDescription || generateDesignation(item, calc, pricing) || '';
+    setTempDesignation(initialText);
+    setEditingDesignationId(item.id);
+  };
+
+  const handleSaveEdit = (item) => {
+    onUpdateItem({
+      ...item,
+      customDescription: tempDesignation
+    });
+    setEditingDesignationId(null);
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -128,41 +148,74 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
                                   <WasteRecycleIcon size={14} className="text-green-500 shrink-0" />
                                 )}
                                 <span>{item.productLabel}</span>
+                                {item.repere && (
+                                  <span className="italic text-slate-500 text-[10px] bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 shrink-0 font-medium tracking-tight">
+                                    {item.repere}
+                                  </span>
+                                )}
                               </p>
-                              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
-                                {item.productId === 'gestion-dechets' ? (
+                              {item.productId === 'gestion-dechets' ? (
+                                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                                   <span className="text-green-600 font-medium">Surface traitée : {item.totalSurface?.toFixed(2)} m² • {calc.weight?.toFixed(0)} kg estimé</span>
-                                ) : item.productId === 'custom-product' ? (
-                                  <span className="italic">{item.customDescription || 'Aucune description'}</span>
-                                ) : (
-                                  <>
-                                    {item.colorOption?.id && item.colorOption.id !== 'blanc' && (
-                                      <span>Couleur : {item.colorOption.label}</span>
-                                    )}
-                                    {item.petitsBois > 0 && (
-                                      <span>Petits bois : {item.petitsBois} carrés</span>
-                                    )}
-                                    {item.glazingOption && !item.glazingOption.isBaseIncluded && (
-                                      <span className="text-blue-600 font-bold">Vitrage : {item.glazingOption.shortLabel}</span>
-                                    )}
-                                    {item.thermalUw !== null && item.thermalUw !== undefined && (
-                                      <span className="text-blue-500">Uw={item.thermalUw} W/m²K · Sw={item.thermalSw}</span>
-                                    )}
-                                  </>
-                                )}
-                                {item.panneauDecoratif && (
-                                  <span className="text-orange-600 font-bold">✨ Panneau décoratif (+850€)</span>
-                                )}
-                                {item.hasSousBassement && (
-                                  <span className="text-slate-600 font-bold">🧱 Sous-bassement ({item.sousBassementHeight}mm)</span>
-                                )}
-                                {item.sashOptions && Object.values(item.sashOptions).some(s => s.ob || s.vent) && (
-                                  <span className="text-slate-600 font-bold">⚙️ {Object.values(item.sashOptions).filter(s => s.ob).length} OB / {Object.values(item.sashOptions).filter(s => s.vent).length} Grille</span>
-                                )}
-                                {item.remise > 0 && (
-                                  <span className="text-orange-600 font-medium font-bold">Remise : -{item.remise}%</span>
-                                )}
-                              </div>
+                                </div>
+                              ) : (
+                                <div className="mt-2 group relative">
+                                  {editingDesignationId === item.id ? (
+                                    <div className="space-y-2 animate-in fade-in duration-200">
+                                      <textarea
+                                        value={tempDesignation}
+                                        onChange={(e) => setTempDesignation(e.target.value)}
+                                        className="w-full text-xs text-slate-600 bg-white border border-orange-500 rounded-lg p-3 outline-none shadow-sm min-h-[100px] leading-relaxed"
+                                        autoFocus
+                                      />
+                                      <div className="flex gap-2 justify-end">
+                                        <button
+                                          onClick={() => setEditingDesignationId(null)}
+                                          className="px-3 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
+                                        >
+                                          Annuler
+                                        </button>
+                                        <button
+                                          onClick={() => handleSaveEdit(item)}
+                                          className="px-3 py-1.5 text-[10px] font-bold bg-orange-500 text-white hover:bg-orange-600 rounded-md transition-all shadow-sm flex items-center gap-1.5"
+                                        >
+                                          <Check size={12} />
+                                          Valider
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="space-y-1">
+                                      <div className="flex items-start justify-between gap-4">
+                                        <div className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-wrap italic">
+                                          {item.customDescription || (generateDesignation(item, calc, getItemPricingSummary(item, calc)) || 'Désignation en cours...')}
+                                        </div>
+                                        <button
+                                          onClick={() => handleStartEdit(item)}
+                                          className="p-1 px-2 text-slate-400 hover:text-orange-500 hover:bg-orange-50 border border-transparent hover:border-orange-200 rounded transition-all opacity-0 group-hover:opacity-100 flex items-center gap-1.5 shrink-0"
+                                          title="Modifier la désignation"
+                                        >
+                                          <Pencil size={12} />
+                                          <span className="text-[10px] font-bold">Modifier</span>
+                                        </button>
+                                      </div>
+                                      
+                                      {/* Mini badges below for visual confirmation of options */}
+                                      <div className="flex flex-wrap gap-2 mt-2">
+                                        {item.colorOption?.id !== 'blanc' && (
+                                          <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 rounded text-slate-500">{item.colorOption?.label}</span>
+                                        )}
+                                        {item.includePose && (
+                                          <span className="text-[9px] px-1.5 py-0.5 bg-green-50 rounded text-green-600 font-bold">Pose incluse</span>
+                                        )}
+                                        {item.remise > 0 && (
+                                          <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">-{item.remise}%</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>

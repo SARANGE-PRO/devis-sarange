@@ -53,7 +53,7 @@ export default function MenuiserieVisual({
       sashes = [
         { ratio: 0.33, symbols: ['triangle-right'], handle: null },
         { ratio: 0.33, symbols: ['triangle-left'], handle: 'left' },
-        { ratio: 0.34, symbols: [], handle: null }
+        { ratio: 0.34, symbols: ['triangle-left'], handle: 'left' }
       ];
     } else if (sheetName === 'Fenêtre 4V') {
       sashes = [

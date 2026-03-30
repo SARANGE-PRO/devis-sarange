@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   User,
   MapPin,
@@ -8,8 +8,8 @@ import {
   Mail,
   ArrowRight,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react';
-
 export default function ClientForm({ onNext }) {
   const [formData, setFormData] = useState({
     nom: '',
@@ -27,6 +27,64 @@ export default function ClientForm({ onNext }) {
   });
 
   const [errors, setErrors] = useState({});
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState(null); // 'facturation' | 'chantier'
+
+  // Debounce for address search
+  useEffect(() => {
+    const query = activeSearchField === 'facturation' ? formData.adresse : formData.adresseChantier;
+
+    // We only trigger search if the user has typed at least 4 chars
+    if (query?.length > 3) {
+      const timeoutId = setTimeout(() => {
+        fetchSuggestions(query);
+      }, 300);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  }, [formData.adresse, formData.adresseChantier, activeSearchField]);
+
+  const fetchSuggestions = async (query) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`);
+      const data = await response.json();
+      setSuggestions(data.features || []);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error('Error fetching address suggestions:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSelectSuggestion = (suggestion) => {
+    const { name, postcode, city } = suggestion.properties;
+    
+    if (activeSearchField === 'facturation') {
+      setFormData(prev => ({
+        ...prev,
+        adresse: name,
+        codePostal: postcode,
+        ville: city
+      }));
+    } else if (activeSearchField === 'chantier') {
+      setFormData(prev => ({
+        ...prev,
+        adresseChantier: name,
+        codePostalChantier: postcode,
+        villeChantier: city
+      }));
+    }
+    
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setActiveSearchField(null);
+  };
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -140,22 +198,57 @@ export default function ClientForm({ onNext }) {
 
           {/* Addresse Facturation */}
           <h3 className="font-semibold text-slate-800 text-base mb-3">Adresse de facturation</h3>
-          <div>
+          <div className="relative">
             <label htmlFor="adresse" className={labelClasses}>
               <MapPin size={14} className="inline mr-1 text-slate-400" />
               Adresse
             </label>
-            <input
-              id="adresse"
-              name="adresse"
-              type="text"
-              placeholder="12 Rue de la Paix"
-              value={formData.adresse}
-              onChange={handleChange}
-              className={`${inputClasses} ${
-                errors.adresse ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
-              }`}
-            />
+            <div className="relative flex items-center">
+              <input
+                id="adresse"
+                name="adresse"
+                type="text"
+                autoComplete="off"
+                placeholder="12 Rue de la Paix"
+                value={formData.adresse}
+                onChange={handleChange}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                onFocus={() => { 
+                  setActiveSearchField('facturation');
+                  if (suggestions.length > 0 && activeSearchField === 'facturation') setShowSuggestions(true); 
+                }}
+                className={`${inputClasses} pr-10 ${
+                  errors.adresse ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
+                }`}
+              />
+              {isLoading && activeSearchField === 'facturation' && (
+                <div className="absolute right-4 text-orange-500 animate-spin">
+                  <Loader2 size={18} />
+                </div>
+              )}
+            </div>
+            
+            {showSuggestions && activeSearchField === 'facturation' && suggestions.length > 0 && (
+              <div className="absolute z-[100] w-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                {suggestions.map((s, idx) => (
+                  <div 
+                    key={idx}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSelectSuggestion(s);
+                    }}
+                    className="px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 hover:text-orange-500 cursor-pointer transition-colors border-b last:border-0 border-slate-100 flex items-center gap-3"
+                  >
+                    <MapPin size={14} className="text-slate-300 shrink-0" />
+                    <div className="flex-1 min-w-0 truncate">
+                      <span className="font-bold">{s.properties.name}</span>
+                      <span className="ml-2 text-slate-400">{s.properties.postcode} {s.properties.city}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {errors.adresse && (
               <p className="mt-1 text-xs text-red-500">{errors.adresse}</p>
             )}
@@ -233,19 +326,53 @@ export default function ClientForm({ onNext }) {
           {!formData.memeAdresseChantier && (
             <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-5 animate-in fade-in slide-in-from-top-2">
                <h3 className="font-semibold text-slate-800 text-sm">Adresse du chantier</h3>
-               <div>
+               <div className="relative">
                 <label htmlFor="adresseChantier" className={labelClasses}>
                   Adresse
                 </label>
-                <input
-                  id="adresseChantier"
-                  name="adresseChantier"
-                  type="text"
-                  placeholder="24 Avenue des Champs"
-                  value={formData.adresseChantier}
-                  onChange={handleChange}
-                  className={inputClasses}
-                />
+                <div className="relative flex items-center">
+                  <input
+                    id="adresseChantier"
+                    name="adresseChantier"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="24 Avenue des Champs"
+                    value={formData.adresseChantier}
+                    onChange={handleChange}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                    onFocus={() => {
+                      setActiveSearchField('chantier');
+                      if (suggestions.length > 0 && activeSearchField === 'chantier') setShowSuggestions(true);
+                    }}
+                    className={`${inputClasses} pr-10`}
+                  />
+                  {isLoading && activeSearchField === 'chantier' && (
+                    <div className="absolute right-4 text-orange-500 animate-spin">
+                      <Loader2 size={18} />
+                    </div>
+                  )}
+                </div>
+
+                {showSuggestions && activeSearchField === 'chantier' && suggestions.length > 0 && (
+                  <div className="absolute z-[100] w-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                    {suggestions.map((s, idx) => (
+                      <div
+                        key={idx}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectSuggestion(s);
+                        }}
+                        className="px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 hover:text-orange-500 cursor-pointer transition-colors border-b last:border-0 border-slate-100 flex items-center gap-3"
+                      >
+                        <MapPin size={14} className="text-slate-300 shrink-0" />
+                        <div className="flex-1 min-w-0 truncate">
+                          <span className="font-bold">{s.properties.name}</span>
+                          <span className="ml-2 text-slate-400">{s.properties.postcode} {s.properties.city}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="grid md:grid-cols-3 gap-5">
                 <div>

@@ -113,8 +113,13 @@ export default function Cart({ items, tvaRate, setTvaRate, onRemove, onDuplicate
                       ) : (
                         <Package size={14} className="text-slate-400 shrink-0" />
                       )}
-                      <p className="text-sm font-bold text-slate-900 truncate">
+                      <p className="text-sm font-bold text-slate-900 truncate flex items-center gap-1.5">
                         {item.productLabel}
+                        {item.repere && (
+                          <span className="shrink-0 italic text-slate-500 text-[10px] bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                            {item.repere}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="flex items-center gap-0.5">
