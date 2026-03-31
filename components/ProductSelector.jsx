@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
   ArrowLeftRight,
@@ -8,31 +8,41 @@ import {
   DoorClosed,
   Blinds,
   Plus,
-  ChevronDown,
   Palette,
   Grid3X3,
   Wrench,
-  ShoppingCart,
   Trash2,
   PackagePlus,
   ImagePlus,
   X,
   Pencil,
+  ShoppingCart,
 } from 'lucide-react';
 import {
   CATEGORIES,
+  COMPOSITE_MODULE_TYPES,
   COLOR_OPTIONS,
   VOLET_COLOR_OPTIONS,
+  createCompositeComposition,
+  createCompositeModule,
+  createDefaultColorState,
+  getCompositeDimensions,
+  getCompositeModuleCount,
+  getCompositePricing,
   getPriceForMm,
+  getProductById,
+  getProductCategory,
   getProductType,
   calculateSurface,
   calculateItemPrice,
+  normalizeCompositeComposition,
+  formatCompositeModules,
   WASTE_FACTORS,
   WASTE_PRICE_PER_KG,
-  getProductCategory,
 } from '@/lib/products';
 import {
   GLAZING_OPTIONS,
+  calculateGlazingAndPanelExtras,
   getSelectedGlazing,
   getFrameSystemForProduct,
   isGlazedProduct,
@@ -44,1166 +54,2369 @@ import {
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 
-const ICONS = { LayoutGrid, ArrowLeftRight, DoorOpen, DoorClosed, Blinds, Recycle: WasteRecycleIcon, PackagePlus };
+const ICONS = {
+  LayoutGrid,
+  ArrowLeftRight,
+  DoorOpen,
+  DoorClosed,
+  Blinds,
+  Recycle: WasteRecycleIcon,
+  PackagePlus,
+};
 
-export default function ProductSelector({ onAddToCart, cartItems = [], editingItem, onCancelEdit }) {
+const createCartItemId = () => Date.now().toString();
+const createUid = (prefix) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+const NUMERIC_INPUT_PROPS = { inputMode: 'numeric', pattern: '[0-9]*' };
+const DECIMAL_INPUT_PROPS = { inputMode: 'decimal' };
+const normalizePetitsBoisValue = (value) =>
+  Math.max(0, Number.parseInt(value, 10) || 0);
+const buildPetitsBoisState = (source = {}) => ({
+  petitsBoisH: normalizePetitsBoisValue(source.petitsBoisH),
+  petitsBoisV: normalizePetitsBoisValue(
+    source.petitsBoisV ?? (source.petitsBoisH == null ? source.petitsBois : 0)
+  ),
+});
+
+const createSimpleConfig = (overrides = {}) => ({
+  widthMm: '',
+  heightMm: '',
+  colorOptionId: 'blanc',
+  rawColorState: createDefaultColorState(),
+  petitsBoisH: 0,
+  petitsBoisV: 0,
+  panneauDecoratif: false,
+  hasSousBassement: false,
+  sousBassementHeight: 400,
+  sashOptions: {},
+  openingDirection: 'standard',
+  glazingId: 'dv_4_20_4_argon_we',
+  hasLockingHandle: false,
+  ...overrides,
+  ...buildPetitsBoisState(overrides),
+  rawColorState: createDefaultColorState(overrides.rawColorState),
+});
+
+const createCompositeBuilderState = () => {
+  const initialComposition = createCompositeComposition();
+  return {
+    composition: initialComposition,
+    selectedModuleId: initialComposition[0].modules[0].id,
+  };
+};
+
+const isColorConfigOption = (value) =>
+  value === 'bicoloration' || value === 'coloration-2f';
+
+const parsePositiveInt = (value, fallback = 0) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const EMPTY_FILLING_PRICING = {
+  glazingExtra: 0,
+  sousBassementTraversePrice: 0,
+  sousBassementPanelExtra: 0,
+  totalExtra: 0,
+};
+
+const buildFillingSelectionMeta = ({
+  product,
+  isEligible = false,
+  widthMm,
+  heightMm,
+  glazingId,
+  hasSousBassement = false,
+  sousBassementHeight = 0,
+  colorOptionId = 'blanc',
+}) => {
+  if (!product || (!isEligible && !isGlazedProduct(product))) {
+    return {
+      frameSystem: null,
+      glassAreas: null,
+      selectedGlazing: getSelectedGlazing(glazingId),
+      selectedPricing: EMPTY_FILLING_PRICING,
+      options: [],
+      thermalEligible: false,
+    };
+  }
+
+  const frameSystem = getFrameSystemForProduct(product.sheet);
+  const parsedWidth = parsePositiveInt(widthMm);
+  const parsedHeight = parsePositiveInt(heightMm);
+  const glassAreas =
+    parsedWidth && parsedHeight
+      ? calculateGlassAreas(parsedWidth, parsedHeight, frameSystem.frameWidthMm)
+      : null;
+
+  const buildPricing = (nextGlazingId) =>
+    glassAreas
+      ? calculateGlazingAndPanelExtras({
+          selectedGlazing: nextGlazingId,
+          glassAreas,
+          widthMm: parsedWidth,
+          hasSousBassement,
+          sousBassementHeightMm: sousBassementHeight,
+          colorOptionId,
+        })
+      : EMPTY_FILLING_PRICING;
+
+  const selectedGlazing = getSelectedGlazing(glazingId);
+  const selectedPricing = buildPricing(selectedGlazing);
+  const options = GLAZING_OPTIONS.map((glazing) => ({
+    glazing,
+    pricing: buildPricing(glazing),
+  }));
+
+  return {
+    frameSystem,
+    glassAreas,
+    selectedGlazing,
+    selectedPricing,
+    options,
+    thermalEligible:
+      Boolean(glassAreas) &&
+      selectedGlazing?.isThermalDataAvailable !== false &&
+      !hasSousBassement,
+  };
+};
+
+const formatFillingOptionLabel = (glazing, pricing) =>
+  pricing?.totalExtra > 0
+    ? `${glazing.shortLabel} (+${pricing.totalExtra.toFixed(2)} EUR)`
+    : `${glazing.shortLabel} (Inclus)`;
+
+const getFillingOptionDetails = (glazing, pricing) => {
+  const details = [];
+
+  if (glazing?.isOpaqueFilling) {
+    details.push('Remplissage opaque');
+  } else if (
+    glazing?.ug !== null &&
+    glazing?.ug !== undefined &&
+    glazing?.g !== null &&
+    glazing?.g !== undefined
+  ) {
+    details.push(`Ug=${glazing.ug} | g=${glazing.g}`);
+  }
+
+  if (glazing?.thicknessMm) {
+    details.push(`Ep. ${glazing.thicknessMm} mm`);
+  }
+
+  details.push(
+    pricing?.totalExtra > 0 ? `+${pricing.totalExtra.toFixed(2)} EUR` : 'Inclus'
+  );
+
+  return details.join(' | ');
+};
+
+const getSoubassementPricingDetails = (pricing) => {
+  const details = [];
+
+  if (pricing?.sousBassementTraversePrice > 0) {
+    details.push(`Traverse ${pricing.sousBassementTraversePrice.toFixed(2)} EUR`);
+  }
+
+  if (pricing?.sousBassementPanelExtra > 0) {
+    details.push(`Panneau ${pricing.sousBassementPanelExtra.toFixed(2)} EUR`);
+  }
+
+  return details.join(' | ');
+};
+
+const getSashCount = (sheetName = '') => {
+  if (!sheetName || sheetName.includes('Fixe') || sheetName.startsWith('Volet')) {
+    return 0;
+  }
+  if (sheetName.includes('4V')) return 4;
+  if (sheetName.includes('3V')) return 3;
+  if (sheetName.includes('2V')) return 2;
+  if (sheetName.includes('Coulissant')) return 2;
+  return 1;
+};
+
+const getColorSummary = (colorOptionId, colorState) => {
+  if (colorOptionId === 'blanc') return 'Standard';
+
+  if (colorOptionId === 'bicoloration') {
+    if (colorState.bicoType === 'standard_7016') {
+      return 'Blanc 9016 (int) / Gris 7016 (ext)';
+    }
+    if (colorState.bicoType === 'standard_chene') {
+      return 'Blanc 9016 (int) / Chene dore plaxe (ext)';
+    }
+
+    const inside = colorState.customColorIntText.trim() || 'Interieur a definir';
+    const outsidePrefix = colorState.isExtPlaxageBico ? 'Plaxage ' : '';
+    const outside = colorState.customColorExtText.trim() || 'Exterieur a definir';
+    return `${inside} / ${outsidePrefix}${outside}`;
+  }
+
+  if (colorOptionId === 'coloration-2f') {
+    if (colorState.color2fType === 'standard_7016') return 'Gris 7016 2 faces';
+    if (colorState.color2fType === 'standard_chene') return 'Chene dore 2 faces';
+
+    const prefix = colorState.is2fPlaxage ? 'Plaxage 2 faces' : 'Coloration 2 faces';
+    const label = colorState.customColor2fText.trim() || 'Couleur a definir';
+    return `${prefix} : ${label}`;
+  }
+
+  return '';
+};
+
+const getMarketingDetails = ({
+  product,
+  colorOptionId,
+  colorState,
+  hasLockingHandle,
+  panneauDecoratif,
+}) => {
+  if (!product) {
+    return { marketingBase: '', marketingFinition: '', svgColor: '#FFFFFF' };
+  }
+
+  const isVolet = product.sheet.startsWith('Volet');
+  const isPorte = product.sheet.startsWith('Porte Entr');
+  let marketingBase = '';
+
+  if (!isVolet) {
+    marketingBase = product.sheet.includes('Coulissant')
+      ? "Profiles PVC Schuco\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite"
+      : "Profiles PVC Schuco 70 mm\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite";
+
+    if (!isPorte) {
+      marketingBase += hasLockingHandle
+        ? "\nPoignee Schuco Euro verrouillable a cle"
+        : '\nPoignee Schuco Euro';
+    }
+  }
+
+  let marketingFinition = 'Finition : Blanc';
+  let svgColor = '#FFFFFF';
+
+  if (isVolet && colorOptionId === 'coloration-2f') {
+    if (colorState.color2fType === 'standard_7016') {
+      marketingFinition = 'Finition : Gris Anthracite RAL 7016';
+      svgColor = '#4A4A4A';
+    } else if (colorState.color2fType === 'standard_chene') {
+      marketingFinition = 'Finition : Chene dore';
+      svgColor = '#8B5A2B';
+    } else {
+      marketingFinition = `Finition : ${colorState.customColor2fText || 'Couleur a definir'}`;
+      svgColor = colorState.customColor2fHex || '#4A4A4A';
+    }
+  } else if (!isVolet && colorOptionId === 'bicoloration') {
+    if (colorState.bicoType === 'standard_7016') {
+      marketingFinition = 'Bicoloration : Blanc interieur / Gris 7016 exterieur';
+    } else if (colorState.bicoType === 'standard_chene') {
+      marketingFinition = 'Bicoloration : Blanc interieur / Chene dore exterieur';
+    } else {
+      const inside = colorState.customColorIntText || 'Interieur a definir';
+      const outsidePrefix = colorState.isExtPlaxageBico ? 'Plaxage ' : '';
+      const outside = colorState.customColorExtText || 'Exterieur a definir';
+      marketingFinition = `Bicoloration : ${inside} / ${outsidePrefix}${outside}`;
+      svgColor =
+        inside.toLowerCase().includes('blanc') || !inside.trim()
+          ? '#FFFFFF'
+          : colorState.customColorIntHex || '#FFFFFF';
+    }
+  } else if (colorOptionId === 'coloration-2f') {
+    if (colorState.color2fType === 'standard_7016') {
+      marketingFinition = 'Finition : Gris 7016 2 faces';
+      svgColor = '#4A4A4A';
+    } else if (colorState.color2fType === 'standard_chene') {
+      marketingFinition = 'Finition : Chene dore 2 faces';
+      svgColor = '#8B5A2B';
+    } else {
+      marketingFinition = `Finition : ${colorState.customColor2fText || 'Couleur a definir'}`;
+      svgColor = colorState.customColor2fHex || '#4A4A4A';
+    }
+  }
+
+  if (isPorte && panneauDecoratif) {
+    marketingBase += '\nPanneau decoratif';
+  }
+
+  return { marketingBase, marketingFinition, svgColor };
+};
+
+const buildColorOptionsFields = ({
+  value,
+  colorState,
+  onColorChange,
+  onColorStateChange,
+  availableOptions,
+}) => (
+  <div className="space-y-3">
+    <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+      <Palette size={14} className="text-slate-400" />
+      Coloration
+    </label>
+    <div className="grid gap-3">
+      {availableOptions.map((option) => {
+        const isActive = value === option.id;
+        return (
+          <div
+            key={option.id}
+            className={`rounded-xl border-2 transition-all ${
+              isActive
+                ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
+                : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <label className="flex items-start gap-4 p-4 cursor-pointer">
+              <input
+                type="radio"
+                checked={isActive}
+                onChange={() => onColorChange(option.id)}
+                className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-orange-500"
+              />
+              <div className="flex-1">
+                <span className="block text-sm font-bold text-slate-800">
+                  {option.label}
+                </span>
+                <span className="mt-1 block text-sm text-slate-500">
+                  {option.description}
+                </span>
+              </div>
+            </label>
+
+            {isActive && isColorConfigOption(option.id) && (
+              <div className="space-y-4 border-t border-orange-100 px-4 pb-4 pt-4">
+                <p className="text-xs font-semibold text-slate-500">
+                  Configuration :{' '}
+                  <span className="text-slate-700">
+                    {getColorSummary(value, colorState)}
+                  </span>
+                </p>
+
+                {value === 'bicoloration' && (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Preset
+                      </label>
+                      <select
+                        value={colorState.bicoType}
+                        onChange={(event) =>
+                          onColorStateChange({ bicoType: event.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="standard_7016">
+                          Blanc 9016 (int) / Gris 7016 (ext)
+                        </option>
+                        <option value="standard_chene">
+                          Blanc 9016 (int) / Chene dore plaxe (ext)
+                        </option>
+                        <option value="custom">Autre bicoloration</option>
+                      </select>
+                    </div>
+
+                    {colorState.bicoType === 'custom' && (
+                      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                            Couleur interieure
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={colorState.customColorIntText}
+                              onChange={(event) =>
+                                onColorStateChange({
+                                  customColorIntText: event.target.value,
+                                })
+                              }
+                              placeholder="Ex : Blanc 9016"
+                              className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                            />
+                            <input
+                              type="color"
+                              value={colorState.customColorIntHex}
+                              onChange={(event) =>
+                                onColorStateChange({
+                                  customColorIntHex: event.target.value,
+                                })
+                              }
+                              className="h-11 w-12 rounded-xl border border-slate-200 bg-white p-1"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                            Couleur exterieure
+                          </label>
+                          <input
+                            type="text"
+                            value={colorState.customColorExtText}
+                            onChange={(event) =>
+                              onColorStateChange({
+                                customColorExtText: event.target.value,
+                              })
+                            }
+                            placeholder="Ex : Gris anthracite"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+
+                        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={colorState.isExtPlaxageBico}
+                            onChange={(event) =>
+                              onColorStateChange({
+                                isExtPlaxageBico: event.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 accent-orange-500"
+                          />
+                          Exterieur en plaxage
+                        </label>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {value === 'coloration-2f' && (
+                  <>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Preset
+                      </label>
+                      <select
+                        value={colorState.color2fType}
+                        onChange={(event) =>
+                          onColorStateChange({ color2fType: event.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="standard_7016">Gris 7016 2 faces</option>
+                        <option value="standard_chene">Chene dore 2 faces</option>
+                        <option value="custom">Autre coloration</option>
+                      </select>
+                    </div>
+
+                    {colorState.color2fType === 'custom' && (
+                      <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div>
+                          <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                            Libelle couleur
+                          </label>
+                          <input
+                            type="text"
+                            value={colorState.customColor2fText}
+                            onChange={(event) =>
+                              onColorStateChange({
+                                customColor2fText: event.target.value,
+                              })
+                            }
+                            placeholder="Ex : Noir sable"
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+
+                        <div className="flex gap-2">
+                          <input
+                            type="color"
+                            value={colorState.customColor2fHex}
+                            onChange={(event) =>
+                              onColorStateChange({
+                                customColor2fHex: event.target.value,
+                              })
+                            }
+                            className="h-11 w-12 rounded-xl border border-slate-200 bg-white p-1"
+                          />
+                          <label className="flex flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={colorState.is2fPlaxage}
+                              onChange={(event) =>
+                                onColorStateChange({
+                                  is2fPlaxage: event.target.checked,
+                                })
+                              }
+                              className="h-4 w-4 accent-orange-500"
+                            />
+                            Version plaxage 2 faces
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+export default function ProductSelector({
+  onAddToCart,
+  cartItems = [],
+  editingItem,
+  onCancelEdit,
+}) {
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [heightMm, setHeightMm] = useState('');
-  const [widthMm, setWidthMm] = useState('');
+  const [isCompositeMode, setIsCompositeMode] = useState(false);
+  const [simpleConfig, setSimpleConfig] = useState(() => createSimpleConfig());
   const [quantity, setQuantity] = useState(1);
-  const [colorOption, setColorOption] = useState('blanc');
-  const [petitsBois, setPetitsBois] = useState(0);
   const [includePose, setIncludePose] = useState(false);
   const [remise, setRemise] = useState(0);
   const [netMarginWanted, setNetMarginWanted] = useState(0);
-  const [panneauDecoratif, setPanneauDecoratif] = useState(false);
-  const [hasSousBassement, setHasSousBassement] = useState(false);
-  const [sousBassementHeight, setSousBassementHeight] = useState(400);
-  const [sashOptions, setSashOptions] = useState({});
-  const [openingDirection, setOpeningDirection] = useState('standard');
-  const [glazingId, setGlazingId] = useState('dv_4_20_4_argon_we');
-  const [hasLockingHandle, setHasLockingHandle] = useState(false);
+  const [repere, setRepere] = useState('');
+  const [showThermalData, setShowThermalData] = useState(true);
   const [customLabel, setCustomLabel] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [customImage, setCustomImage] = useState(null);
-  const [repere, setRepere] = useState('');
-  const [showThermalData, setShowThermalData] = useState(true);
-
-  // Advanced Color States
-  const [bicoType, setBicoType] = useState('standard_7016');
-  const [customColorIntText, setCustomColorIntText] = useState('');
-  const [customColorExtText, setCustomColorExtText] = useState('');
-  const [customColorIntHex, setCustomColorIntHex] = useState('#FFFFFF');
-  const [isExtPlaxageBico, setIsExtPlaxageBico] = useState(false);
-
-  const [color2fType, setColor2fType] = useState('standard_7016');
-  const [customColor2fText, setCustomColor2fText] = useState('');
-  const [customColor2fHex, setCustomColor2fHex] = useState('#4A4A4A');
-  const [is2fPlaxage, setIs2fPlaxage] = useState(true);
-  const [isColorModalOpen, setIsColorModalOpen] = useState(false);
-
-  const category = CATEGORIES.find((c) => c.id === selectedCategory);
-  const product = selectedProduct
-    ? category?.products.find((p) => p.id === selectedProduct)
-    : null;
-
-  const priceData = useMemo(
-    () =>
-      product && heightMm && widthMm
-        ? getPriceForMm(product.sheet, parseInt(heightMm), parseInt(widthMm))
-        : null,
-    [product, heightMm, widthMm]
+  const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
+  const [selectedCompositeModuleId, setSelectedCompositeModuleId] = useState(
+    () => createCompositeBuilderState().selectedModuleId
   );
 
-  const unitPrice = priceData ? priceData.price : null;
+  const category = CATEGORIES.find((entry) => entry.id === selectedCategory);
+  const categoryProduct = selectedProduct
+    ? category?.products.find((entry) => entry.id === selectedProduct) || null
+    : null;
+  const product = selectedProduct
+    ? getProductById(selectedProduct) || categoryProduct
+    : null;
 
-  // Waste Management Special Logic
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
+
+  const compositeContext = useMemo(() => {
+    const normalized = normalizeCompositeComposition(composition);
+    let fallback = null;
+    for (let rowIndex = 0; rowIndex < normalized.length; rowIndex += 1) {
+      const row = normalized[rowIndex];
+      for (let moduleIndex = 0; moduleIndex < row.modules.length; moduleIndex += 1) {
+        const moduleEntry = row.modules[moduleIndex];
+        const context = { row, rowIndex, module: moduleEntry, moduleIndex };
+        if (!fallback) fallback = context;
+        if (moduleEntry.id === selectedCompositeModuleId) return context;
+      }
+    }
+    return fallback;
+  }, [composition, selectedCompositeModuleId]);
+
+  const compositePricing = useMemo(() => getCompositePricing(composition), [composition]);
+  const compositeDimensions = getCompositeDimensions(composition);
+  const compositeModuleCount = getCompositeModuleCount(composition);
+
+  const activeCompositeModule = compositeContext?.module || null;
+  const activeCompositePricing =
+    compositePricing.modulePricing.find(
+      (moduleEntry) => moduleEntry.id === selectedCompositeModuleId
+    ) || null;
+  const activeModuleProduct = activeCompositeModule
+    ? getProductById(activeCompositeModule.productId)
+    : null;
+
+  const formProduct = isCompositeMode ? activeModuleProduct : product;
+  const workingConfig = isCompositeMode
+    ? activeCompositeModule?.options || createSimpleConfig()
+    : simpleConfig;
+  const workingColorState =
+    workingConfig?.rawColorState || createDefaultColorState();
+  const workingColorOptions =
+    formProduct?.sheet?.startsWith('Volet') ? VOLET_COLOR_OPTIONS : COLOR_OPTIONS;
+  const workingColorOption =
+    workingColorOptions.find((entry) => entry.id === workingConfig.colorOptionId) ||
+    workingColorOptions[0];
+  const workingSashCount = getSashCount(formProduct?.sheet);
+  const workingIsVolet = Boolean(formProduct?.sheet?.startsWith('Volet'));
+  const workingIsPorte = Boolean(formProduct?.sheet?.startsWith('Porte Entr'));
+  const workingIsGlazed =
+    isGlazedProduct(formProduct) ||
+    (workingIsPorte && !workingConfig?.panneauDecoratif);
+
+  const simplePriceData =
+    !isCompositeMode &&
+    product &&
+    simpleConfig.heightMm &&
+    simpleConfig.widthMm &&
+    !isWasteManagement &&
+    !isCustomProduct
+      ? getPriceForMm(
+          product.sheet,
+          parsePositiveInt(simpleConfig.heightMm),
+          parsePositiveInt(simpleConfig.widthMm)
+        )
+      : null;
+
+  const addButtonLabel = editingItem
+    ? 'Mettre a jour le produit'
+    : isCompositeMode
+      ? 'Ajouter le chassis compose'
+      : 'Ajouter au panier';
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setCustomImage(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const simpleFillingMeta = buildFillingSelectionMeta({
+    product,
+    isEligible:
+      isGlazedProduct(product) ||
+      (Boolean(product?.sheet?.startsWith('Porte Entr')) &&
+        !simpleConfig.panneauDecoratif),
+    widthMm: simpleConfig.widthMm,
+    heightMm: simpleConfig.heightMm,
+    glazingId: simpleConfig.glazingId,
+    hasSousBassement: simpleConfig.hasSousBassement,
+    sousBassementHeight: simpleConfig.sousBassementHeight,
+    colorOptionId: simpleConfig.colorOptionId,
+  });
+  const simpleFrameSystem = simpleFillingMeta.frameSystem;
+  const simpleGlassAreas = simpleFillingMeta.glassAreas;
+  const simpleSelectedGlazing = simpleFillingMeta.selectedGlazing;
+  const simpleThermalUw =
+    !simpleFillingMeta.thermalEligible ||
+    !simpleGlassAreas ||
+    !simpleFrameSystem ||
+    !simpleSelectedGlazing
+      ? null
+      : calculateUw({
+          Ag: simpleGlassAreas.Ag,
+          Af: simpleGlassAreas.Af,
+          Aw: simpleGlassAreas.Aw,
+          Lg: simpleGlassAreas.Lg,
+          Ug: simpleSelectedGlazing.ug,
+          Uf: simpleFrameSystem.uf,
+        });
+
+  const simpleThermalSw =
+    !simpleFillingMeta.thermalEligible ||
+    !simpleGlassAreas ||
+    !simpleSelectedGlazing
+      ? null
+      : calculateSw({
+          Ag: simpleGlassAreas.Ag,
+          Aw: simpleGlassAreas.Aw,
+          g: simpleSelectedGlazing.g,
+        });
+
+  const simpleGlazingExtra = simpleFillingMeta.selectedPricing.totalExtra;
+
+  const activeModuleFillingMeta = buildFillingSelectionMeta({
+    product: activeModuleProduct,
+    isEligible:
+      isGlazedProduct(activeModuleProduct) ||
+      (Boolean(activeModuleProduct?.sheet?.startsWith('Porte Entr')) &&
+        !workingConfig.panneauDecoratif),
+    widthMm: activeCompositeModule?.widthMm,
+    heightMm: activeCompositeModule?.heightMm,
+    glazingId: workingConfig.glazingId,
+    hasSousBassement: workingConfig.hasSousBassement,
+    sousBassementHeight: workingConfig.sousBassementHeight,
+    colorOptionId: workingConfig.colorOptionId,
+  });
+
   const wasteCalculation = useMemo(() => {
-    return cartItems.reduce((acc, item) => {
-      // Exclusion strict : Seuls les produits des catégories listées sont pris en compte
-      // Les produits "Hors Catalogue" (custom-product) et "Services" sont ignorés.
-      if (item.productId === 'gestion-dechets' || item.productId === 'custom-product') return acc;
-      
-      const categoryId = getProductCategory(item.productId);
-      const factor = WASTE_FACTORS[categoryId];
-      
-      if (factor) {
+    return cartItems.reduce(
+      (accumulator, item) => {
+        if (item.productId === 'gestion-dechets' || item.productId === 'custom-product') {
+          return accumulator;
+        }
+
+        if (item.isComposite) {
+          const pricedComposition = getCompositePricing(item.composition, item.modules);
+
+          pricedComposition.modulePricing.forEach((module) => {
+            const factor = WASTE_FACTORS[module.categoryId];
+            if (!factor) return;
+
+            const surface = calculateSurface(
+              module.widthMm,
+              module.heightMm,
+              item.quantity
+            );
+            const weight = surface * factor;
+            accumulator.totalSurface += surface;
+            accumulator.totalWeight += weight;
+            accumulator.totalWastePrice += weight * WASTE_PRICE_PER_KG;
+          });
+
+          return accumulator;
+        }
+
+        const categoryId = getProductCategory(item.productId);
+        const factor = WASTE_FACTORS[categoryId];
+        if (!factor) return accumulator;
+
         const surface = calculateSurface(item.widthMm, item.heightMm, item.quantity);
         const weight = surface * factor;
-        const price = weight * WASTE_PRICE_PER_KG;
-        
-        return {
-          totalSurface: acc.totalSurface + surface,
-          totalWeight: acc.totalWeight + weight,
-          totalWastePrice: acc.totalWastePrice + price
-        };
-      }
-      return acc;
-    }, { totalSurface: 0, totalWeight: 0, totalWastePrice: 0 });
+        accumulator.totalSurface += surface;
+        accumulator.totalWeight += weight;
+        accumulator.totalWastePrice += weight * WASTE_PRICE_PER_KG;
+        return accumulator;
+      },
+      { totalSurface: 0, totalWeight: 0, totalWastePrice: 0 }
+    );
   }, [cartItems]);
 
-  const { totalSurface, totalWeight: estimatedWeight, totalWastePrice: wastePrice } = wasteCalculation;
+  const simpleMarketing = getMarketingDetails({
+    product,
+    colorOptionId: simpleConfig.colorOptionId,
+    colorState: simpleConfig.rawColorState,
+    hasLockingHandle: simpleConfig.hasLockingHandle,
+    panneauDecoratif: simpleConfig.panneauDecoratif,
+  });
 
-  const isVolet = product && product.sheet.startsWith('Volet');
-  const isPorte = product && product.sheet.startsWith('Porte Entrée');
-  const isGlazed = isGlazedProduct(product) || (isPorte && !panneauDecoratif);
-  const colorOptions = isVolet ? VOLET_COLOR_OPTIONS : COLOR_OPTIONS;
-  const currentColorOption = colorOptions.find((c) => c.id === colorOption) || colorOptions[0];
-  const isColorConfigOption = (optionId) => optionId === 'bicoloration' || optionId === 'coloration-2f';
-  const requiresColorConfiguration = isColorConfigOption(colorOption);
+  const compositePreviewComposition = useMemo(
+    () =>
+      compositePricing.composition.map((row) => ({
+        ...row,
+        modules: row.modules.map((module) => ({
+          ...module,
+          svgColor: getMarketingDetails({
+            product: getProductById(module.productId),
+            colorOptionId: module.options.colorOptionId,
+            colorState: module.options.rawColorState,
+            hasLockingHandle: module.options.hasLockingHandle,
+            panneauDecoratif: module.options.panneauDecoratif,
+          }).svgColor,
+        })),
+      })),
+    [compositePricing.composition]
+  );
 
-  const colorConfigurationSummary = useMemo(() => {
-    if (colorOption === 'blanc') return 'Standard';
-
-    if (colorOption === 'bicoloration') {
-      if (bicoType === 'standard_7016') return 'Blanc 9016 (Int) / Gris 7016 (Ext)';
-      if (bicoType === 'standard_chene') return 'Blanc 9016 (Int) / Chene dore plaxe (Ext)';
-
-      const intText = customColorIntText.trim() || 'Interieur a definir';
-      const extPrefix = isExtPlaxageBico ? 'Plaxage ' : '';
-      const extText = customColorExtText.trim() || 'Exterieur a definir';
-      return `${intText} / ${extPrefix}${extText}`;
-    }
-
-    if (colorOption === 'coloration-2f') {
-      if (color2fType === 'standard_7016') return 'Gris (7016) 2 faces';
-      if (color2fType === 'standard_chene') return 'Chene dore 2 faces';
-
-      const prefix = is2fPlaxage ? 'Plaxage 2 faces' : 'Coloration 2 faces';
-      const txt = customColor2fText.trim() || 'Couleur a definir';
-      return `${prefix} : ${txt}`;
-    }
-
-    return '';
-  }, [
-    colorOption,
-    bicoType,
-    customColorIntText,
-    isExtPlaxageBico,
-    customColorExtText,
-    color2fType,
-    is2fPlaxage,
-    customColor2fText,
-  ]);
-
-  // Glazing computed values
-  const selectedGlazing = getSelectedGlazing(glazingId);
-  const frameSystem = product ? getFrameSystemForProduct(product.sheet) : null;
-  const glassAreas = useMemo(() => {
-    if (!isGlazed || !heightMm || !widthMm || !frameSystem) return null;
-    return calculateGlassAreas(parseInt(widthMm), parseInt(heightMm), frameSystem.frameWidthMm);
-  }, [isGlazed, heightMm, widthMm, frameSystem]);
-
-  const thermalUw = useMemo(() => {
-    if (!glassAreas || !frameSystem) return null;
-    return calculateUw({
-      Ag: glassAreas.Ag, Af: glassAreas.Af, Aw: glassAreas.Aw,
-      Lg: glassAreas.Lg, Ug: selectedGlazing.ug, Uf: frameSystem.uf,
-    });
-  }, [glassAreas, frameSystem, selectedGlazing]);
-
-  const thermalSw = useMemo(() => {
-    if (!glassAreas) return null;
-    return calculateSw({ Ag: glassAreas.Ag, Aw: glassAreas.Aw, g: selectedGlazing.g });
-  }, [glassAreas, selectedGlazing]);
-
-  const glazingExtra = useMemo(() => {
-    if (!isGlazed || !glassAreas || selectedGlazing.isBaseIncluded) return 0;
-    return calculateGlazingExtra({ selectedGlassPricePerM2: selectedGlazing.purchasePricePerM2, Ag: glassAreas.Ag });
-  }, [isGlazed, glassAreas, selectedGlazing]);
-
-  const previewItem = useMemo(() => {
-    if (!product || !heightMm || !widthMm || !priceData || unitPrice === null) return null;
-    return {
-      productId: product.id,
-      sheetName: product.sheet,
-      heightMm: parseInt(heightMm),
-      widthMm: parseInt(widthMm),
-      quantity,
-      unitPrice,
-      colorOption: currentColorOption,
-      petitsBois: isVolet ? 0 : petitsBois,
-      includePose,
-      remise,
-      netMarginWanted,
-      panneauDecoratif: isPorte ? panneauDecoratif : false,
-      hasSousBassement: !isVolet && hasSousBassement,
-      sousBassementHeight: hasSousBassement ? sousBassementHeight : 0,
-      sashOptions: !isVolet ? sashOptions : {},
-      glazingExtra: isGlazed ? glazingExtra : 0,
-      hasLockingHandle: !isVolet && !isPorte ? hasLockingHandle : false,
-    };
-  }, [product, heightMm, widthMm, priceData, quantity, unitPrice, currentColorOption, petitsBois, includePose, remise, netMarginWanted, panneauDecoratif, hasSousBassement, sousBassementHeight, sashOptions, glazingExtra, hasLockingHandle, isVolet, isPorte, isGlazed]);
-
-  const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
-
-  // Hydrate state when editingItem changes
-  useEffect(() => {
-    if (editingItem) {
-      const cat = CATEGORIES.find(c => c.products.some(p => p.id === editingItem.productId));
-      if (cat) setSelectedCategory(cat.id);
-      setSelectedProduct(editingItem.productId);
-      setWidthMm(editingItem.widthMm?.toString() || '');
-      setHeightMm(editingItem.heightMm?.toString() || '');
-      setQuantity(editingItem.quantity || 1);
-      
-      if (editingItem.colorOption) {
-        setColorOption(editingItem.colorOption.id);
-      }
-      
-      if (editingItem.rawColorState) {
-        setBicoType(editingItem.rawColorState.bicoType || 'standard_7016');
-        setCustomColorIntText(editingItem.rawColorState.customColorIntText || '');
-        setCustomColorExtText(editingItem.rawColorState.customColorExtText || '');
-        setCustomColorIntHex(editingItem.rawColorState.customColorIntHex || '#FFFFFF');
-        setIsExtPlaxageBico(editingItem.rawColorState.isExtPlaxageBico || false);
-        
-        setColor2fType(editingItem.rawColorState.color2fType || 'standard_7016');
-        setCustomColor2fText(editingItem.rawColorState.customColor2fText || '');
-        setCustomColor2fHex(editingItem.rawColorState.customColor2fHex || '#4A4A4A');
-        setIs2fPlaxage(editingItem.rawColorState.is2fPlaxage !== undefined ? editingItem.rawColorState.is2fPlaxage : true);
-      }
-      
-      setPetitsBois(editingItem.petitsBois || 0);
-      setIncludePose(editingItem.includePose || false);
-      setRemise(editingItem.remise || 0);
-      setNetMarginWanted(Number(editingItem.netMarginWanted || 0));
-      setPanneauDecoratif(editingItem.panneauDecoratif || false);
-      setHasSousBassement(editingItem.hasSousBassement || false);
-      setSousBassementHeight(editingItem.sousBassementHeight || 400);
-      setSashOptions(editingItem.sashOptions || {});
-      setOpeningDirection(editingItem.openingDirection || 'standard');
-      setHasLockingHandle(editingItem.hasLockingHandle || false);
-      
-      if (editingItem.glazingOption) {
-        setGlazingId(editingItem.glazingOption.id);
-      }
-      
-      if (editingItem.productId === 'custom-product') {
-        setCustomLabel(editingItem.productLabel || '');
-        setCustomDescription(editingItem.customDescription || '');
-        setCustomPrice(editingItem.customPrice?.toString() || '');
-        setCustomImage(editingItem.customImage || null);
-      }
-      setRepere(editingItem.repere || '');
-      setShowThermalData(editingItem.showThermalData !== undefined ? editingItem.showThermalData : true);
-    }
-  }, [editingItem]);
-
-  useEffect(() => {
-    if (!isColorModalOpen) return;
-
-    const previousOverflow = document.body.style.overflow;
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setIsColorModalOpen(false);
-    };
-
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', onKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [isColorModalOpen]);
-
-  const handleColorOptionSelect = (nextOptionId) => {
-    setColorOption(nextOptionId);
-    setIsColorModalOpen(isColorConfigOption(nextOptionId));
-  };
-
-  const handleCategoryChange = (catId) => {
-    setSelectedCategory(catId);
-    setSelectedProduct(null);
-    setHeightMm('');
-    setWidthMm('');
-    setQuantity(1);
-    setColorOption('blanc');
-    setPetitsBois(0);
-    setIncludePose(false);
-    setRemise(0);
-    setNetMarginWanted(0);
-    setPanneauDecoratif(false);
-    setOpeningDirection('standard');
-    setGlazingId('dv_4_20_4_argon_we');
-
-    // Reset colors
-    setBicoType('standard_7016');
-    setCustomColorIntText('');
-    setCustomColorExtText('');
-    setCustomColorIntHex('#FFFFFF');
-    setIsExtPlaxageBico(false);
-    setColor2fType('standard_7016');
-    setCustomColor2fText('');
-    setCustomColor2fHex('#4A4A4A');
-    setIs2fPlaxage(true);
-    setIsColorModalOpen(false);
-    setRepere('');
-    setShowThermalData(true);
-  };
-
-  const handleProductChange = (prodId) => {
-    setSelectedProduct(prodId);
-    setHeightMm('');
-    setWidthMm('');
-    setQuantity(1);
-    setColorOption('blanc');
-    setPetitsBois(0);
-    setIncludePose(false);
-    setRemise(0);
-    setNetMarginWanted(0);
-    setPanneauDecoratif(false);
-    setOpeningDirection('standard');
-    setGlazingId('dv_4_20_4_argon_we');
-
-    // Reset colors
-    setBicoType('standard_7016');
-    setCustomColorIntText('');
-    setCustomColorExtText('');
-    setCustomColorIntHex('#FFFFFF');
-    setIsExtPlaxageBico(false);
-    setColor2fType('standard_7016');
-    setCustomColor2fText('');
-    setCustomColor2fHex('#4A4A4A');
-    setIs2fPlaxage(true);
-    setIsColorModalOpen(false);
-    setRepere('');
-    setShowThermalData(true);
-  };
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCustomImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const toggleSashOption = (index, option) => {
-    setSashOptions(prev => {
-      const current = prev[index] || {};
-      return {
-        ...prev,
-        [index]: {
-          ...current,
-          [option]: !current[option]
-        }
-      };
-    });
-  };
-
-  // Marketing Designation logic
-  const getMarketingDesignationText = () => {
-    let baseText = "";
-    if (isGlazed) {
-      if (product?.sheet?.includes('Coulissant')) {
-        baseText = "Profilés PVC Schüco\n5 chambres d'isolation avec renforts en acier galvanisé\nSystème à double joint d’étanchéité";
-      } else {
-        baseText = "Profilés PVC Schüco 70mm\n5 chambres d'isolation avec renforts en acier galvanisé\nSystème à double joint d’étanchéité";
-      }
-      
-      if (!isPorte && !isVolet) {
-        if (hasLockingHandle) {
-          baseText += "\nPoignée Schüco Euro Verrouillable à clé";
-        } else {
-          baseText += "\nPoignée Schüco Euro";
-        }
-      }
-    }
-
-    let finitionText = "";
-    let finalSvgColor = "#FFFFFF";
-
-    if (isVolet) {
-      if (colorOption === 'blanc') {
-        finitionText = "Finition : Blanc";
-        finalSvgColor = "#FFFFFF";
-      } else if (colorOption === 'coloration-2f') {
-        if (color2fType === 'standard_7016') {
-          finitionText = "Finition : Gris Anthracite RAL 7016";
-          finalSvgColor = "#4A4A4A";
-        } else if (color2fType === 'standard_chene') {
-          finitionText = "Finition : Chêne doré";
-          finalSvgColor = "#8B5A2B";
-        } else {
-          const txt = customColor2fText || "Non défini";
-          finitionText = `Finition : ${txt}`;
-          finalSvgColor = customColor2fHex;
-        }
-      }
-    } else {
-      if (colorOption === 'blanc') {
-        finitionText = "Finition Blanc (Traitement exclusif anti-UV et anti-jaunissement)";
-        finalSvgColor = "#FFFFFF";
-      } else if (colorOption === 'bicoloration') {
-        if (bicoType === 'standard_7016') {
-          finitionText = "Bicoloration : Intérieur Blanc (Anti-UV) / Extérieur Gris 7016";
-          finalSvgColor = "#FFFFFF";
-        } else if (bicoType === 'standard_chene') {
-          finitionText = "Bicoloration : Intérieur Blanc (Anti-UV) / Extérieur Plaxage Haute Résistance Chêne doré";
-          finalSvgColor = "#FFFFFF";
-        } else {
-          const isWhiteInt = customColorIntText.toLowerCase().includes('blanc') || customColorIntText.trim() === '';
-          const intText = isWhiteInt ? "Blanc (Anti-UV)" : (customColorIntText || "Non défini");
-          const extPrefix = isExtPlaxageBico ? "Plaxage Haute Résistance " : "";
-          const extText = customColorExtText || "Non défini";
-          finitionText = `Bicoloration : Intérieur ${intText} / Extérieur ${extPrefix}${extText}`;
-          finalSvgColor = isWhiteInt ? "#FFFFFF" : customColorIntHex;
-        }
-      } else if (colorOption === 'coloration-2f') {
-        if (color2fType === 'standard_7016') {
-          finitionText = "Finition Plaxage Haute Résistance 2 faces : Gris 7016";
-          finalSvgColor = "#4A4A4A";
-        } else if (color2fType === 'standard_chene') {
-          finitionText = "Finition Plaxage Haute Résistance 2 faces : Chêne doré";
-          finalSvgColor = "#8B5A2B";
-        } else {
-          const prefix = is2fPlaxage ? "Plaxage Haute Résistance 2 faces : " : "Coloration 2 faces : ";
-          const txt = customColor2fText || "Non défini";
-          finitionText = `Finition ${prefix}${txt}`;
-          finalSvgColor = customColor2fHex;
-        }
-      }
-    }
-
-    return { marketingBase: baseText, marketingFinition: finitionText, svgColor: finalSvgColor };
-  };
-
-  const handleAddToCart = () => {
-    if (!product) return;
-    if (isCustomProduct && (!customLabel || !customPrice)) return;
-    if (!isWasteManagement && !isCustomProduct && (!heightMm || !widthMm || !unitPrice || !priceData)) return;
-
-    const { marketingBase, marketingFinition, svgColor } = getMarketingDesignationText();
-    const itemId = editingItem ? editingItem.id : Date.now().toString();
-
-    // Raw color state to allow exact reproduction if edited again
-    const rawColorState = {
-      bicoType, customColorIntText, customColorExtText, customColorIntHex, isExtPlaxageBico,
-      color2fType, customColor2fText, customColor2fHex, is2fPlaxage
-    };
-
-    let item;
+  const previewItem = (() => {
     if (isWasteManagement) {
-      item = {
-        id: itemId,
-        productId: product.id,
-        productLabel: product.label,
-        sheetName: product.sheet,
-        totalSurface,
-        totalWeight: estimatedWeight,
-        totalWastePrice: wastePrice,
-        quantity: 1,
-        unitPrice: wastePrice,
-        includePose: false,
-        remise: 0,
-        netMarginWanted: 0,
+      return {
+        productId: product?.id,
+        totalWeight: wasteCalculation.totalWeight,
+        totalWastePrice: wasteCalculation.totalWastePrice,
       };
-    } else if (isCustomProduct) {
-      item = {
-        id: itemId,
-        productId: product.id,
-        productLabel: customLabel,
-        customDescription,
-        customPrice: parseFloat(customPrice),
-        customImage,
-        repere,
+    }
+
+    if (isCustomProduct) {
+      const parsedCustomPrice = Number.parseFloat(customPrice);
+      if (!customLabel || !Number.isFinite(parsedCustomPrice)) return null;
+      return {
+        productId: 'custom-product',
+        customPrice: parsedCustomPrice,
         quantity,
-        unitPrice: parseFloat(customPrice),
-        includePose: false, // Custom products generally don't use the standard pose grid
-        remise: 0,
-        netMarginWanted: 0,
       };
-    } else {
-      item = {
-        id: itemId,
-        productId: product.id,
-        productLabel: product.label,
-        sheetName: product.sheet,
-        heightMm: parseInt(heightMm),
-        widthMm: parseInt(widthMm),
-        billedHeightCm: priceData.billedHeight,
-        billedWidthCm: priceData.billedWidth,
+    }
+
+    if (isCompositeMode) {
+      if (!compositePricing.totalPrice || compositePricing.hasInvalidModule) return null;
+      return {
+        productId: 'composite-builder',
+        productLabel: 'Chassis compose 2D',
+        sheetName: 'Chassis compose 2D',
+        widthMm: compositePricing.totalWidth,
+        heightMm: compositePricing.totalHeight,
+        unitPrice: compositePricing.totalPrice,
         quantity,
-        unitPrice,
-        colorOption: currentColorOption,
-        petitsBois: isVolet ? 0 : petitsBois,
         includePose,
         remise,
         netMarginWanted,
-        panneauDecoratif: isPorte ? panneauDecoratif : false,
-        hasSousBassement: !isVolet && hasSousBassement,
-        sousBassementHeight: hasSousBassement ? sousBassementHeight : 0,
-        sashOptions: !isVolet ? sashOptions : {},
-        openingDirection: !isVolet ? openingDirection : 'standard',
-        // Glazing data (only for glazed products)
-        glazingOption: isGlazed ? selectedGlazing : null,
-        glazingExtra: isGlazed ? glazingExtra : 0,
-        thermalUw: isGlazed ? thermalUw : null,
-        thermalSw: isGlazed ? thermalSw : null,
-        // Schüco marketing designation
-        marketingBase,
-        marketingFinition,
-        svgColor,
-        hasLockingHandle: !isVolet && !isPorte ? hasLockingHandle : false,
-        rawColorState,
-        repere,
-        showThermalData,
+        isComposite: true,
+        composition: compositePricing.composition,
       };
     }
 
-    onAddToCart(item);
+    if (!product || !simplePriceData) return null;
 
-    // Reset selections
-    setHeightMm('');
-    setWidthMm('');
+    return {
+      productId: product.id,
+      sheetName: product.sheet,
+      widthMm: parsePositiveInt(simpleConfig.widthMm),
+      heightMm: parsePositiveInt(simpleConfig.heightMm),
+      unitPrice: simplePriceData.price,
+      quantity,
+      includePose,
+      remise,
+      netMarginWanted,
+      colorOption: workingColorOption,
+      ...(workingIsVolet
+        ? { petitsBoisH: 0, petitsBoisV: 0 }
+        : buildPetitsBoisState(simpleConfig)),
+      panneauDecoratif: workingIsPorte ? simpleConfig.panneauDecoratif : false,
+      hasSousBassement: !workingIsVolet && simpleConfig.hasSousBassement,
+      sousBassementHeight: simpleConfig.hasSousBassement
+        ? simpleConfig.sousBassementHeight
+        : 0,
+      sashOptions: !workingIsVolet ? simpleConfig.sashOptions : {},
+      openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
+      glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
+      glazingExtra: workingIsGlazed ? simpleGlazingExtra : 0,
+      thermalUw: workingIsGlazed ? simpleThermalUw : null,
+      thermalSw: workingIsGlazed ? simpleThermalSw : null,
+      hasLockingHandle: !workingIsVolet && !workingIsPorte
+        ? simpleConfig.hasLockingHandle
+        : false,
+    };
+  })();
+
+  const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
+
+  const resetSimpleSelection = () => {
+    setSimpleConfig(createSimpleConfig());
+    setCustomLabel('');
+    setCustomDescription('');
+    setCustomPrice('');
+    setCustomImage(null);
+  };
+
+  const resetCompositeSelection = () => {
+    const nextState = createCompositeBuilderState();
+    setComposition(nextState.composition);
+    setSelectedCompositeModuleId(nextState.selectedModuleId);
+  };
+
+  const resetGlobalCommercialFields = () => {
     setQuantity(1);
-    setColorOption('blanc');
-    setPetitsBois(0);
     setIncludePose(false);
     setRemise(0);
     setNetMarginWanted(0);
-    setPanneauDecoratif(false);
-    setHasSousBassement(false);
-    setSashOptions({});
-    setOpeningDirection('standard');
-    setGlazingId('dv_4_20_4_argon_we');
-    setIsColorModalOpen(false);
+    setRepere('');
+    setShowThermalData(true);
   };
 
-  return (
-    <div className="space-y-6">
-      {editingItem && (
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between shadow-sm animate-in fade-in slide-in-from-top-2">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
-              <Pencil size={18} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-blue-900">Mode Édition</p>
-              <p className="text-xs text-blue-700">Vous modifiez actuellement <strong>{editingItem.productLabel}</strong>. Validez pour enregistrer sur cette ligne de devis.</p>
-            </div>
-          </div>
-          <button onClick={onCancelEdit} className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors">
-            <X size={18} />
-          </button>
+  const handleCategoryChange = (categoryId) => {
+    setSelectedCategory(categoryId);
+    setSelectedProduct(null);
+    resetSimpleSelection();
+  };
+
+  const handleProductChange = (productId) => {
+    setSelectedProduct(productId);
+    resetSimpleSelection();
+  };
+
+  const updateSimpleOptions = (patch) => {
+    setSimpleConfig((previous) => ({
+      ...previous,
+      ...patch,
+      rawColorState: patch.rawColorState
+        ? createDefaultColorState(patch.rawColorState)
+        : previous.rawColorState,
+    }));
+  };
+
+  const updateCompositeModule = (moduleId, updater) => {
+    setComposition((previous) =>
+      previous.map((row) => ({
+        ...row,
+        modules: row.modules.map((module) => {
+          if (module.id !== moduleId) return module;
+          const nextModule =
+            typeof updater === 'function' ? updater(module) : updater;
+          return {
+            ...module,
+            ...nextModule,
+            options: {
+              ...module.options,
+              ...nextModule.options,
+              rawColorState: nextModule.options?.rawColorState
+                ? createDefaultColorState(nextModule.options.rawColorState)
+                : module.options.rawColorState,
+            },
+          };
+        }),
+      }))
+    );
+  };
+
+  const updateSelectedModuleOptions = (patch) => {
+    if (!selectedCompositeModuleId) return;
+    updateCompositeModule(selectedCompositeModuleId, (module) => ({
+      ...module,
+      options: {
+        ...module.options,
+        ...patch,
+        rawColorState: patch.rawColorState
+          ? createDefaultColorState({
+              ...module.options.rawColorState,
+              ...patch.rawColorState,
+            })
+          : module.options.rawColorState,
+      },
+    }));
+  };
+
+  const updateWorkingSashOption = (index, optionKey) => {
+    if (isCompositeMode) {
+      if (!activeCompositeModule) return;
+      const current = activeCompositeModule.options.sashOptions[index] || {};
+      updateSelectedModuleOptions({
+        sashOptions: {
+          ...activeCompositeModule.options.sashOptions,
+          [index]: {
+            ...current,
+            [optionKey]: !current[optionKey],
+          },
+        },
+      });
+      return;
+    }
+
+    const current = simpleConfig.sashOptions[index] || {};
+    updateSimpleOptions({
+      sashOptions: {
+        ...simpleConfig.sashOptions,
+        [index]: {
+          ...current,
+          [optionKey]: !current[optionKey],
+        },
+      },
+    });
+  };
+
+  const addCompositeRow = (position) => {
+    const referenceWidth =
+      compositeContext?.row.modules.reduce(
+        (total, module) => total + parsePositiveInt(module.widthMm, 0),
+        0
+      ) ||
+      compositeDimensions.width ||
+      1200;
+
+    const nextModule = createCompositeModule(createUid('module'), {
+      productId: position === 'above' ? 'fenetre-soufflet' : 'fenetre-fixe',
+      widthMm: referenceWidth,
+      heightMm: 400,
+    });
+
+    const nextRow = { id: createUid('row'), modules: [nextModule] };
+    const insertIndex =
+      position === 'above'
+        ? compositeContext?.rowIndex ?? 0
+        : (compositeContext?.rowIndex ?? composition.length - 1) + 1;
+
+    setComposition((previous) => {
+      const next = [...previous];
+      next.splice(insertIndex, 0, nextRow);
+      return next;
+    });
+    setSelectedCompositeModuleId(nextModule.id);
+  };
+
+  const addCompositeModuleBeside = () => {
+    const referenceModule = compositeContext?.module;
+    const nextModule = createCompositeModule(createUid('module'), {
+      productId: referenceModule?.productId || 'fenetre-fixe',
+      widthMm: referenceModule?.widthMm || 400,
+      heightMm: referenceModule?.heightMm || 1250,
+    });
+
+    setComposition((previous) =>
+      previous.map((row, rowIndex) => {
+        if (rowIndex !== compositeContext?.rowIndex) return row;
+        const nextModules = [...row.modules];
+        nextModules.splice(
+          (compositeContext?.moduleIndex ?? row.modules.length - 1) + 1,
+          0,
+          nextModule
+        );
+        return { ...row, modules: nextModules };
+      })
+    );
+    setSelectedCompositeModuleId(nextModule.id);
+  };
+
+  const removeCompositeModule = (moduleId) => {
+    const normalized = normalizeCompositeComposition(composition);
+    const contextToRemove =
+      normalized
+        .flatMap((row, rowIndex) =>
+          row.modules.map((module, moduleIndex) => ({
+            row,
+            rowIndex,
+            module,
+            moduleIndex,
+          }))
+        )
+        .find((entry) => entry.module.id === moduleId) || compositeContext;
+
+    if (!contextToRemove) return;
+
+    if (normalized.length === 1 && normalized[0].modules.length === 1) {
+      resetCompositeSelection();
+      return;
+    }
+
+    setComposition((previous) =>
+      previous
+        .map((row, rowIndex) => {
+          if (rowIndex !== contextToRemove.rowIndex) return row;
+          return {
+            ...row,
+            modules: row.modules.filter((module) => module.id !== moduleId),
+          };
+        })
+        .filter((row) => row.modules.length > 0)
+    );
+
+    const sameRow = contextToRemove.row.modules.filter((module) => module.id !== moduleId);
+    const fallbackId =
+      sameRow[contextToRemove.moduleIndex]?.id ||
+      sameRow[contextToRemove.moduleIndex - 1]?.id ||
+      normalized[contextToRemove.rowIndex + 1]?.modules[0]?.id ||
+      normalized[contextToRemove.rowIndex - 1]?.modules[0]?.id;
+
+    if (fallbackId) {
+      setSelectedCompositeModuleId(fallbackId);
+    }
+  };
+
+  const replaceSelectedModuleProduct = (productId) => {
+    if (!selectedCompositeModuleId) return;
+    const nextTemplate = createCompositeModule(selectedCompositeModuleId, {
+      productId,
+    });
+
+    updateCompositeModule(selectedCompositeModuleId, {
+      ...nextTemplate,
+      id: selectedCompositeModuleId,
+    });
+  };
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!isCompositeMode) return;
+    if (!compositeContext?.module?.id) return;
+    if (selectedCompositeModuleId !== compositeContext.module.id) {
+      setSelectedCompositeModuleId(compositeContext.module.id);
+    }
+  }, [compositeContext, isCompositeMode, selectedCompositeModuleId]);
+
+  useEffect(() => {
+    if (!editingItem) return;
+
+    setQuantity(editingItem.quantity || 1);
+    setIncludePose(Boolean(editingItem.includePose));
+    setRemise(editingItem.remise || 0);
+    setNetMarginWanted(Number(editingItem.netMarginWanted || 0));
+    setRepere(editingItem.repere || '');
+    setShowThermalData(
+      editingItem.showThermalData !== undefined ? editingItem.showThermalData : true
+    );
+
+    if (editingItem.isComposite) {
+      const nextComposition = normalizeCompositeComposition(
+        editingItem.composition,
+        editingItem.modules
+      );
+      setIsCompositeMode(true);
+      setComposition(nextComposition);
+      setSelectedCompositeModuleId(nextComposition[0].modules[0].id);
+      return;
+    }
+
+    setIsCompositeMode(false);
+    const nextCategory = getProductCategory(editingItem.productId) || CATEGORIES[0].id;
+    setSelectedCategory(nextCategory);
+    setSelectedProduct(editingItem.productId);
+
+    if (editingItem.productId === 'custom-product') {
+      setCustomLabel(editingItem.productLabel || '');
+      setCustomDescription(editingItem.customDescription || '');
+      setCustomPrice(editingItem.customPrice?.toString() || '');
+      setCustomImage(editingItem.customImage || null);
+      return;
+    }
+
+    setSimpleConfig(
+      createSimpleConfig({
+        widthMm: editingItem.widthMm?.toString() || '',
+        heightMm: editingItem.heightMm?.toString() || '',
+        colorOptionId: editingItem.colorOption?.id || 'blanc',
+        rawColorState: editingItem.rawColorState || createDefaultColorState(),
+        ...buildPetitsBoisState(editingItem),
+        panneauDecoratif: editingItem.panneauDecoratif || false,
+        hasSousBassement: editingItem.hasSousBassement || false,
+        sousBassementHeight: editingItem.sousBassementHeight || 400,
+        sashOptions: editingItem.sashOptions || {},
+        openingDirection: editingItem.openingDirection || 'standard',
+        glazingId: editingItem.glazingOption?.id || 'dv_4_20_4_argon_we',
+        hasLockingHandle: editingItem.hasLockingHandle || false,
+      })
+    );
+  }, [editingItem]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const handleModeChange = (nextMode) => {
+    setIsCompositeMode(nextMode === 'composite');
+  };
+
+  const handleAddToCart = () => {
+    if (isCompositeMode) {
+      if (compositePricing.hasInvalidModule || !compositePricing.totalPrice) return;
+
+      const pricedComposition = compositePricing.composition.map((row) => ({
+        ...row,
+        modules: row.modules.map((module) => {
+          const productDefinition = getProductById(module.productId);
+          const marketing = getMarketingDetails({
+            product: productDefinition,
+            colorOptionId: module.options.colorOptionId,
+            colorState: module.options.rawColorState,
+            hasLockingHandle: module.options.hasLockingHandle,
+            panneauDecoratif: module.options.panneauDecoratif,
+          });
+
+          return {
+            ...module,
+            productLabel: productDefinition?.label || module.productId,
+            colorOption: module.colorOption,
+            glazingOption: module.glazingOption,
+            rawColorState: module.options.rawColorState,
+            ...buildPetitsBoisState(module.options),
+            panneauDecoratif: module.options.panneauDecoratif,
+            hasSousBassement: module.options.hasSousBassement,
+            sousBassementHeight: module.options.sousBassementHeight,
+            sashOptions: module.options.sashOptions,
+            openingDirection: module.options.openingDirection,
+            hasLockingHandle: module.options.hasLockingHandle,
+            marketingBase: marketing.marketingBase,
+            marketingFinition: marketing.marketingFinition,
+            svgColor: marketing.svgColor,
+          };
+        }),
+      }));
+
+      const flatModules = pricedComposition.flatMap((row) => row.modules);
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: 'composite-builder',
+        productLabel: 'Chassis compose 2D',
+        sheetName: 'Chassis compose 2D',
+        widthMm: compositePricing.totalWidth,
+        heightMm: compositePricing.totalHeight,
+        quantity,
+        unitPrice: compositePricing.totalPrice,
+        includePose,
+        remise,
+        netMarginWanted,
+        repere,
+        showThermalData,
+        isComposite: true,
+        composition: pricedComposition,
+        modules: flatModules,
+        modulePricing: flatModules,
+      });
+
+      resetCompositeSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (!product) return;
+
+    if (isWasteManagement) {
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: product.id,
+        productLabel: product.label,
+        sheetName: product.sheet,
+        totalSurface: wasteCalculation.totalSurface,
+        totalWeight: wasteCalculation.totalWeight,
+        totalWastePrice: wasteCalculation.totalWastePrice,
+        quantity: 1,
+        unitPrice: wasteCalculation.totalWastePrice,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+      });
+      return;
+    }
+
+    if (isCustomProduct) {
+      const parsedCustomPrice = Number.parseFloat(customPrice);
+      if (!customLabel || !Number.isFinite(parsedCustomPrice)) return;
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: product.id,
+        productLabel: customLabel,
+        customDescription,
+        customPrice: parsedCustomPrice,
+        customImage,
+        repere,
+        quantity,
+        unitPrice: parsedCustomPrice,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+      });
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (!simplePriceData) return;
+
+    onAddToCart({
+      id: editingItem ? editingItem.id : createCartItemId(),
+      productId: product.id,
+      productLabel: product.label,
+      sheetName: product.sheet,
+      widthMm: parsePositiveInt(simpleConfig.widthMm),
+      heightMm: parsePositiveInt(simpleConfig.heightMm),
+      billedHeightCm: simplePriceData.billedHeight,
+      billedWidthCm: simplePriceData.billedWidth,
+      quantity,
+      unitPrice: simplePriceData.price,
+      colorOption: workingColorOption,
+      ...(workingIsVolet
+        ? { petitsBoisH: 0, petitsBoisV: 0 }
+        : buildPetitsBoisState(simpleConfig)),
+      includePose,
+      remise,
+      netMarginWanted,
+      panneauDecoratif: workingIsPorte ? simpleConfig.panneauDecoratif : false,
+      hasSousBassement: !workingIsVolet && simpleConfig.hasSousBassement,
+      sousBassementHeight: simpleConfig.hasSousBassement
+        ? simpleConfig.sousBassementHeight
+        : 0,
+      sashOptions: !workingIsVolet ? simpleConfig.sashOptions : {},
+      openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
+      glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
+      glazingExtra: workingIsGlazed ? simpleGlazingExtra : 0,
+      thermalUw: workingIsGlazed ? simpleThermalUw : null,
+      thermalSw: workingIsGlazed ? simpleThermalSw : null,
+      marketingBase: simpleMarketing.marketingBase,
+      marketingFinition: simpleMarketing.marketingFinition,
+      svgColor: simpleMarketing.svgColor,
+      hasLockingHandle: !workingIsVolet && !workingIsPorte
+        ? simpleConfig.hasLockingHandle
+        : false,
+      rawColorState: simpleConfig.rawColorState,
+      repere,
+      showThermalData,
+    });
+
+    resetSimpleSelection();
+    resetGlobalCommercialFields();
+  };
+
+  const simpleModeContent = (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-6">
+        <label className="mb-4 block text-xs font-black uppercase tracking-widest text-slate-400">
+          Choix du produit
+        </label>
+
+        <div className="mb-5 flex flex-wrap gap-2">
+          {CATEGORIES.map((entry) => {
+            const Icon = ICONS[entry.icon];
+            return (
+              <button
+                key={entry.id}
+                onClick={() => handleCategoryChange(entry.id)}
+                className={`flex items-center gap-2.5 rounded-xl px-5 py-3 text-sm font-bold transition-all ${
+                  selectedCategory === entry.id
+                    ? 'bg-slate-900 text-white shadow-lg'
+                    : 'border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                {Icon && <Icon size={18} />}
+                <span>{entry.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {category?.products.map((entry) => (
+            <button
+              key={entry.id}
+              onClick={() => handleProductChange(entry.id)}
+              className={`group flex min-h-[8rem] flex-col items-center justify-between rounded-2xl border-2 p-4 text-center text-sm font-bold transition-all ${
+                selectedProduct === entry.id
+                  ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-md'
+                  : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50'
+              }`}
+            >
+              {!entry.id.includes('gestion-dechets') && !entry.id.includes('custom') && (
+                <div className="mb-3 h-16 w-16 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105">
+                  <MenuiserieVisual
+                    sheetName={entry.sheet}
+                    width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
+                    height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
+                    options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
+                    className="h-full w-full"
+                  />
+                </div>
+              )}
+              <span>{entry.shortLabel}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {product && !isWasteManagement && !isCustomProduct && (
+        <div className="border-b border-slate-100 px-6 pt-6">
+          <MenuiserieVisual
+            sheetName={product.sheet}
+            width={simpleConfig.widthMm || (workingIsPorte ? 900 : 1200)}
+            height={simpleConfig.heightMm || (workingIsPorte ? 2150 : 1250)}
+            options={{
+              colorOption: workingColorOption,
+              glazingId: simpleConfig.glazingId,
+              petitsBoisH: simpleConfig.petitsBoisH,
+              petitsBoisV: simpleConfig.petitsBoisV,
+              panneauDecoratif: simpleConfig.panneauDecoratif,
+              hasSousBassement: simpleConfig.hasSousBassement,
+              sousBassementHeight: simpleConfig.sousBassementHeight,
+              sashOptions: simpleConfig.sashOptions,
+              openingDirection: simpleConfig.openingDirection,
+              productId: product.id,
+              svgColor: simpleMarketing.svgColor,
+            }}
+            className="h-72 sm:h-80"
+          />
         </div>
       )}
 
-      {/* Category Tabs */}
-      <div className="flex flex-wrap gap-2 pb-1">
-        {CATEGORIES.map((cat) => {
-          const Icon = ICONS[cat.icon];
-          return (
-            <button
-              key={cat.id}
-              onClick={() => handleCategoryChange(cat.id)}
-              className={`flex items-center gap-2.5 px-5 py-3 sm:px-6 sm:py-3.5 rounded-xl text-base sm:text-sm font-bold transition-all duration-200 ${selectedCategory === cat.id
-                  ? 'bg-slate-900 text-white shadow-lg'
-                  : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50 hover:text-slate-900 shadow-sm'
-                }`}
-            >
-              {Icon && <Icon size={18} />}
-              <span className="whitespace-nowrap">{cat.label}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Product Card */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        {/* Product Type Selection */}
-        <div className="p-6 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl">
-          <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-4">
-            Sélectionnez un modèle
+      {product && !isWasteManagement && (
+        <div className="border-b border-slate-100 bg-orange-50/30 p-6">
+          <label className="mb-1.5 block text-sm font-bold text-slate-700">
+            Repere (ex : SDB, Chambre 1, Cuisine)
           </label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {category?.products.map((prod) => (
-              <button
-                key={prod.id}
-                onClick={() => handleProductChange(prod.id)}
-                className={`p-3 sm:p-4 rounded-2xl text-base sm:text-sm font-bold transition-all duration-200 border-2 text-center flex flex-col items-center justify-between min-h-[7.5rem] sm:min-h-[8.5rem] group ${selectedProduct === prod.id
-                    ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-md'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50 shadow-sm'
-                  }`}
-              >
-                {!prod.id.includes('gestion-dechets') && !prod.id.includes('custom') && (
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 shrink-0 pointer-events-none mb-3 opacity-90 transition-transform duration-300 group-hover:scale-105">
-                    <MenuiserieVisual 
-                      sheetName={prod.sheet}
-                      width={prod.sheet?.includes('Porte Entrée') ? 900 : 1200}
-                      height={prod.sheet?.includes('Porte Entrée') ? 2150 : 1250}
-                      options={{ 
-                        colorOption: { id: 'blanc' },
-                        productId: prod.id,
-                      }}
-                      className="w-full h-full"
-                    />
-                  </div>
-                )}
-                <span className="leading-tight">{prod.shortLabel}</span>
-              </button>
-            ))}
+          <input
+            type="text"
+            value={repere}
+            onChange={(event) => setRepere(event.target.value)}
+            placeholder="Localisation de la menuiserie..."
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+          />
+        </div>
+      )}
+
+      {isWasteManagement && (
+        <div className="p-8 text-center">
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-50">
+            <WasteRecycleIcon size={48} className="text-green-600" />
           </div>
-          {product && (
-            <div className="mt-5 p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-              <p className="text-sm font-semibold text-slate-700">
-                <span className="text-slate-400 font-normal mr-1">Sélection :</span> 
-                {product.label}
-              </p>
+          <h3 className="text-xl font-bold text-slate-900">Service environnemental</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+            Calcul dynamique base sur les surfaces presentes au devis, a{' '}
+            {WASTE_PRICE_PER_KG.toFixed(2)} EUR / kg estime.
+          </p>
+        </div>
+      )}
+
+      {isCustomProduct && (
+        <div className="grid gap-6 p-6 md:grid-cols-2">
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Nom du produit
+              </label>
+              <input
+                type="text"
+                value={customLabel}
+                onChange={(event) => setCustomLabel(event.target.value)}
+                placeholder="Ex : Porte de garage motorisee"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Description
+              </label>
+              <textarea
+                rows={4}
+                value={customDescription}
+                onChange={(event) => setCustomDescription(event.target.value)}
+                placeholder="Description commerciale..."
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Prix unitaire HT
+                </label>
+                <input
+                  type="number"
+                  {...DECIMAL_INPUT_PROPS}
+                  value={customPrice}
+                  onChange={(event) => setCustomPrice(event.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Quantite
+                </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={quantity}
+                  onChange={(event) =>
+                    setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 transition-all hover:bg-slate-100">
+            {customImage ? (
+              <>
+                <img
+                  src={customImage}
+                  alt=""
+                  className="h-64 w-full rounded-xl object-contain"
+                />
+                <button
+                  onClick={() => setCustomImage(null)}
+                  className="absolute right-3 top-3 rounded-full bg-red-500 p-2 text-white shadow-lg transition-colors hover:bg-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </>
+            ) : (
+              <label className="flex cursor-pointer flex-col items-center gap-3">
+                <div className="rounded-full bg-white p-4 text-slate-400 shadow-sm">
+                  <ImagePlus size={32} />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-bold text-slate-700">Ajouter une photo</p>
+                  <p className="mt-1 text-xs text-slate-400">PNG ou JPG</p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </label>
+            )}
+          </div>
+        </div>
+      )}
+
+      {product && !isWasteManagement && !isCustomProduct && (
+        <div className="space-y-6 p-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Largeur (mm)
+              </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={simpleConfig.widthMm}
+                onChange={(event) => updateSimpleOptions({ widthMm: event.target.value })}
+                placeholder="Ex : 1200"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Hauteur (mm)
+              </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={simpleConfig.heightMm}
+                onChange={(event) => updateSimpleOptions({ heightMm: event.target.value })}
+                placeholder="Ex : 1250"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+          </div>
+
+          {buildColorOptionsFields({
+            value: simpleConfig.colorOptionId,
+            colorState: simpleConfig.rawColorState,
+            onColorChange: (value) => updateSimpleOptions({ colorOptionId: value }),
+            onColorStateChange: (patch) =>
+              updateSimpleOptions({
+                rawColorState: {
+                  ...simpleConfig.rawColorState,
+                  ...patch,
+                },
+              }),
+            availableOptions: workingColorOptions,
+          })}
+
+          {workingIsGlazed && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Vitrage / remplissage
+              </label>
+              <select
+                value={simpleConfig.glazingId}
+                onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              >
+                {simpleFillingMeta.options.map(({ glazing, pricing }) => (
+                  <option key={glazing.id} value={glazing.id}>
+                    {formatFillingOptionLabel(glazing, pricing)}
+                  </option>
+                ))}
+              </select>
+              {simpleSelectedGlazing && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-bold text-slate-800">
+                    {simpleSelectedGlazing.label}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {getFillingOptionDetails(
+                      simpleSelectedGlazing,
+                      simpleFillingMeta.selectedPricing
+                    )}
+                  </p>
+                  {simpleConfig.hasSousBassement &&
+                    getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                      <p className="mt-2 text-xs font-semibold text-slate-500">
+                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                      </p>
+                    )}
+                </div>
+              )}
             </div>
           )}
-        </div>
 
-        {/* Visual Preview */}
-        {product && !isWasteManagement && !isCustomProduct && (
-          <div className="px-6 pt-6 -mb-2">
-            <MenuiserieVisual
-              sheetName={product.sheet}
-              width={widthMm || 1200}
-              height={heightMm || 1250}
-              /* Pass svgColor to options so that MenuiserieVisual can use it */
-              options={{
-                colorOption: currentColorOption,
-                panneauDecoratif: isPorte ? panneauDecoratif : false,
-                hasSousBassement: !isVolet && hasSousBassement,
-                sousBassementHeight: sousBassementHeight,
-                sashOptions: sashOptions,
-                openingDirection: !isVolet ? openingDirection : 'standard',
-                productId: product?.id,
-                svgColor: getMarketingDesignationText().svgColor
-              }}
-              className="h-64 sm:h-80"
-            />
-          </div>
-        )}
-
-        {isWasteManagement && (
-          <div className="p-8 text-center flex flex-col items-center">
-            <div className="p-6 bg-green-50 rounded-full mb-4">
-              <WasteRecycleIcon size={64} className="text-green-600 animate-spin-slow" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">Service Environnemental</h3>
-            <p className="text-sm text-slate-500 max-w-sm">
-              Calcul automatique dynamique basé sur la catégorie des produits catalogués
-              (Fenêtres, Portes, Volets...) à {WASTE_PRICE_PER_KG.toFixed(2)} € / kg.
-            </p>
-          </div>
-        )}
-
-        {isCustomProduct && (
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Product Info */}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nom du produit / Label</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Porte de garage motorisée"
-                    value={customLabel}
-                    onChange={(e) => setCustomLabel(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Description détaillée</label>
-                  <textarea
-                    rows={3}
-                    placeholder="Ex: Modèle Excellence, coloris Gris Anthracite, dimensions sur mesure..."
-                    value={customDescription}
-                    onChange={(e) => setCustomDescription(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 resize-none"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Prix Unitaire HT (€)</label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={customPrice}
-                      onChange={(e) => setCustomPrice(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Quantité</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={quantity}
-                      onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Image Upload */}
-              <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50 hover:bg-slate-100 transition-all group relative overflow-hidden">
-                {customImage ? (
-                  <div className="relative w-full h-48 sm:h-64">
-                    <img src={customImage} alt="Custom product" className="w-full h-full object-contain rounded-lg shadow-md" />
-                    <button
-                      onClick={() => setCustomImage(null)}
-                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full shadow-lg hover:bg-red-600 transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center gap-3 cursor-pointer">
-                    <div className="p-4 bg-white rounded-full shadow-sm text-slate-400 group-hover:text-orange-500 transition-colors">
-                      <ImagePlus size={32} />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-slate-700">Ajouter une photo</p>
-                      <p className="text-xs text-slate-400 mt-1">PNG, JPG jusqu&apos;à 2 Mo</p>
-                    </div>
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-                  </label>
-                )}
-              </div>
-            </div>
-
-            {customPrice && (
-              <div className="mt-6 p-4 bg-orange-50 rounded-xl border border-orange-100 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">Total HT pour cet article</p>
-                  <p className="text-2xl font-black text-slate-900 tracking-tight">
-                    {(parseFloat(customPrice || 0) * quantity).toFixed(2)} €
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Repère de localisation */}
-        {product && !isWasteManagement && (
-          <div className="p-6 border-b border-slate-100 bg-orange-50/30">
-            <label className="block text-sm font-bold text-slate-700 mb-1.5">
-              Repère (ex: SDB, Chambre 1, Cuisine)
-            </label>
-            <input
-              type="text"
-              placeholder="Localisation de la menuiserie..."
-              value={repere}
-              onChange={(e) => setRepere(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-sm outline-none transition-all duration-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-200 shadow-sm"
-            />
-
-          </div>
-        )}
-
-        {/* Dimensions */}
-        {product && !isWasteManagement && !isCustomProduct && (
-          <div className="p-6 border-b border-slate-100">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">
-              Dimensions au millimètre
-            </label>
-            <div className="grid grid-cols-2 gap-4">
-              {/* Width (Largeur first) */}
+          {!workingIsVolet && (
+            <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Largeur (mm)
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400">
+                  Options & Accessoires
                 </label>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Ex: 1200"
-                  value={widthMm}
-                  onChange={(e) => setWidthMm(e.target.value)}
-                  className="w-full px-4 py-4 sm:py-3.5 rounded-xl border border-slate-200 bg-white text-base sm:text-sm font-semibold outline-none transition-all duration-200 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 hover:border-slate-300"
-                />
-              </div>
-
-              {/* Height (Hauteur second) */}
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                  Hauteur (mm)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  placeholder="Ex: 1250"
-                  value={heightMm}
-                  onChange={(e) => setHeightMm(e.target.value)}
-                  className="w-full px-4 py-4 sm:py-3.5 rounded-xl border border-slate-200 bg-white text-base sm:text-sm font-semibold outline-none transition-all duration-200 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 hover:border-slate-300"
-                />
-              </div>
-            </div>
-
-            {/* Error or Price Display */}
-            {heightMm && widthMm && !priceData && (
-              <div className="mt-4 p-4 bg-red-50 rounded-xl border border-red-100">
-                <p className="text-sm font-semibold text-red-600">
-                  Dimensions hors abaque (hors catalogue).
+                <p className="mt-1 text-sm text-slate-500">
+                  Regroupez ici les accessoires, le soubassement et le sens d&apos;ouverture.
                 </p>
               </div>
-            )}
 
-            {previewCalc && (
-              <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-100 flex items-center justify-between shadow-sm">
-                <div>
-                  <p className="text-xs font-bold text-orange-600 uppercase tracking-wide">
-                    Total HT avec options associées
-                  </p>
-                  <p className="text-2xl font-black text-slate-900 tracking-tight">
-                    {(previewCalc.totalLine + (includePose ? previewCalc.posePrice * quantity : 0)).toFixed(2)} €
-                  </p>
-                  {includePose && (
-                    <p className="text-[10px] text-slate-500 font-bold uppercase mt-1">
-                      (dont Pose {(previewCalc.posePrice * quantity).toFixed(2)} €)
-                    </p>
-                  )}
-                </div>
-                <div className="text-right flex flex-col justify-center items-end gap-1.5 h-full">
-                  <p className="text-sm font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-orange-100">
-                    L {widthMm} × H {heightMm} mm
-                  </p>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase mr-1">Qté : {quantity}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Thermal Performance Badges */}
-            {unitPrice !== null && isGlazed && thermalUw !== null && thermalSw !== null && (
-              <div className="mt-3 flex items-center flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs font-bold text-blue-700">
-                  🌡️ Uw = {thermalUw} W/m²K
-                </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-100 rounded-lg text-xs font-bold text-amber-700">
-                  ☀️ Sw = {thermalSw}
-                </span>
-
-                {/* Small toggle for thermal data visibility */}
-                <label className="inline-flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-500 cursor-pointer hover:bg-slate-100 transition-colors ml-1">
-                  <div className="relative inline-flex items-center cursor-pointer scale-90">
-                    <input 
-                      type="checkbox" 
-                      checked={showThermalData} 
-                      onChange={(e) => setShowThermalData(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:start-[1px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-orange-500"></div>
-                  </div>
-                  Afficher sur devis
-                </label>
-
-                {glazingExtra > 0 && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-lg text-xs font-bold text-purple-700 ml-auto sm:ml-0">
-                    Vitrage : +{glazingExtra.toFixed(2)} € HT
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {isWasteManagement && (
-          <div className="p-6 border-b border-slate-100 bg-slate-50">
-            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Surface Totale</p>
-                <p className="text-lg font-black text-slate-900">{totalSurface.toFixed(2)} m²</p>
-              </div>
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Poids Estimé</p>
-                <p className="text-lg font-black text-slate-900">{estimatedWeight.toFixed(0)} kg</p>
-              </div>
-            </div>
-
-            <div className="mt-6 p-4 bg-green-50 rounded-xl border border-green-100 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-green-600 uppercase tracking-wide">Prix du Service HT</p>
-                <p className="text-2xl font-black text-slate-900 tracking-tight">
-                  {wastePrice.toFixed(2)} €
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-semibold text-white bg-green-500 px-3 py-1 rounded-full">Automatique</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Options */}
-        {product && !isWasteManagement && !isCustomProduct && unitPrice !== null && (
-          <div className="p-6 border-b border-slate-100 space-y-5">
-            <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
-              Options
-            </label>
-
-            {/* Sens d'ouverture / Poignée / Petits Bois  (options display intact) */}
-            {!isVolet && !product.sheet.includes('Fixe') && (
-              <div className="space-y-3 pb-2">
-                <label className="block text-sm font-semibold text-slate-700">
-                  Sens d&apos;ouverture du vantail principal
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <label className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${openingDirection === 'standard' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                    }`}>
-                    <input type="radio" value="standard" checked={openingDirection === 'standard'} onChange={(e) => setOpeningDirection(e.target.value)} className="hidden" />
-                    <span className="text-base sm:text-sm font-bold">Standard</span>
-                  </label>
-                  <label className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${openingDirection === 'inverse' ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                    }`}>
-                    <input type="radio" value="inverse" checked={openingDirection === 'inverse'} onChange={(e) => setOpeningDirection(e.target.value)} className="hidden" />
-                    <span className="text-base sm:text-sm font-bold">Inversé</span>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Glazing Options (only for glazed products, not volets/portes) */}
-            {isGlazed && (
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
-                  🔶 Vitrage
-                </label>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-3">
-                  {GLAZING_OPTIONS.map((glz) => {
-                    const extra = glz.isBaseIncluded ? 0 : (glassAreas ? calculateGlazingExtra({ selectedGlassPricePerM2: glz.purchasePricePerM2, Ag: glassAreas.Ag }) : null);
-                    return (
-                      <label
-                        key={glz.id}
-                        className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${glazingId === glz.id
-                            ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
-                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                          }`}
-                      >
-                        <input
-                          type="radio"
-                          name="glazing"
-                          value={glz.id}
-                          checked={glazingId === glz.id}
-                          onChange={(e) => setGlazingId(e.target.value)}
-                          className="w-5 h-5 accent-orange-500 shrink-0 cursor-pointer"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <span className="text-base sm:text-sm font-bold text-slate-800 block">
-                            {glz.shortLabel}
-                          </span>
-                          <span className="text-sm text-slate-500">
-                            Ug={glz.ug} · g={glz.g}
-                            {glz.isBaseIncluded && ' · Inclus'}
-                            {!glz.isBaseIncluded && extra !== null && ` · +${extra.toFixed(2)} €`}
-                          </span>
-                        </div>
-                        {glz.isBaseIncluded && (
-                          <span className="text-xs font-bold text-green-700 bg-green-100 px-3 py-1 rounded-full shrink-0">Inclus</span>
-                        )}
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Grid3X3 size={14} className="text-slate-400" />
+                    Petits bois
+                  </label>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Barres horizontales
                       </label>
-                    );
-                  })}
+                      <input
+                        type="number"
+                        min={0}
+                        {...NUMERIC_INPUT_PROPS}
+                        value={simpleConfig.petitsBoisH}
+                        onChange={(event) =>
+                          updateSimpleOptions({
+                            petitsBoisH: normalizePetitsBoisValue(event.target.value),
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Barres verticales
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        {...NUMERIC_INPUT_PROPS}
+                        value={simpleConfig.petitsBoisV}
+                        onChange={(event) =>
+                          updateSimpleOptions({
+                            petitsBoisV: normalizePetitsBoisValue(event.target.value),
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
 
-            {/* Quantity */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Quantité
-              </label>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 transition-colors text-xl font-bold"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                  className="w-24 sm:w-20 text-center px-2 py-3.5 sm:py-3 rounded-xl border-2 border-slate-200 text-lg sm:text-base font-black outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
-                />
-                <button
-                  onClick={() => setQuantity(quantity + 1)}
-                  className="w-14 h-14 sm:w-12 sm:h-12 rounded-xl border-2 border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-900 transition-colors text-xl font-bold"
-                >
-                  +
-                </button>
-              </div>
-            </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Sens d&apos;ouverture
+                  </label>
+                  <select
+                    value={simpleConfig.openingDirection}
+                    onChange={(event) =>
+                      updateSimpleOptions({ openingDirection: event.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="inverse">Inverse</option>
+                  </select>
+                </div>
 
-            {/* Color Options */}
-            <div>
-              <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-2">
-                <Palette size={14} className="text-slate-400" />
-                Coloration
-              </label>
-              <div className="grid grid-cols-1 gap-3">
-                {colorOptions.map((opt) => {
-                  const isActive = colorOption === opt.id;
-                  const canConfigure = isColorConfigOption(opt.id);
+                {workingIsPorte ? (
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={simpleConfig.panneauDecoratif}
+                      onChange={(event) =>
+                        updateSimpleOptions({ panneauDecoratif: event.target.checked })
+                      }
+                      className="h-4 w-4 accent-orange-500"
+                    />
+                    Panneau decoratif
+                  </label>
+                ) : (
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={simpleConfig.hasLockingHandle}
+                      onChange={(event) =>
+                        updateSimpleOptions({ hasLockingHandle: event.target.checked })
+                      }
+                      className="h-4 w-4 accent-orange-500"
+                    />
+                    Poignee Schuco verrouillable a cle
+                  </label>
+                )}
 
-                  return (
-                    <div
-                      key={`clean-${opt.id}`}
-                      className={`rounded-xl border-2 transition-all ${isActive
-                        ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
-                    >
-                      <label className="flex items-start gap-4 p-4 cursor-pointer">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+                  <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={simpleConfig.hasSousBassement}
+                      onChange={(event) =>
+                        updateSimpleOptions({ hasSousBassement: event.target.checked })
+                      }
+                      className="h-4 w-4 accent-orange-500"
+                    />
+                    Sous-bassement
+                  </label>
+
+                  {simpleConfig.hasSousBassement && (
+                    <div className="mt-4 space-y-3">
+                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        <span>Hauteur visible</span>
+                        <span>{simpleConfig.sousBassementHeight} mm</span>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-[1fr_140px]">
                         <input
-                          type="radio"
-                          name="color"
-                          value={opt.id}
-                          checked={isActive}
-                          onChange={(e) => handleColorOptionSelect(e.target.value)}
-                          className="w-5 h-5 mt-0.5 accent-orange-500 cursor-pointer shrink-0"
-                        />
-                        <div className="flex-1">
-                          <span className="text-base sm:text-sm font-bold text-slate-800 block">
-                            {opt.label}
-                          </span>
-                          <span className="text-sm text-slate-500 leading-snug mt-1 block">
-                            {opt.description}
-                          </span>
-                        </div>
-                      </label>
-
-                      {isActive && (
-                        <div className="px-4 pb-4">
-                          <p className="text-xs font-semibold text-slate-500">
-                            Configuration: <span className="text-slate-700">{colorConfigurationSummary}</span>
-                          </p>
-
-                          {canConfigure && (
-                            <button
-                              type="button"
-                              onClick={() => setIsColorModalOpen(true)}
-                              className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-orange-700 bg-orange-100 hover:bg-orange-200 transition-colors"
-                            >
-                              Configurer la coloration
-                            </button>
+                          type="range"
+                          min={100}
+                          max={Math.max(
+                            100,
+                            parsePositiveInt(simpleConfig.heightMm, 1000) - 200
                           )}
-                        </div>
+                          step={10}
+                          value={simpleConfig.sousBassementHeight}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              sousBassementHeight: Number.parseInt(
+                                event.target.value,
+                                10
+                              ),
+                            })
+                          }
+                          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
+                        />
+                        <input
+                          type="number"
+                          min={100}
+                          max={Math.max(
+                            100,
+                            parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+                          )}
+                          step={10}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={simpleConfig.sousBassementHeight}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              sousBassementHeight: Math.max(
+                                100,
+                                Number.parseInt(event.target.value, 10) || 100
+                              ),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                        />
+                      </div>
+                      {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                        <p className="text-xs font-semibold text-slate-500">
+                          {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                        </p>
                       )}
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
+            <div className="space-y-4">
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                Options par vantail
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Array.from({ length: workingSashCount }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Vantail {index + 1}
+                    </p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(simpleConfig.sashOptions[index]?.ob)}
+                          onChange={() => updateWorkingSashOption(index, 'ob')}
+                          className="accent-orange-500"
+                        />
+                        Oscillo-battant
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(simpleConfig.sashOptions[index]?.vent)}
+                          onChange={() => updateWorkingSashOption(index, 'vent')}
+                          className="accent-orange-500"
+                        />
+                        Grille de ventilation
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {false && workingIsGlazed && (
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Vitrage</label>
+              <div className="grid gap-3">
+                {GLAZING_OPTIONS.map((glazing) => {
+                  const extra =
+                    simpleGlassAreas && !glazing.isBaseIncluded
+                      ? calculateGlazingExtra({
+                          selectedGlassPricePerM2: glazing.purchasePricePerM2,
+                          Ag: simpleGlassAreas.Ag,
+                        })
+                      : 0;
+                  return (
+                    <label
+                      key={glazing.id}
+                      className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
+                        simpleConfig.glazingId === glazing.id
+                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={simpleConfig.glazingId === glazing.id}
+                        onChange={() => updateSimpleOptions({ glazingId: glazing.id })}
+                        className="h-5 w-5 accent-orange-500"
+                      />
+                      <div className="flex-1">
+                        <span className="block text-sm font-bold text-slate-800">
+                          {glazing.shortLabel}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          Ug={glazing.ug} · g={glazing.g}
+                          {!glazing.isBaseIncluded && simpleGlassAreas
+                            ? ` · +${extra.toFixed(2)} EUR`
+                            : ''}
+                        </span>
+                      </div>
+                    </label>
                   );
                 })}
               </div>
             </div>
+          )}
 
-            {/* Petits Bois (not for volets) */}
-            {!isVolet && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Quantite
+              </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={quantity}
+                onChange={(event) =>
+                  setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
+                }
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Marge nette souhaitee (EUR)
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                {...DECIMAL_INPUT_PROPS}
+                value={netMarginWanted}
+                onChange={(event) =>
+                  setNetMarginWanted(
+                    Math.max(0, Number.parseFloat(event.target.value) || 0)
+                  )
+                }
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="block text-sm font-semibold text-slate-700">Remise</label>
+              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
+                -{remise}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              step={1}
+              value={remise}
+              onChange={(event) =>
+                setRemise(Number.parseInt(event.target.value, 10) || 0)
+              }
+              className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
+            />
+          </div>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={includePose}
+              onChange={(event) => setIncludePose(event.target.checked)}
+              className="h-4 w-4 accent-orange-500"
+            />
+            <Wrench size={14} className="text-slate-400" />
+            Inclure la pose (
+            {getProductType(product.sheet) === 'porte'
+              ? '400 EUR'
+              : getProductType(product.sheet) === 'volet'
+                ? '100 EUR'
+                : '250 EUR'}
+            )
+          </label>
+
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={showThermalData}
+              onChange={(event) => setShowThermalData(event.target.checked)}
+              className="h-4 w-4 accent-orange-500"
+            />
+            Afficher les donnees thermiques sur le devis
+          </label>
+        </div>
+      )}
+    </div>
+  );
+  const compositeModeContent = (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
+              Builder 2D
+            </label>
+            <h3 className="text-lg font-black text-slate-900">
+              Constructeur de chassis composes
+            </h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Cliquez sur un module pour ouvrir son formulaire complet.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <button
+              onClick={() => addCompositeRow('above')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
+            >
+              <Plus size={16} />
+              Ajouter une rangee au-dessus
+            </button>
+            <button
+              onClick={addCompositeModuleBeside}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
+            >
+              <Plus size={16} />
+              Ajouter un module a cote
+            </button>
+            <button
+              onClick={() => addCompositeRow('below')}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
+            >
+              <Plus size={16} />
+              Ajouter une rangee en dessous
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-b border-slate-100 px-6 pt-6">
+        <MenuiserieVisual
+          sheetName="Chassis compose 2D"
+          width={compositeDimensions.width || 1200}
+          height={compositeDimensions.height || 1250}
+          options={{
+            isComposite: true,
+            composition: compositePreviewComposition,
+          }}
+          className="h-80"
+        />
+      </div>
+
+      <div className="space-y-6 p-6">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="space-y-4">
+            {normalizeCompositeComposition(composition).map((row, rowIndex) => (
+              <div key={row.id} className="flex gap-4 overflow-x-auto pb-2">
+                {row.modules.map((module, moduleIndex) => {
+                  const moduleProduct = getProductById(module.productId);
+                  const modulePricing = compositePricing.modulePricing.find(
+                    (entry) => entry.id === module.id
+                  );
+                  const isActive = selectedCompositeModuleId === module.id;
+
+                  return (
+                    <div
+                      key={module.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-pressed={isActive}
+                      onClick={() => setSelectedCompositeModuleId(module.id)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        setSelectedCompositeModuleId(module.id);
+                      }}
+                      className={`min-w-[220px] cursor-pointer rounded-2xl border bg-white p-4 text-left shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-200 ${
+                        isActive
+                          ? 'border-orange-500 ring-2 ring-orange-500/10'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-black text-slate-900">
+                            Module {moduleIndex + 1}
+                          </p>
+                          <p className="text-xs text-slate-500">Rangee {rowIndex + 1}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            removeCompositeModule(module.id);
+                          }}
+                          className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                      <p className="text-sm font-bold text-slate-700">
+                        {moduleProduct?.label || module.productId}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        L {module.widthMm} x H {module.heightMm} mm
+                      </p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {getColorSummary(
+                          module.options.colorOptionId,
+                          module.options.rawColorState
+                        )}
+                      </p>
+                      <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                        {modulePricing?.unitPrice !== null
+                          ? `${modulePricing?.unitPrice?.toFixed(2)} EUR HT`
+                          : 'Dimensions hors grille'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
+          <div className="space-y-6 rounded-2xl border border-slate-200 p-6">
+            <div>
+              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
+                Module selectionne
+              </label>
+              <h4 className="text-lg font-black text-slate-900">
+                {activeModuleProduct?.label || 'Aucun module'}
+              </h4>
+              <p className="mt-1 text-sm text-slate-500">
+                Ce formulaire pilote uniquement le module actif.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1.5">
-                  <Grid3X3 size={14} className="text-slate-400" />
-                  Petits bois (nombre de carrés)
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Famille / type
+                </label>
+                <select
+                  value={activeCompositeModule?.productId || ''}
+                  onChange={(event) => replaceSelectedModuleProduct(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                >
+                  {COMPOSITE_MODULE_TYPES.map((entry) => (
+                    <optgroup key={entry.id} label={entry.label}>
+                      {entry.products.map((productOption) => (
+                        <option key={productOption.id} value={productOption.id}>
+                          {productOption.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Prix module
+                </p>
+                <p className="mt-2 text-lg font-black text-slate-900">
+                  {activeCompositePricing?.unitPrice !== null
+                    ? `${activeCompositePricing?.unitPrice?.toFixed(2)} EUR`
+                    : 'Hors grille'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Largeur module (mm)
                 </label>
                 <input
                   type="number"
-                  min={0}
-                  value={petitsBois}
-                  onChange={(e) => setPetitsBois(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-32 px-4 py-2 rounded-xl border border-slate-200 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  min={1}
+                  {...NUMERIC_INPUT_PROPS}
+                  value={activeCompositeModule?.widthMm || ''}
+                  onChange={(event) =>
+                    updateCompositeModule(selectedCompositeModuleId, {
+                      widthMm: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                 />
-                <p className="text-xs text-slate-400 mt-1">+30 € par carré après remise</p>
               </div>
-            )}
-
-            {/* Panneau Décoratif (Only for Portes) */}
-            {isPorte && (
-              <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-all">
-                <input
-                  type="checkbox"
-                  checked={panneauDecoratif}
-                  onChange={(e) => setPanneauDecoratif(e.target.checked)}
-                  className="accent-orange-500 w-4 h-4"
-                />
-                <div className="flex-1">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                    ✨ Panneau décoratif
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    +850 € HT après remise
-                  </span>
-                </div>
-              </label>
-            )}
-
-            {/* Locking Handle (Toutes les menuiseries sauf Portes et Volets) */}
-            {!isVolet && !isPorte && (
-              <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-all">
-                <input
-                  type="checkbox"
-                  checked={hasLockingHandle}
-                  onChange={(e) => setHasLockingHandle(e.target.checked)}
-                  className="accent-orange-500 w-4 h-4"
-                />
-                <div className="flex-1">
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                    🔐 Poignée Schüco Euro Verrouillable à clé
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    +18.75 € HT pièce avant remise
-                  </span>
-                </div>
-              </label>
-            )}
-
-            {/* Sous-bassement (not for volets) */}
-            {!isVolet && (
-              <div className="space-y-3 p-3 rounded-xl border border-slate-200">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hasSousBassement}
-                    onChange={(e) => setHasSousBassement(e.target.checked)}
-                    className="accent-orange-500 w-4 h-4"
-                  />
-                  <div className="flex-1">
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                      🧱 Sous-bassement
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      +10 € HT après remise
-                    </span>
-                  </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Hauteur module (mm)
                 </label>
+                <input
+                  type="number"
+                  min={1}
+                  {...NUMERIC_INPUT_PROPS}
+                  value={activeCompositeModule?.heightMm || ''}
+                  onChange={(event) =>
+                    updateCompositeModule(selectedCompositeModuleId, {
+                      heightMm: event.target.value,
+                    })
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
+            </div>
 
-                {hasSousBassement && (
-                  <div className="pl-7 space-y-2">
-                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase">
-                      <span>Hauteur : {sousBassementHeight} mm</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={100}
-                      max={Math.max(100, parseInt(heightMm) - 200 || 800)}
-                      step={10}
-                      value={sousBassementHeight}
-                      onChange={(e) => setSousBassementHeight(parseInt(e.target.value))}
-                      className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-orange-500"
-                    />
+            {buildColorOptionsFields({
+              value: workingConfig.colorOptionId,
+              colorState: workingColorState,
+              onColorChange: (value) => updateSelectedModuleOptions({ colorOptionId: value }),
+              onColorStateChange: (patch) =>
+                updateSelectedModuleOptions({
+                  rawColorState: {
+                    ...workingColorState,
+                    ...patch,
+                  },
+                }),
+              availableOptions: workingColorOptions,
+            })}
+
+            {workingIsGlazed && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Vitrage / remplissage du module
+                </label>
+                <select
+                  value={workingConfig.glazingId}
+                  onChange={(event) =>
+                    updateSelectedModuleOptions({ glazingId: event.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                >
+                  {activeModuleFillingMeta.options.map(({ glazing, pricing }) => (
+                    <option key={glazing.id} value={glazing.id}>
+                      {formatFillingOptionLabel(glazing, pricing)}
+                    </option>
+                  ))}
+                </select>
+                {activeModuleFillingMeta.selectedGlazing && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-800">
+                      {activeModuleFillingMeta.selectedGlazing.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {getFillingOptionDetails(
+                        activeModuleFillingMeta.selectedGlazing,
+                        activeModuleFillingMeta.selectedPricing
+                      )}
+                    </p>
+                    {workingConfig.hasSousBassement &&
+                      getSoubassementPricingDetails(
+                        activeModuleFillingMeta.selectedPricing
+                      ) && (
+                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                          {getSoubassementPricingDetails(
+                            activeModuleFillingMeta.selectedPricing
+                          )}
+                        </p>
+                      )}
                   </div>
                 )}
               </div>
             )}
 
-            {/* Sash Options (OB / Ventilation) */}
-            {!isVolet && !product.sheet.includes('Fixe') && (
+            {!workingIsVolet && (
+              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-widest text-slate-400">
+                    Options & Accessoires
+                  </label>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Chaque module garde ses accessoires et son remplissage bas.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-3">
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Grid3X3 size={14} className="text-slate-400" />
+                      Petits bois
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres horizontales
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={workingConfig.petitsBoisH}
+                          onChange={(event) =>
+                            updateSelectedModuleOptions({
+                              petitsBoisH: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres verticales
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={workingConfig.petitsBoisV}
+                          onChange={(event) =>
+                            updateSelectedModuleOptions({
+                              petitsBoisV: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Sens d&apos;ouverture
+                    </label>
+                    <select
+                      value={workingConfig.openingDirection}
+                      onChange={(event) =>
+                        updateSelectedModuleOptions({
+                          openingDirection: event.target.value,
+                        })
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    >
+                      <option value="standard">Standard</option>
+                      <option value="inverse">Inverse</option>
+                    </select>
+                  </div>
+
+                  {workingIsPorte ? (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={workingConfig.panneauDecoratif}
+                        onChange={(event) =>
+                          updateSelectedModuleOptions({
+                            panneauDecoratif: event.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Panneau decoratif
+                    </label>
+                  ) : (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={workingConfig.hasLockingHandle}
+                        onChange={(event) =>
+                          updateSelectedModuleOptions({
+                            hasLockingHandle: event.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Poignee verrouillable a cle
+                    </label>
+                  )}
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={workingConfig.hasSousBassement}
+                        onChange={(event) =>
+                          updateSelectedModuleOptions({
+                            hasSousBassement: event.target.checked,
+                          })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Sous-bassement
+                    </label>
+                    {workingConfig.hasSousBassement && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Hauteur visible</span>
+                          <span>{workingConfig.sousBassementHeight} mm</span>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-[1fr_140px]">
+                          <input
+                            type="range"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(activeCompositeModule?.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            value={workingConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                sousBassementHeight: Number.parseInt(
+                                  event.target.value,
+                                  10
+                                ),
+                              })
+                            }
+                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
+                          />
+                          <input
+                            type="number"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(activeCompositeModule?.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            {...NUMERIC_INPUT_PROPS}
+                            value={workingConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                sousBassementHeight: Math.max(
+                                  100,
+                                  Number.parseInt(event.target.value, 10) || 100
+                                ),
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+                        {getSoubassementPricingDetails(
+                          activeModuleFillingMeta.selectedPricing
+                        ) && (
+                          <p className="text-xs font-semibold text-slate-500">
+                            {getSoubassementPricingDetails(
+                              activeModuleFillingMeta.selectedPricing
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
               <div className="space-y-4">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest">
+                <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
                   Options par vantail
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {[...Array(product.sheet.includes('2V') ? 2 : (product.sheet.includes('3V') ? 3 : (product.sheet.includes('4V') ? 4 : 1)))].map((_, idx) => (
-                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 italic">
-                      <p className="text-[10px] font-bold text-slate-400 mb-2 uppercase">Vantail {idx + 1}</p>
-                      <div className="flex flex-col gap-2">
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {Array.from({ length: workingSashCount }).map((_, index) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Vantail {index + 1}
+                      </p>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                           <input
                             type="checkbox"
-                            checked={sashOptions[idx]?.ob || false}
-                            onChange={() => toggleSashOption(idx, 'ob')}
+                            checked={Boolean(workingConfig.sashOptions[index]?.ob)}
+                            onChange={() => updateWorkingSashOption(index, 'ob')}
                             className="accent-orange-500"
                           />
-                          Oscillo-battant (+30€)
+                          Oscillo-battant
                         </label>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                           <input
                             type="checkbox"
-                            checked={sashOptions[idx]?.vent || false}
-                            onChange={() => toggleSashOption(idx, 'vent')}
+                            checked={Boolean(workingConfig.sashOptions[index]?.vent)}
+                            onChange={() => updateWorkingSashOption(index, 'vent')}
                             className="accent-orange-500"
                           />
-                          Grille de ventilation (+10€)
+                          Grille de ventilation
                         </label>
                       </div>
                     </div>
@@ -1212,244 +2425,309 @@ export default function ProductSelector({ onAddToCart, cartItems = [], editingIt
               </div>
             )}
 
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                Marge nette souhaitée (€)
+            {false && workingIsGlazed && (
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-slate-700">
+                  Vitrage du module
+                </label>
+                <div className="grid gap-3">
+                  {GLAZING_OPTIONS.map((glazing) => (
+                    <label
+                      key={glazing.id}
+                      className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
+                        workingConfig.glazingId === glazing.id
+                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={workingConfig.glazingId === glazing.id}
+                        onChange={() =>
+                          updateSelectedModuleOptions({ glazingId: glazing.id })
+                        }
+                        className="h-5 w-5 accent-orange-500"
+                      />
+                      <div className="flex-1">
+                        <span className="block text-sm font-bold text-slate-800">
+                          {glazing.shortLabel}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          Ug={glazing.ug} · g={glazing.g}
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-slate-200 p-6">
+              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
+                Reglages de l&apos;ensemble
               </label>
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Repere
+                  </label>
+                  <input
+                    type="text"
+                    value={repere}
+                    onChange={(event) => setRepere(event.target.value)}
+                    placeholder="Ex : Facade nord"
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Quantite
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    {...NUMERIC_INPUT_PROPS}
+                    value={quantity}
+                    onChange={(event) =>
+                      setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Marge nette souhaitee (EUR)
+                  </label>
               <input
                 type="number"
                 min={0}
                 step={0.01}
+                {...DECIMAL_INPUT_PROPS}
                 value={netMarginWanted}
-                onChange={(e) => setNetMarginWanted(Math.max(0, parseFloat(e.target.value) || 0))}
-                className="w-full sm:w-56 px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                Invisible pour le client. Le système compense automatiquement avant remise.
-              </p>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-semibold text-slate-700">
-                  Remise appliquée
-                </label>
-                <div className="text-sm font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md">
-                  -{remise}%
+                    onChange={(event) =>
+                      setNetMarginWanted(
+                        Math.max(0, Number.parseFloat(event.target.value) || 0)
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
                 </div>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                value={remise}
-                onChange={(e) => setRemise(parseInt(e.target.value) || 0)}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-200"
-              />
-              <div className="flex justify-between text-xs text-slate-400 mt-2">
-                <span>0%</span>
-                <span>Max 20%</span>
-              </div>
-            </div>
-
-            {/* Pose */}
-            <label className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-slate-300 transition-all">
-              <input
-                type="checkbox"
-                checked={includePose}
-                onChange={(e) => setIncludePose(e.target.checked)}
-                className="accent-orange-500 w-4 h-4"
-              />
-              <div className="flex-1">
-                <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                  <Wrench size={14} className="text-slate-400" />
-                  Inclure la pose
-                </span>
-                <span className="text-xs text-slate-400">
-                  {getProductType(product?.sheet || '') === 'volet' && '100 € / unité'}
-                  {getProductType(product?.sheet || '') === 'porte' && '400 € / unité'}
-                  {getProductType(product?.sheet || '') === 'menuiserie' && '250 € / unité'}
-                </span>
-              </div>
-            </label>
-          </div>
-        )}
-
-        {requiresColorConfiguration && isColorModalOpen && (
-          <div
-            className="fixed inset-0 z-[80] bg-slate-900/45 backdrop-blur-sm p-4 sm:p-6 flex items-end sm:items-center justify-center"
-            onClick={() => setIsColorModalOpen(false)}
-          >
-            <div
-              className="w-full sm:max-w-xl max-h-[90vh] bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between p-4 border-b border-slate-200">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">Configuration</p>
-                  <h4 className="text-lg font-black text-slate-900">
-                    {colorOption === 'bicoloration' ? 'Bicoloration' : 'Coloration 2 faces'}
-                  </h4>
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-sm font-semibold text-slate-700">Remise</label>
+                    <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
+                      -{remise}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    step={1}
+                    value={remise}
+                    onChange={(event) =>
+                      setRemise(Number.parseInt(event.target.value, 10) || 0)
+                    }
+                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
+                  />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsColorModalOpen(false)}
-                  className="p-2 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                  aria-label="Fermer"
-                >
-                  <X size={18} />
-                </button>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={includePose}
+                    onChange={(event) => setIncludePose(event.target.checked)}
+                    className="h-4 w-4 accent-orange-500"
+                  />
+                  <Wrench size={14} className="text-slate-400" />
+                  Inclure la pose (250 EUR)
+                </label>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={showThermalData}
+                    onChange={(event) => setShowThermalData(event.target.checked)}
+                    className="h-4 w-4 accent-orange-500"
+                  />
+                  Afficher les donnees thermiques sur le devis
+                </label>
               </div>
+            </div>
 
-              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-132px)]">
-                {colorOption === 'bicoloration' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Preset</label>
-                      <select
-                        value={bicoType}
-                        onChange={(e) => setBicoType(e.target.value)}
-                        className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                      >
-                        <option value="standard_7016">Blanc 9016 (Int) / Gris 7016 (Ext)</option>
-                        <option value="standard_chene">Blanc 9016 (Int) / Chene dore plaxe (Ext)</option>
-                        <option value="custom">Autre bicoloration...</option>
-                      </select>
-                    </div>
-
-                    {bicoType === 'custom' && (
-                      <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Couleur interieure</label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={customColorIntText}
-                              onChange={(e) => setCustomColorIntText(e.target.value)}
-                              placeholder="ex: Blanc 9016"
-                              className="flex-1 p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                            />
-                            {customColorIntText && !customColorIntText.toLowerCase().includes('blanc') && (
-                              <input
-                                type="color"
-                                value={customColorIntHex}
-                                onChange={(e) => setCustomColorIntHex(e.target.value)}
-                                className="w-10 h-10 rounded cursor-pointer border border-slate-200"
-                                title="Couleur pour le visuel SVG"
-                              />
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Finition exterieure</label>
-                          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 mb-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isExtPlaxageBico}
-                              onChange={(e) => setIsExtPlaxageBico(e.target.checked)}
-                              className="accent-orange-500"
-                            />
-                            Plaxage
-                          </label>
-                          <input
-                            type="text"
-                            value={customColorExtText}
-                            onChange={(e) => setCustomColorExtText(e.target.value)}
-                            placeholder="ex: Rouge 3004"
-                            className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {colorOption === 'coloration-2f' && (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Preset</label>
-                      <select
-                        value={color2fType}
-                        onChange={(e) => setColor2fType(e.target.value)}
-                        className="w-full p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                      >
-                        <option value="standard_7016">Gris (7016) 2 faces</option>
-                        <option value="standard_chene">Chene dore 2 faces</option>
-                        <option value="custom">Autre coloration 2 faces...</option>
-                      </select>
-                    </div>
-
-                    {color2fType === 'custom' && (
-                      <div className="p-3 border border-slate-200 rounded-xl bg-slate-50 space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1">Type et couleur</label>
-                          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 mb-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={is2fPlaxage}
-                              onChange={(e) => setIs2fPlaxage(e.target.checked)}
-                              className="accent-orange-500"
-                            />
-                            Plaxage
-                          </label>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={customColor2fText}
-                              onChange={(e) => setCustomColor2fText(e.target.value)}
-                              placeholder="ex: Noir 9005"
-                              className="flex-1 p-2.5 text-sm border border-slate-200 rounded-lg outline-none focus:border-orange-500"
-                            />
-                            <input
-                              type="color"
-                              value={customColor2fHex}
-                              onChange={(e) => setCustomColor2fHex(e.target.value)}
-                              className="w-10 h-10 rounded cursor-pointer border border-slate-200"
-                              title="Couleur pour le visuel SVG"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="flex justify-end p-4 border-t border-slate-200 bg-slate-50">
-                <button
-                  type="button"
-                  onClick={() => setIsColorModalOpen(false)}
-                  className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-bold hover:bg-orange-600 transition-colors"
-                >
-                  Valider
-                </button>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
+                Synthese du compose
+              </label>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Dimensions globales</span>
+                  <span className="font-bold text-slate-900">
+                    L {compositeDimensions.width} x H {compositeDimensions.height} mm
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Modules</span>
+                  <span className="font-bold text-slate-900">{compositeModuleCount}</span>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                  {formatCompositeModules(composition)}
+                </div>
+                <div className="border-t border-slate-200 pt-3">
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Prix compose HT
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-slate-900">
+                    {compositePricing.totalPrice !== null
+                      ? `${compositePricing.totalPrice.toFixed(2)} EUR`
+                      : 'Dimensions hors grille'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+  const summaryContent = (
+    <>
+      {product &&
+        !isCompositeMode &&
+        !isWasteManagement &&
+        !isCustomProduct &&
+        simpleConfig.widthMm &&
+        simpleConfig.heightMm &&
+        !simplePriceData && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+            Les dimensions saisies sont hors de la grille tarifaire pour ce produit.
+          </div>
         )}
 
-        {/* Add to Cart */}
-        {(unitPrice !== null || isWasteManagement || isCustomProduct) && (
-          <div className="p-6">
+      {isCompositeMode && compositePricing.hasInvalidModule && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          Au moins un module du compose est hors de la grille tarifaire. Ajustez ses dimensions ou son type.
+        </div>
+      )}
+
+      {(previewCalc || isWasteManagement || isCustomProduct || isCompositeMode) && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                Estimation HT
+              </p>
+              <p className="mt-2 text-3xl font-black tracking-tight text-slate-900">
+                {previewCalc
+                  ? `${previewCalc.totalLine.toFixed(2)} EUR`
+                  : isWasteManagement
+                    ? `${wasteCalculation.totalWastePrice.toFixed(2)} EUR`
+                    : isCustomProduct
+                      ? `${((Number.parseFloat(customPrice) || 0) * quantity).toFixed(2)} EUR`
+                      : compositePricing.totalPrice !== null
+                        ? `${(compositePricing.totalPrice * quantity).toFixed(2)} EUR`
+                        : 'A definir'}
+              </p>
+              {previewCalc?.posePrice ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  Pose : {(previewCalc.posePrice * quantity).toFixed(2)} EUR
+                </p>
+              ) : null}
+            </div>
+
             <button
               onClick={handleAddToCart}
-              disabled={isCustomProduct && (!customLabel || !customPrice)}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-full transition-all duration-200 shadow-lg shadow-orange-500/30 transform hover:-translate-y-0.5 active:translate-y-0"
+              disabled={
+                (isCompositeMode &&
+                  (compositePricing.hasInvalidModule || !compositePricing.totalPrice)) ||
+                (!isCompositeMode &&
+                  !isWasteManagement &&
+                  !isCustomProduct &&
+                  !simplePriceData) ||
+                (isCustomProduct &&
+                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice))))
+              }
+              className={`inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-bold transition-all ${
+                (isCompositeMode &&
+                  (compositePricing.hasInvalidModule || !compositePricing.totalPrice)) ||
+                (!isCompositeMode &&
+                  !isWasteManagement &&
+                  !isCustomProduct &&
+                  !simplePriceData) ||
+                (isCustomProduct &&
+                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice))))
+                  ? 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
+                  : 'bg-orange-500 text-white shadow-xl shadow-orange-500/30 hover:bg-orange-600'
+              }`}
             >
               <ShoppingCart size={18} />
-              {isWasteManagement 
-                ? (editingItem ? 'Mettre à jour le service' : 'Calculer et ajouter au devis') 
-                : (isCustomProduct 
-                  ? (editingItem ? 'Mettre à jour ce produit' : 'Ajouter ce produit') 
-                  : (editingItem ? 'Mettre à jour le produit' : 'Ajouter au panier')
-                )
-              }
+              {addButtonLabel}
             </button>
           </div>
-        )}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="space-y-6">
+      {editingItem && (
+        <div className="animate-in fade-in slide-in-from-top-2 rounded-xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-blue-100 p-2 text-blue-600">
+                <Pencil size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-blue-900">Mode edition</p>
+                <p className="text-xs text-blue-700">
+                  Vous modifiez actuellement <strong>{editingItem.productLabel}</strong>.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onCancelEdit}
+              className="rounded-lg p-2 text-blue-500 transition-colors hover:bg-blue-100 hover:text-blue-700"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <label className="mb-3 block text-xs font-black uppercase tracking-widest text-slate-400">
+          Mode de configuration
+        </label>
+        <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => handleModeChange('simple')}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+              !isCompositeMode
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            Menuiserie simple
+          </button>
+          <button
+            type="button"
+            onClick={() => handleModeChange('composite')}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+              isCompositeMode
+                ? 'bg-orange-500 text-white shadow-sm'
+                : 'text-slate-500 hover:text-orange-600'
+            }`}
+          >
+            Chassis compose
+          </button>
+        </div>
       </div>
+
+      {!isCompositeMode && simpleModeContent}
+      {isCompositeMode && compositeModeContent}
+      {summaryContent}
     </div>
   );
 }

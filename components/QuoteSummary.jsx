@@ -1,9 +1,25 @@
 import React, { useState, useMemo } from 'react';
-import { calculateItemPrice, getItemPricingSummary } from '@/lib/products';
+import {
+  calculateItemPrice,
+  formatCompositeModules,
+  getCompositeModuleCount,
+  getItemPricingSummary,
+} from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
 import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, AlertCircle, Package, Pencil, Check, X } from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+
+const getPetitsBoisConfig = (item = {}) => {
+  const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
+  const petitsBoisH = Math.max(0, Number.parseInt(item.petitsBoisH, 10) || 0);
+  const petitsBoisV = Math.max(
+    0,
+    Number.parseInt(item.petitsBoisV ?? (item.petitsBoisH == null ? legacyValue : 0), 10) || 0
+  );
+
+  return { petitsBoisH, petitsBoisV };
+};
 
 export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRate, onGoBack, onNext, onUpdateItem }) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
@@ -108,6 +124,7 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
               <tbody className="divide-y divide-slate-100">
                 {cartItems.map((item, index) => {
                   const calc = calculateItemPrice(item);
+                  const petitsBoisConfig = getPetitsBoisConfig(item);
                   return (
                     <React.Fragment key={item.id}>
                       <tr className="hover:bg-slate-50/50 transition-colors">
@@ -131,13 +148,19 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
                                 width={item.widthMm}
                                 height={item.heightMm}
                                 options={{
+                                  isComposite: item.isComposite,
+                                  composition: item.composition,
                                   colorOption: item.colorOption,
+                                  glazingId: item.glazingOption?.id,
+                                  petitsBoisH: petitsBoisConfig.petitsBoisH,
+                                  petitsBoisV: petitsBoisConfig.petitsBoisV,
                                   panneauDecoratif: item.panneauDecoratif,
                                   hasSousBassement: item.hasSousBassement,
                                   sousBassementHeight: item.sousBassementHeight,
                                   sashOptions: item.sashOptions,
                                   productId: item.productId,
-                                  openingDirection: item.openingDirection
+                                  openingDirection: item.openingDirection,
+                                  svgColor: item.svgColor,
                                 }}
                                 className="w-14 h-14 shrink-0 bg-white border-slate-100 p-1"
                               />
@@ -202,6 +225,12 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
                                       
                                       {/* Mini badges below for visual confirmation of options */}
                                       <div className="flex flex-wrap gap-2 mt-2">
+                                        {item.isComposite &&
+                                          getCompositeModuleCount(item.composition, item.modules) > 0 && (
+                                          <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">
+                                            {formatCompositeModules(item.composition || item.modules)}
+                                          </span>
+                                        )}
                                         {item.colorOption?.id !== 'blanc' && (
                                           <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 rounded text-slate-500">{item.colorOption?.label}</span>
                                         )}
@@ -220,9 +249,17 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
                           </div>
                         </td>
                         <td className="py-4 px-4 text-center">
-                          <span className="inline-block px-2.5 py-1 bg-slate-100 rounded-md text-xs font-bold text-slate-600">
-                            {item.productId === 'gestion-dechets' ? "Service" : (item.productId === 'custom-product' ? "Sur mesure" : `L${item.widthMm} × H${item.heightMm}`)}
-                          </span>
+                          <div className="space-y-1">
+                            <span className="inline-block px-2.5 py-1 bg-slate-100 rounded-md text-xs font-bold text-slate-600">
+                              {item.productId === 'gestion-dechets' ? "Service" : (item.productId === 'custom-product' ? "Sur mesure" : `L${item.widthMm} × H${item.heightMm}`)}
+                            </span>
+                            {item.isComposite &&
+                              getCompositeModuleCount(item.composition, item.modules) > 0 && (
+                              <p className="text-[10px] font-semibold text-slate-500">
+                                {getCompositeModuleCount(item.composition, item.modules)} modules
+                              </p>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-center font-semibold text-slate-700 text-sm">
                           {item.quantity}

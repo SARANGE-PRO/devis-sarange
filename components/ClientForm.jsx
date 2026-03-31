@@ -10,20 +10,26 @@ import {
   CheckCircle2,
   Loader2,
 } from 'lucide-react';
-export default function ClientForm({ onNext }) {
+
+const EMPTY_CLIENT_DATA = {
+  nom: '',
+  prenom: '',
+  referenceDevis: '',
+  adresse: '',
+  codePostal: '',
+  ville: '',
+  telephone: '',
+  email: '',
+  memeAdresseChantier: true,
+  adresseChantier: '',
+  codePostalChantier: '',
+  villeChantier: '',
+};
+
+export default function ClientForm({ onNext, initialData = null }) {
   const [formData, setFormData] = useState({
-    nom: '',
-    prenom: '',
-    referenceDevis: '',
-    adresse: '',
-    codePostal: '',
-    ville: '',
-    telephone: '',
-    email: '',
-    memeAdresseChantier: true,
-    adresseChantier: '',
-    codePostalChantier: '',
-    villeChantier: '',
+    ...EMPTY_CLIENT_DATA,
+    ...(initialData || {}),
   });
 
   const [errors, setErrors] = useState({});
@@ -47,6 +53,13 @@ export default function ClientForm({ onNext }) {
       setShowSuggestions(false);
     }
   }, [formData.adresse, formData.adresseChantier, activeSearchField]);
+
+  useEffect(() => {
+    setFormData({
+      ...EMPTY_CLIENT_DATA,
+      ...(initialData || {}),
+    });
+  }, [initialData]);
 
   const fetchSuggestions = async (query) => {
     setIsLoading(true);

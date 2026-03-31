@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
+import { FirebaseProvider } from "@/components/FirebaseProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -30,7 +31,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="fr" className={inter.variable}>
       <body className="font-sans bg-slate-50 text-slate-900 antialiased">
-        {children}
+        <FirebaseProvider>{children}</FirebaseProvider>
       </body>
     </html>
   );
