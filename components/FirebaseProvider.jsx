@@ -3,8 +3,10 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   updateProfile,
 } from 'firebase/auth';
@@ -15,6 +17,7 @@ const FirebaseContext = createContext({
   initializing: true,
   isConfigured: false,
   signIn: async () => {},
+  signInWithGoogle: async () => {},
   signUp: async () => {},
   signOut: async () => {},
 });
@@ -25,15 +28,19 @@ const formatFirebaseError = (error) => {
       return 'Adresse email invalide.';
     case 'auth/missing-password':
     case 'auth/weak-password':
-      return 'Le mot de passe doit être plus robuste.';
+      return 'Le mot de passe doit etre plus robuste.';
     case 'auth/email-already-in-use':
-      return 'Cet email est déjà utilisé.';
+      return 'Cet email est deja utilise.';
+    case 'auth/account-exists-with-different-credential':
+      return 'Ce compte existe deja avec une autre methode de connexion, probablement Google.';
     case 'auth/invalid-credential':
     case 'auth/wrong-password':
     case 'auth/user-not-found':
       return 'Email ou mot de passe incorrect.';
+    case 'auth/popup-closed-by-user':
+      return 'La fenetre Google a ete fermee avant la fin de la connexion.';
     case 'auth/too-many-requests':
-      return 'Trop de tentatives. Réessayez un peu plus tard.';
+      return 'Trop de tentatives. Reessayez un peu plus tard.';
     default:
       return error?.message || 'Une erreur Firebase est survenue.';
   }
@@ -69,7 +76,7 @@ export function FirebaseProvider({ children }) {
       signIn: async ({ email, password }) => {
         const auth = getFirebaseAuth();
         if (!auth) {
-          throw new Error('Firebase n’est pas configuré.');
+          throw new Error("Firebase n'est pas configure.");
         }
 
         try {
@@ -78,10 +85,24 @@ export function FirebaseProvider({ children }) {
           throw new Error(formatFirebaseError(error));
         }
       },
+      signInWithGoogle: async () => {
+        const auth = getFirebaseAuth();
+        if (!auth) {
+          throw new Error("Firebase n'est pas configure.");
+        }
+
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          return await signInWithPopup(auth, provider);
+        } catch (error) {
+          throw new Error(formatFirebaseError(error));
+        }
+      },
       signUp: async ({ displayName, email, password }) => {
         const auth = getFirebaseAuth();
         if (!auth) {
-          throw new Error('Firebase n’est pas configuré.');
+          throw new Error("Firebase n'est pas configure.");
         }
 
         try {

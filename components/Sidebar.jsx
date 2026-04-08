@@ -10,6 +10,7 @@ import {
   LogOut,
   Package,
   Settings,
+  Users,
   X,
 } from 'lucide-react';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
@@ -17,6 +18,7 @@ import { useFirebaseAuth } from '@/components/FirebaseProvider';
 const menuItems = [
   { icon: FilePlus, label: 'Nouveau devis', href: '/' },
   { icon: FolderOpen, label: 'Mes devis', href: '/devis' },
+  { icon: Users, label: 'Portefeuille client', href: '/clients' },
   { icon: Package, label: 'Catalogue', href: '/catalogue' },
   { icon: Settings, label: 'Paramètres', href: '/parametres' },
 ];

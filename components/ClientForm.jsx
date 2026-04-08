@@ -1,70 +1,97 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import {
-  User,
-  MapPin,
-  Phone,
-  Mail,
   ArrowRight,
   CheckCircle2,
   Loader2,
+  Mail,
+  MapPin,
+  Phone,
+  User,
 } from 'lucide-react';
-
-const EMPTY_CLIENT_DATA = {
-  nom: '',
-  prenom: '',
-  referenceDevis: '',
-  adresse: '',
-  codePostal: '',
-  ville: '',
-  telephone: '',
-  email: '',
-  memeAdresseChantier: true,
-  adresseChantier: '',
-  codePostalChantier: '',
-  villeChantier: '',
-};
+import { useFirebaseAuth } from '@/components/FirebaseProvider';
+import {
+  EMPTY_CLIENT_DATA,
+  buildClientSearchText,
+  getClientDisplayName,
+  getClientFullLocation,
+  sanitizeClientData,
+} from '@/lib/client-cloud';
+import { subscribeToUserClients } from '@/lib/firebase/clients';
 
 export default function ClientForm({ onNext, initialData = null }) {
+  const { user, initializing: authInitializing, isConfigured: firebaseConfigured } =
+    useFirebaseAuth();
+
   const [formData, setFormData] = useState({
     ...EMPTY_CLIENT_DATA,
-    ...(initialData || {}),
+    ...(initialData ? sanitizeClientData(initialData) : {}),
   });
-
   const [errors, setErrors] = useState({});
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSearchField, setActiveSearchField] = useState(null); // 'facturation' | 'chantier'
+  const [activeSearchField, setActiveSearchField] = useState(null);
+  const [savedClients, setSavedClients] = useState([]);
+  const [loadingClients, setLoadingClients] = useState(false);
+  const [clientDirectoryError, setClientDirectoryError] = useState('');
 
-  // Debounce for address search
   useEffect(() => {
-    const query = activeSearchField === 'facturation' ? formData.adresse : formData.adresseChantier;
+    const query =
+      activeSearchField === 'facturation' ? formData.adresse : formData.adresseChantier;
 
-    // We only trigger search if the user has typed at least 4 chars
     if (query?.length > 3) {
       const timeoutId = setTimeout(() => {
-        fetchSuggestions(query);
+        void fetchSuggestions(query);
       }, 300);
       return () => clearTimeout(timeoutId);
-    } else {
-      setSuggestions([]);
-      setShowSuggestions(false);
     }
+
+    setSuggestions([]);
+    setShowSuggestions(false);
+    return undefined;
   }, [formData.adresse, formData.adresseChantier, activeSearchField]);
 
   useEffect(() => {
     setFormData({
       ...EMPTY_CLIENT_DATA,
-      ...(initialData || {}),
+      ...(initialData ? sanitizeClientData(initialData) : {}),
     });
   }, [initialData]);
+
+  useEffect(() => {
+    if (!firebaseConfigured || authInitializing || !user) {
+      setSavedClients([]);
+      setLoadingClients(false);
+      return undefined;
+    }
+
+    setLoadingClients(true);
+    setClientDirectoryError('');
+
+    const unsubscribe = subscribeToUserClients({
+      userId: user.uid,
+      onNext: (nextClients) => {
+        setSavedClients(nextClients);
+        setLoadingClients(false);
+      },
+      onError: (error) => {
+        setClientDirectoryError(error.message || 'Impossible de charger vos clients enregistres.');
+        setLoadingClients(false);
+      },
+    });
+
+    return unsubscribe;
+  }, [authInitializing, firebaseConfigured, user]);
 
   const fetchSuggestions = async (query) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`);
+      const response = await fetch(
+        `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=5`
+      );
       const data = await response.json();
       setSuggestions(data.features || []);
       setShowSuggestions(true);
@@ -77,80 +104,139 @@ export default function ClientForm({ onNext, initialData = null }) {
 
   const handleSelectSuggestion = (suggestion) => {
     const { name, postcode, city } = suggestion.properties;
-    
+
     if (activeSearchField === 'facturation') {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         adresse: name,
         codePostal: postcode,
-        ville: city
+        ville: city,
       }));
     } else if (activeSearchField === 'chantier') {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         adresseChantier: name,
         codePostalChantier: postcode,
-        villeChantier: city
+        villeChantier: city,
       }));
     }
-    
+
     setSuggestions([]);
     setShowSuggestions(false);
     setActiveSearchField(null);
   };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
+  const handleChange = (event) => {
+    const { name, value, type, checked } = event.target;
     const finalValue = type === 'checkbox' ? checked : value;
+
     setFormData((prev) => ({ ...prev, [name]: finalValue }));
-    // Clear error when user types
+
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
 
-  const validate = () => {
-    const newErrors = {};
-    return newErrors;
+  const handleApplySavedClient = (client) => {
+    if (
+      formData.nom ||
+      formData.prenom ||
+      formData.email ||
+      formData.telephone ||
+      formData.adresse
+    ) {
+      const sameClient = client.id === formData.savedClientId;
+      if (!sameClient && !window.confirm('Remplacer les informations en cours par cette fiche client ?')) {
+        return;
+      }
+    }
+
+    setFormData({
+      ...EMPTY_CLIENT_DATA,
+      ...(client.payload || {}),
+      savedClientId: client.id,
+    });
+    setErrors({});
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const validate = () => ({});
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
     const validationErrors = validate();
+
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
-    if (onNext) onNext(formData);
+
+    if (onNext) onNext(sanitizeClientData(formData));
   };
 
   const inputClasses =
-    'w-full px-4 py-4 sm:py-3.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-base sm:text-sm placeholder-slate-400 outline-none transition-all duration-200 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 hover:border-slate-400';
+    'w-full rounded-xl border border-slate-300 bg-white px-4 py-4 text-base text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 hover:border-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 sm:py-3.5 sm:text-sm';
+  const labelClasses = 'mb-1.5 block text-sm font-semibold text-slate-700';
 
-  const labelClasses = 'block text-sm font-semibold text-slate-700 mb-1.5';
+  const activeSavedClient =
+    savedClients.find((client) => client.id === formData.savedClientId) || null;
+
+  const clientLookupTerm = [
+    formData.prenom,
+    formData.nom,
+    formData.email,
+    formData.telephone,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase();
+
+  const matchedClients =
+    clientLookupTerm.length < 2
+      ? []
+      : savedClients
+          .filter((client) => {
+            const haystack =
+              client.searchText || buildClientSearchText(client.payload) || client.displayName || '';
+            return haystack.includes(clientLookupTerm);
+          })
+          .slice(0, 4);
+
+  const showClientSuggestions =
+    firebaseConfigured && user && clientLookupTerm.length >= 2 && matchedClients.length > 0;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      {/* Card */}
-      <div className="bg-white p-8 md:p-10 rounded-2xl border border-slate-200 shadow-sm">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2.5 bg-orange-100 rounded-xl">
+    <div className="mx-auto max-w-3xl">
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:p-10">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="rounded-xl bg-orange-100 p-2.5">
             <User size={22} className="text-orange-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">
-              Informations Client
-            </h1>
+            <h1 className="text-xl font-bold text-slate-900">Informations client</h1>
             <p className="text-sm text-slate-500">
-              Renseignez les coordonnées du client pour le devis
+              Renseignez les coordonnees du client pour le devis.
             </p>
           </div>
         </div>
 
+        {firebaseConfigured && user && (
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+            Autoremplissage client actif.
+            <Link href="/clients" className="ml-1 font-semibold text-orange-600 hover:text-orange-700">
+              Ouvrir Portefeuille client
+            </Link>
+          </div>
+        )}
+
+        {clientDirectoryError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {clientDirectoryError}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Nom & Prénom */}
-          <div className="grid md:grid-cols-2 gap-5">
+          <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label htmlFor="nom" className={labelClasses}>
                 Nom
@@ -166,13 +252,11 @@ export default function ClientForm({ onNext, initialData = null }) {
                   errors.nom ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
                 }`}
               />
-              {errors.nom && (
-                <p className="mt-1 text-xs text-red-500">{errors.nom}</p>
-              )}
+              {errors.nom && <p className="mt-1 text-xs text-red-500">{errors.nom}</p>}
             </div>
             <div>
               <label htmlFor="prenom" className={labelClasses}>
-                Prénom
+                Prenom
               </label>
               <input
                 id="prenom"
@@ -185,35 +269,88 @@ export default function ClientForm({ onNext, initialData = null }) {
                   errors.prenom ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
                 }`}
               />
-              {errors.prenom && (
-                <p className="mt-1 text-xs text-red-500">{errors.prenom}</p>
-              )}
+              {errors.prenom && <p className="mt-1 text-xs text-red-500">{errors.prenom}</p>}
             </div>
           </div>
 
-          {/* Référence Devis (Optionnel) */}
+          {(activeSavedClient ||
+            showClientSuggestions ||
+            (loadingClients && clientLookupTerm.length >= 2)) && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              {activeSavedClient && (
+                <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
+                  Client reconnu : <span className="font-semibold">{activeSavedClient.displayName}</span>
+                  {getClientFullLocation(activeSavedClient.payload)
+                    ? ` / ${getClientFullLocation(activeSavedClient.payload)}`
+                    : ''}
+                </div>
+              )}
+
+              {loadingClients ? (
+                <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 size={16} className="animate-spin" />
+                  Chargement des fiches clients...
+                </div>
+              ) : showClientSuggestions ? (
+                <>
+                  <p className="mb-3 text-xs font-black uppercase tracking-widest text-slate-400">
+                    Autoremplissage disponible
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {matchedClients.map((client) => {
+                      const secondaryLine =
+                        client.email || client.telephone || getClientFullLocation(client.payload);
+
+                      return (
+                        <button
+                          key={client.id}
+                          type="button"
+                          onClick={() => handleApplySavedClient(client)}
+                          className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:border-orange-200 hover:shadow-md"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {client.displayName || getClientDisplayName(client.payload)}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-slate-500">
+                                {secondaryLine || 'Coordonnees a completer'}
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                              Remplir
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          )}
+
           <div>
             <label htmlFor="referenceDevis" className={labelClasses}>
-              Référence du devis (Optionnel)
+              Reference du devis (optionnel)
             </label>
             <input
               id="referenceDevis"
               name="referenceDevis"
               type="text"
-              placeholder="Ex: PROJET-2026-A"
+              placeholder="Ex : PROJET-2026-A"
               value={formData.referenceDevis}
               onChange={handleChange}
               className={inputClasses}
             />
           </div>
 
-          <div className="h-px w-full bg-slate-100 my-4" />
+          <div className="my-4 h-px w-full bg-slate-100" />
 
-          {/* Addresse Facturation */}
-          <h3 className="font-semibold text-slate-800 text-base mb-3">Adresse de facturation</h3>
+          <h3 className="mb-3 text-base font-semibold text-slate-800">Adresse de facturation</h3>
           <div className="relative">
             <label htmlFor="adresse" className={labelClasses}>
-              <MapPin size={14} className="inline mr-1 text-slate-400" />
+              <MapPin size={14} className="mr-1 inline text-slate-400" />
               Adresse
             </label>
             <div className="relative flex items-center">
@@ -226,52 +363,53 @@ export default function ClientForm({ onNext, initialData = null }) {
                 value={formData.adresse}
                 onChange={handleChange}
                 onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                onFocus={() => { 
+                onFocus={() => {
                   setActiveSearchField('facturation');
-                  if (suggestions.length > 0 && activeSearchField === 'facturation') setShowSuggestions(true); 
+                  if (suggestions.length > 0 && activeSearchField === 'facturation') {
+                    setShowSuggestions(true);
+                  }
                 }}
                 className={`${inputClasses} pr-10 ${
                   errors.adresse ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
                 }`}
               />
               {isLoading && activeSearchField === 'facturation' && (
-                <div className="absolute right-4 text-orange-500 animate-spin">
+                <div className="absolute right-4 animate-spin text-orange-500">
                   <Loader2 size={18} />
                 </div>
               )}
             </div>
-            
+
             {showSuggestions && activeSearchField === 'facturation' && suggestions.length > 0 && (
-              <div className="absolute z-[100] w-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                {suggestions.map((s, idx) => (
-                  <div 
-                    key={idx}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      handleSelectSuggestion(s);
+              <div className="animate-in fade-in zoom-in-95 absolute z-[100] mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl duration-100">
+                {suggestions.map((suggestion, index) => (
+                  <div
+                    key={index}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      handleSelectSuggestion(suggestion);
                     }}
-                    className="px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 hover:text-orange-500 cursor-pointer transition-colors border-b last:border-0 border-slate-100 flex items-center gap-3"
+                    className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50 hover:text-orange-500"
                   >
-                    <MapPin size={14} className="text-slate-300 shrink-0" />
-                    <div className="flex-1 min-w-0 truncate">
-                      <span className="font-bold">{s.properties.name}</span>
-                      <span className="ml-2 text-slate-400">{s.properties.postcode} {s.properties.city}</span>
+                    <MapPin size={14} className="shrink-0 text-slate-300" />
+                    <div className="min-w-0 flex-1 truncate">
+                      <span className="font-bold">{suggestion.properties.name}</span>
+                      <span className="ml-2 text-slate-400">
+                        {suggestion.properties.postcode} {suggestion.properties.city}
+                      </span>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            
-            {errors.adresse && (
-              <p className="mt-1 text-xs text-red-500">{errors.adresse}</p>
-            )}
+
+            {errors.adresse && <p className="mt-1 text-xs text-red-500">{errors.adresse}</p>}
           </div>
 
-          {/* Code Postal & Ville */}
-          <div className="grid md:grid-cols-3 gap-5">
+          <div className="grid gap-5 md:grid-cols-3">
             <div>
               <label htmlFor="codePostal" className={labelClasses}>
-                Code Postal
+                Code postal
               </label>
               <input
                 id="codePostal"
@@ -287,11 +425,7 @@ export default function ClientForm({ onNext, initialData = null }) {
                     : ''
                 }`}
               />
-              {errors.codePostal && (
-                <p className="mt-1 text-xs text-red-500">
-                  {errors.codePostal}
-                </p>
-              )}
+              {errors.codePostal && <p className="mt-1 text-xs text-red-500">{errors.codePostal}</p>}
             </div>
             <div className="md:col-span-2">
               <label htmlFor="ville" className={labelClasses}>
@@ -308,38 +442,35 @@ export default function ClientForm({ onNext, initialData = null }) {
                   errors.ville ? 'border-red-400 focus:border-red-500 focus:ring-red-200' : ''
                 }`}
               />
-              {errors.ville && (
-                <p className="mt-1 text-xs text-red-500">{errors.ville}</p>
-              )}
+              {errors.ville && <p className="mt-1 text-xs text-red-500">{errors.ville}</p>}
             </div>
           </div>
 
-          {/* Separator */}
           <div className="border-t border-slate-100 pt-6">
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">
+            <p className="mb-4 text-xs font-bold uppercase tracking-widest text-slate-400">
               Contact (optionnel)
             </p>
           </div>
 
-          {/* Checkbox for separate chantier address */}
-          <div className="mt-6 mb-2">
-            <label className="flex items-center gap-3 cursor-pointer">
+          <div className="mb-2 mt-6">
+            <label className="flex cursor-pointer items-center gap-3">
               <input
                 type="checkbox"
                 name="memeAdresseChantier"
                 checked={formData.memeAdresseChantier}
                 onChange={handleChange}
-                className="w-5 h-5 text-orange-500 rounded border-slate-300 focus:ring-orange-500 focus:ring-2 transition-colors cursor-pointer"
+                className="h-5 w-5 cursor-pointer rounded border-slate-300 text-orange-500 transition-colors focus:ring-2 focus:ring-orange-500"
               />
-              <span className="text-sm font-medium text-slate-700">L&apos;adresse du chantier est identique à l&apos;adresse de facturation</span>
+              <span className="text-sm font-medium text-slate-700">
+                L&apos;adresse du chantier est identique a l&apos;adresse de facturation
+              </span>
             </label>
           </div>
 
-          {/* Adresse Chantier Conditionally Rendered */}
           {!formData.memeAdresseChantier && (
-            <div className="p-5 bg-slate-50 border border-slate-200 rounded-xl space-y-5 animate-in fade-in slide-in-from-top-2">
-               <h3 className="font-semibold text-slate-800 text-sm">Adresse du chantier</h3>
-               <div className="relative">
+            <div className="animate-in fade-in slide-in-from-top-2 space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
+              <h3 className="text-sm font-semibold text-slate-800">Adresse du chantier</h3>
+              <div className="relative">
                 <label htmlFor="adresseChantier" className={labelClasses}>
                   Adresse
                 </label>
@@ -355,42 +486,47 @@ export default function ClientForm({ onNext, initialData = null }) {
                     onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                     onFocus={() => {
                       setActiveSearchField('chantier');
-                      if (suggestions.length > 0 && activeSearchField === 'chantier') setShowSuggestions(true);
+                      if (suggestions.length > 0 && activeSearchField === 'chantier') {
+                        setShowSuggestions(true);
+                      }
                     }}
                     className={`${inputClasses} pr-10`}
                   />
                   {isLoading && activeSearchField === 'chantier' && (
-                    <div className="absolute right-4 text-orange-500 animate-spin">
+                    <div className="absolute right-4 animate-spin text-orange-500">
                       <Loader2 size={18} />
                     </div>
                   )}
                 </div>
 
                 {showSuggestions && activeSearchField === 'chantier' && suggestions.length > 0 && (
-                  <div className="absolute z-[100] w-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                    {suggestions.map((s, idx) => (
+                  <div className="animate-in fade-in zoom-in-95 absolute z-[100] mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl duration-100">
+                    {suggestions.map((suggestion, index) => (
                       <div
-                        key={idx}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectSuggestion(s);
+                        key={index}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          handleSelectSuggestion(suggestion);
                         }}
-                        className="px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 hover:text-orange-500 cursor-pointer transition-colors border-b last:border-0 border-slate-100 flex items-center gap-3"
+                        className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50 hover:text-orange-500"
                       >
-                        <MapPin size={14} className="text-slate-300 shrink-0" />
-                        <div className="flex-1 min-w-0 truncate">
-                          <span className="font-bold">{s.properties.name}</span>
-                          <span className="ml-2 text-slate-400">{s.properties.postcode} {s.properties.city}</span>
+                        <MapPin size={14} className="shrink-0 text-slate-300" />
+                        <div className="min-w-0 flex-1 truncate">
+                          <span className="font-bold">{suggestion.properties.name}</span>
+                          <span className="ml-2 text-slate-400">
+                            {suggestion.properties.postcode} {suggestion.properties.city}
+                          </span>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-              <div className="grid md:grid-cols-3 gap-5">
+
+              <div className="grid gap-5 md:grid-cols-3">
                 <div>
                   <label htmlFor="codePostalChantier" className={labelClasses}>
-                    Code Postal
+                    Code postal
                   </label>
                   <input
                     id="codePostalChantier"
@@ -421,14 +557,13 @@ export default function ClientForm({ onNext, initialData = null }) {
             </div>
           )}
 
-          <div className="h-px w-full bg-slate-100 my-4" />
+          <div className="my-4 h-px w-full bg-slate-100" />
 
-          {/* Téléphone & Email */}
-          <div className="grid md:grid-cols-2 gap-5">
+          <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label htmlFor="telephone" className={labelClasses}>
-                <Phone size={14} className="inline mr-1 text-slate-400" />
-                Téléphone
+                <Phone size={14} className="mr-1 inline text-slate-400" />
+                Telephone
               </label>
               <input
                 id="telephone"
@@ -442,7 +577,7 @@ export default function ClientForm({ onNext, initialData = null }) {
             </div>
             <div>
               <label htmlFor="email" className={labelClasses}>
-                <Mail size={14} className="inline mr-1 text-slate-400" />
+                <Mail size={14} className="mr-1 inline text-slate-400" />
                 Email
               </label>
               <input
@@ -457,11 +592,10 @@ export default function ClientForm({ onNext, initialData = null }) {
             </div>
           </div>
 
-          {/* Submit */}
-          <div className="pt-4 flex justify-end">
+          <div className="flex justify-end pt-4">
             <button
               type="submit"
-              className="w-full sm:w-auto inline-flex justify-center items-center gap-3 px-8 py-4 bg-orange-500 hover:bg-orange-600 text-white text-base font-bold rounded-2xl sm:rounded-full transition-all duration-200 shadow-xl shadow-orange-500/30 transform hover:-translate-y-1 active:translate-y-0"
+              className="inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-orange-500 px-8 py-4 text-base font-bold text-white shadow-xl shadow-orange-500/30 transition-all duration-200 hover:-translate-y-1 hover:bg-orange-600 active:translate-y-0 sm:w-auto sm:rounded-full"
             >
               Suivant : Ajouter des produits
               <ArrowRight size={18} />
@@ -470,10 +604,9 @@ export default function ClientForm({ onNext, initialData = null }) {
         </form>
       </div>
 
-      {/* Helper */}
-      <div className="mt-4 flex items-center gap-2 text-xs text-slate-400 justify-center">
+      <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-400">
         <CheckCircle2 size={14} />
-        <span>Ces informations apparaîtront en en-tête du devis PDF final</span>
+        <span>Ces informations apparaitront en en-tete du devis PDF final.</span>
       </div>
     </div>
   );

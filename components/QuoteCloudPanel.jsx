@@ -39,7 +39,7 @@ export default function QuoteCloudPanel({
             </div>
           </div>
           <p className="mt-2 text-sm text-slate-500">
-            Enregistrez votre devis dans Firebase pour le reprendre depuis n’importe où.
+            Le PDF enregistre aussi automatiquement votre devis dans Firebase pour le reprendre depuis n&apos;importe ou.
           </p>
         </div>
 

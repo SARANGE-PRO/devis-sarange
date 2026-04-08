@@ -8,7 +8,7 @@ export default function FirebaseAuthCard({
   title = 'Connexion cloud',
   subtitle = 'Connectez-vous pour retrouver et modifier vos devis de partout.',
 }) {
-  const { signIn, signUp, isConfigured } = useFirebaseAuth();
+  const { signIn, signInWithGoogle, signUp, isConfigured } = useFirebaseAuth();
   const [mode, setMode] = useState('signin');
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
@@ -16,9 +16,10 @@ export default function FirebaseAuthCard({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const submitLabel = useMemo(
-    () => (mode === 'signin' ? 'Se connecter' : 'Créer mon accès'),
+    () => (mode === 'signin' ? 'Se connecter' : 'Creer mon acces'),
     [mode]
   );
 
@@ -48,10 +49,23 @@ export default function FirebaseAuthCard({
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setGoogleLoading(true);
+
+    try {
+      await signInWithGoogle();
+    } catch (submissionError) {
+      setError(submissionError.message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   if (!isConfigured) {
     return (
       <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 text-sm text-orange-900 shadow-sm">
-        Complétez d’abord les variables Firebase du projet pour activer “Mes devis”.
+        Completez d&apos;abord les variables Firebase du projet pour activer Mes devis.
       </div>
     );
   }
@@ -92,8 +106,29 @@ export default function FirebaseAuthCard({
               : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          Créer un compte
+          Creer un compte
         </button>
+      </div>
+
+      <div className="mt-5">
+        <button
+          type="button"
+          onClick={() => void handleGoogleSignIn()}
+          disabled={googleLoading || loading}
+          className="inline-flex w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {googleLoading ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : (
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[10px] font-black text-white">
+              G
+            </span>
+          )}
+          Continuer avec Google
+        </button>
+        <p className="mt-2 text-xs text-slate-400">
+          Utilisez cette option si votre email existe deja via votre autre application Firebase.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
@@ -101,7 +136,7 @@ export default function FirebaseAuthCard({
           <label className="block">
             <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
               <UserRound size={14} className="text-slate-400" />
-              Nom affiché
+              Nom affiche
             </span>
             <input
               type="text"
@@ -169,7 +204,7 @@ export default function FirebaseAuthCard({
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={loading || googleLoading}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading && <Loader2 size={16} className="animate-spin" />}

@@ -9,15 +9,11 @@ import QuoteSummary from '@/components/QuoteSummary';
 import AppShell from '@/components/AppShell';
 import QuoteCloudPanel from '@/components/QuoteCloudPanel';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
+import { hasMeaningfulClientData } from '@/lib/client-cloud';
+import { getClientById, saveClientProfile } from '@/lib/firebase/clients';
 import { generateQuotePDF } from '@/lib/pdf-generator';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
-import {
-  ArrowLeft,
-  FileDown,
-  FileText,
-  ShoppingCart,
-  User,
-} from 'lucide-react';
+import { ArrowLeft, FileDown, FileText, ShoppingCart, User } from 'lucide-react';
 
 const STEPS = [
   { number: 1, label: 'Client', icon: User },
@@ -49,7 +45,8 @@ export default function HomePageClient() {
   const [quoteLoadError, setQuoteLoadError] = useState('');
 
   const requestedQuoteId = searchParams.get('quote');
-  const canSaveCloudQuote = Boolean(clientData && cartItems.length > 0);
+  const requestedClientId = searchParams.get('client');
+  const canSaveCloudQuote = Boolean(hasMeaningfulClientData(clientData) && cartItems.length > 0);
 
   const resetQuoteState = () => {
     setCurrentStep(1);
@@ -136,6 +133,57 @@ export default function HomePageClient() {
     };
   }, [activeQuoteId, authInitializing, firebaseConfigured, requestedQuoteId, user]);
 
+  useEffect(() => {
+    if (!firebaseConfigured || authInitializing || !requestedClientId || requestedQuoteId) return;
+
+    if (!user) {
+      setQuoteLoadError('Connectez-vous pour charger cette fiche client depuis le cloud.');
+      return;
+    }
+
+    if (requestedClientId === clientData?.savedClientId) return;
+
+    let cancelled = false;
+
+    const loadClient = async () => {
+      setQuoteLoadError('');
+
+      try {
+        const savedClient = await getClientById({
+          userId: user.uid,
+          clientId: requestedClientId,
+        });
+
+        if (cancelled) return;
+
+        if (!savedClient) {
+          setQuoteLoadError('Cette fiche client est introuvable ou ne vous appartient pas.');
+          return;
+        }
+
+        setClientData(savedClient.payload || null);
+        setCurrentStep(1);
+      } catch (error) {
+        if (!cancelled) {
+          setQuoteLoadError(error.message || 'Impossible de charger cette fiche client.');
+        }
+      }
+    };
+
+    void loadClient();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    authInitializing,
+    clientData?.savedClientId,
+    firebaseConfigured,
+    requestedClientId,
+    requestedQuoteId,
+    user,
+  ]);
+
   const handleClientNext = (data) => {
     setClientData(data);
     setCurrentStep(2);
@@ -190,35 +238,51 @@ export default function HomePageClient() {
     setCurrentStep((prev) => Math.max(1, prev - 1));
   };
 
-  const handleSaveQuote = async () => {
+  const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
     if (!firebaseConfigured) {
-      setSaveError("Firebase n'est pas encore configure dans ce projet.");
-      return;
+      if (origin === 'manual') {
+        setSaveError("Firebase n'est pas encore configure dans ce projet.");
+      }
+      return null;
     }
 
     if (!user) {
-      setSaveError('Connectez-vous dans "Mes devis" avant d’enregistrer votre devis.');
-      return;
+      if (origin === 'manual') {
+        setSaveError('Connectez-vous dans "Mes devis" avant d’enregistrer votre devis.');
+      }
+      return null;
     }
 
     if (!canSaveCloudQuote) {
-      setSaveError('Ajoutez au moins un article et renseignez le client avant d’enregistrer.');
-      return;
+      if (origin === 'manual') {
+        setSaveError('Ajoutez au moins un article et renseignez le client avant d’enregistrer.');
+      }
+      return null;
     }
 
     setIsSavingQuote(true);
     setSaveError('');
-    setSaveMessage('');
+    if (origin === 'manual') {
+      setSaveMessage('');
+    }
 
     try {
+      const savedClient = await saveClientProfile({
+        userId: user.uid,
+        clientData,
+      });
+      const nextClientData = savedClient?.payload || clientData;
+
+      setClientData(nextClientData);
+
       const savedQuote = await saveQuoteDraft({
         userId: user.uid,
         quoteId: activeQuoteId,
         title: quoteTitle,
-        clientData,
+        clientData: nextClientData,
         cartItems,
         tvaRate,
-        currentStep,
+        currentStep: origin === 'pdf' ? 4 : currentStep,
       });
 
       setActiveQuoteId(savedQuote.id);
@@ -228,15 +292,45 @@ export default function HomePageClient() {
           ? savedQuote.updatedAt.toDate()
           : savedQuote.updatedAt
       );
-      setSaveMessage(
-        activeQuoteId ? 'Devis cloud mis a jour.' : 'Devis enregistre dans "Mes devis".'
-      );
+
+      if (origin === 'pdf') {
+        setSaveMessage(
+          activeQuoteId
+            ? 'PDF genere et devis mis a jour automatiquement.'
+            : 'PDF genere et devis enregistre automatiquement dans "Mes devis".'
+        );
+      } else {
+        setSaveMessage(
+          activeQuoteId
+            ? 'Devis et fiche client mis a jour.'
+            : 'Devis enregistre dans "Mes devis" et client memorise.'
+        );
+      }
+
       router.replace(`/?quote=${savedQuote.id}`);
+      return savedQuote;
     } catch (error) {
-      setSaveError(error.message || 'Impossible d’enregistrer ce devis.');
+      setSaveError(
+        origin === 'pdf'
+          ? error.message || 'PDF genere, mais la sauvegarde cloud a echoue.'
+          : error.message || 'Impossible d’enregistrer ce devis.'
+      );
+      return null;
     } finally {
       setIsSavingQuote(false);
     }
+  };
+
+  const handleSaveQuote = async () => {
+    await persistQuoteToCloud({ origin: 'manual' });
+  };
+
+  const handleGeneratePdf = async () => {
+    if (firebaseConfigured && user && canSaveCloudQuote) {
+      await persistQuoteToCloud({ origin: 'pdf' });
+    }
+
+    await generateQuotePDF(clientData, cartItems, tvaRate);
   };
 
   const backButton =
@@ -354,13 +448,13 @@ export default function HomePageClient() {
           onUpdateItem={handleAddToCart}
           onNext={() => {
             setCurrentStep(4);
-            void generateQuotePDF(clientData, cartItems, tvaRate);
+            void handleGeneratePdf();
           }}
         />
       )}
 
       {currentStep === 4 && (
-        <div className="mx-auto max-w-3xl py-20 text-center animate-in zoom-in duration-500">
+        <div className="mx-auto max-w-3xl animate-in py-20 text-center zoom-in duration-500">
           <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-green-100 text-green-600 shadow-xl shadow-green-500/20">
             <FileDown size={48} />
           </div>
@@ -373,7 +467,7 @@ export default function HomePageClient() {
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <button
-              onClick={() => void generateQuotePDF(clientData, cartItems, tvaRate)}
+              onClick={() => void handleGeneratePdf()}
               className="flex w-full items-center justify-center gap-3 rounded-full bg-orange-500 px-10 py-4 font-black text-white shadow-xl shadow-orange-500/40 transition-all duration-300 hover:-translate-y-1 hover:bg-orange-600 sm:w-auto"
             >
               <FileDown size={20} />
@@ -391,7 +485,7 @@ export default function HomePageClient() {
             onClick={() => setCurrentStep(3)}
             className="mt-12 text-sm font-bold text-slate-400 transition-colors hover:text-slate-600"
           >
-            ← Retour au recapitulatif
+            Retour au recapitulatif
           </button>
         </div>
       )}
