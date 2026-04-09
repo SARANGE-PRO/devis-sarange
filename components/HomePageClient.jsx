@@ -241,7 +241,7 @@ export default function HomePageClient() {
   const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
     if (!firebaseConfigured) {
       if (origin === 'manual') {
-        setSaveError("Firebase n'est pas encore configure dans ce projet.");
+        setSaveError('Connexion cloud indisponible pour le moment.');
       }
       return null;
     }

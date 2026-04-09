@@ -66,7 +66,7 @@ export default function QuoteCloudPanel({
         <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
           <p className="font-semibold">Firebase n’est pas encore configuré dans ce projet.</p>
           <p className="mt-1 text-orange-800">
-            Ajoutez les variables suivantes dans votre `.env.local` :
+            Ajoutez les variables Firebase dans la configuration de l&apos;application :
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {FIREBASE_REQUIRED_ENV_KEYS.map((key) => (

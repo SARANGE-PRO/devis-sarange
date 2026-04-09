@@ -248,7 +248,7 @@ export default function SavedQuotesPage() {
     >
       {!isConfigured && (
         <div className="mx-auto max-w-4xl rounded-2xl border border-orange-200 bg-orange-50 p-6 text-sm text-orange-900 shadow-sm">
-          Firebase n&apos;est pas encore configure dans ce projet. Ajoutez d&apos;abord vos cles dans `.env.local`.
+          Firebase n&apos;est pas encore disponible dans ce projet. Verifiez la configuration de l&apos;application ou reessayez plus tard.
         </div>
       )}
 

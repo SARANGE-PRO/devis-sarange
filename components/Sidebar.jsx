@@ -20,7 +20,7 @@ const menuItems = [
   { icon: FolderOpen, label: 'Mes devis', href: '/devis' },
   { icon: Users, label: 'Portefeuille client', href: '/clients' },
   { icon: Package, label: 'Catalogue', href: '/catalogue' },
-  { icon: Settings, label: 'Paramètres', href: '/parametres' },
+  { icon: Settings, label: 'Parametres', href: '/parametres' },
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
@@ -104,21 +104,19 @@ export default function Sidebar({ isOpen, onClose }) {
                 className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 transition-all hover:bg-red-50 hover:text-red-500"
               >
                 <LogOut size={18} />
-                <span>Déconnexion</span>
+                <span>Deconnexion</span>
               </button>
             </div>
           ) : (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-400">
               {isConfigured
                 ? initializing
-                  ? 'Connexion cloud en cours…'
-                  : 'Connectez-vous dans “Mes devis” pour activer la sauvegarde cloud.'
-                : 'Firebase non configuré.'}
+                  ? 'Connexion cloud en cours...'
+                  : 'Connectez-vous dans "Mes devis" pour activer la sauvegarde cloud.'
+                : 'Connexion cloud indisponible.'}
             </div>
           )}
-          <p className="mt-3 text-center text-[10px] text-slate-300">
-            v1.0 — Sarange © 2026
-          </p>
+          <p className="mt-3 text-center text-[10px] text-slate-300">v1.0 - Sarange 2026</p>
         </div>
       </aside>
     </>
