@@ -593,8 +593,12 @@ export default function ProductSelector({
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
 
+  const normalizedComposition = useMemo(
+    () => normalizeCompositeComposition(composition),
+    [composition]
+  );
   const compositeContext = useMemo(() => {
-    const normalized = normalizeCompositeComposition(composition);
+    const normalized = normalizedComposition;
     let fallback = null;
     for (let rowIndex = 0; rowIndex < normalized.length; rowIndex += 1) {
       const row = normalized[rowIndex];
@@ -606,7 +610,7 @@ export default function ProductSelector({
       }
     }
     return fallback;
-  }, [composition, selectedCompositeModuleId]);
+  }, [normalizedComposition, selectedCompositeModuleId]);
 
   const compositePricing = useMemo(() => getCompositePricing(composition), [composition]);
   const compositeDimensions = getCompositeDimensions(composition);
@@ -2016,6 +2020,65 @@ export default function ProductSelector({
         />
       </div>
 
+      <div className="border-b border-slate-100 px-4 pb-4 pt-4 md:px-6">
+        <div className="flex w-full gap-3 overflow-x-auto pb-2">
+          {normalizedComposition.flatMap((row, rowIndex) =>
+            row.modules.map((module, moduleIndex) => {
+              const moduleProduct = getProductById(module.productId);
+              const isSelected = module.id === selectedCompositeModuleId;
+              return (
+                <div
+                  key={module.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setSelectedCompositeModuleId(module.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedCompositeModuleId(module.id);
+                    }
+                  }}
+                  className={`min-w-[220px] cursor-pointer rounded-2xl border p-4 text-left shadow-sm transition-all ${
+                    isSelected
+                      ? 'border-orange-500 bg-orange-50'
+                      : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                        Rangee {rowIndex + 1} • Module {moduleIndex + 1}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-900">
+                        {moduleProduct?.shortLabel || moduleProduct?.label || 'Module'}
+                      </p>
+                    </div>
+                    {isSelected && (
+                      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-600">
+                        Actif
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeCompositeModule(module.id);
+                      }}
+                      className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    L {module.widthMm} x H {module.heightMm} mm
+                  </p>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
       <div className="space-y-6 p-4 md:p-6">
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
           <div className="space-y-6">
@@ -2171,124 +2234,128 @@ export default function ProductSelector({
                   Options & Accessoires
                   <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
                 </summary>
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 space-y-5">
                   <p className="text-sm text-slate-500">
                     Chaque module garde ses accessoires et son remplissage bas.
                   </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <Grid3X3 size={14} className="text-slate-400" />
-                      Petits bois
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Barres horizontales
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          {...NUMERIC_INPUT_PROPS}
-                          value={workingConfig.petitsBoisH}
-                          onChange={(event) =>
-                            updateSelectedModuleOptions({
-                              petitsBoisH: normalizePetitsBoisValue(event.target.value),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Barres verticales
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          {...NUMERIC_INPUT_PROPS}
-                          value={workingConfig.petitsBoisV}
-                          onChange={(event) =>
-                            updateSelectedModuleOptions({
-                              petitsBoisV: normalizePetitsBoisValue(event.target.value),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                        />
+                  <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3 min-w-0">
+                      <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Grid3X3 size={14} className="text-slate-400" />
+                        Petits bois
+                      </label>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div className="min-w-0">
+                          <label className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-500">
+                            Horizontales
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            {...NUMERIC_INPUT_PROPS}
+                            value={workingConfig.petitsBoisH}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                petitsBoisH: normalizePetitsBoisValue(event.target.value),
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <label className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-500">
+                            Verticales
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            {...NUMERIC_INPUT_PROPS}
+                            value={workingConfig.petitsBoisV}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                petitsBoisV: normalizePetitsBoisValue(event.target.value),
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Sens d&apos;ouverture
-                    </label>
-                    <select
-                      value={workingConfig.openingDirection}
-                      onChange={(event) =>
-                        updateSelectedModuleOptions({
-                          openingDirection: event.target.value,
-                        })
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    >
-                      <option value="standard">Standard</option>
-                      <option value="inverse">Inverse</option>
-                    </select>
-                  </div>
-
-                  {workingIsPorte ? (
-                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={workingConfig.panneauDecoratif}
+                    <div className="space-y-3 min-w-0">
+                      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                        Sens d&apos;ouverture
+                      </label>
+                      <select
+                        value={workingConfig.openingDirection}
                         onChange={(event) =>
                           updateSelectedModuleOptions({
-                            panneauDecoratif: event.target.checked,
+                            openingDirection: event.target.value,
                           })
                         }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Panneau decoratif
-                    </label>
-                  ) : (
-                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={workingConfig.hasLockingHandle}
-                        onChange={(event) =>
-                          updateSelectedModuleOptions({
-                            hasLockingHandle: event.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Poignee verrouillable a cle
-                    </label>
-                  )}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="standard">Standard</option>
+                        <option value="inverse">Inverse</option>
+                      </select>
+                    </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
-                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={workingConfig.hasSousBassement}
-                        onChange={(event) =>
-                          updateSelectedModuleOptions({
-                            hasSousBassement: event.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Sous-bassement
-                    </label>
+                    <div className="min-w-0">
+                      {workingIsPorte ? (
+                        <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={workingConfig.panneauDecoratif}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                panneauDecoratif: event.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 accent-orange-500"
+                          />
+                          Panneau decoratif
+                        </label>
+                      ) : (
+                        <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={workingConfig.hasLockingHandle}
+                            onChange={(event) =>
+                              updateSelectedModuleOptions({
+                                hasLockingHandle: event.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 accent-orange-500"
+                          />
+                          Poignee verrouillable a cle
+                        </label>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={workingConfig.hasSousBassement}
+                          onChange={(event) =>
+                            updateSelectedModuleOptions({
+                              hasSousBassement: event.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 accent-orange-500"
+                        />
+                        Sous-bassement
+                      </label>
+                    </div>
+
                     {workingConfig.hasSousBassement && (
-                      <div className="mt-4 space-y-3">
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
                         <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
                           <span>Hauteur visible</span>
                           <span>{workingConfig.sousBassementHeight} mm</span>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
+                        <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
                           <input
                             type="range"
                             min={100}
@@ -2332,7 +2399,7 @@ export default function ProductSelector({
                         {getSoubassementPricingDetails(
                           activeModuleFillingMeta.selectedPricing
                         ) && (
-                          <p className="text-xs font-semibold text-slate-500">
+                          <p className="mt-3 text-xs font-semibold text-slate-500">
                             {getSoubassementPricingDetails(
                               activeModuleFillingMeta.selectedPricing
                             )}
@@ -2341,46 +2408,45 @@ export default function ProductSelector({
                       </div>
                     )}
                   </div>
-                </div>
-                {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
-                  <div className="space-y-4">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                      Options par vantail
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {Array.from({ length: workingSashCount }).map((_, index) => (
-                        <div
-                          key={index}
-                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                        >
-                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Vantail {index + 1}
-                          </p>
-                          <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(workingConfig.sashOptions[index]?.ob)}
-                                onChange={() => updateWorkingSashOption(index, 'ob')}
-                                className="accent-orange-500"
-                              />
-                              Oscillo-battant
-                            </label>
-                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(workingConfig.sashOptions[index]?.vent)}
-                                onChange={() => updateWorkingSashOption(index, 'vent')}
-                                className="accent-orange-500"
-                              />
-                              Grille de ventilation
-                            </label>
+                  {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
+                    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+                      <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                        Options par vantail
+                      </label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {Array.from({ length: workingSashCount }).map((_, index) => (
+                          <div
+                            key={index}
+                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                          >
+                            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                              Vantail {index + 1}
+                            </p>
+                            <div className="space-y-2">
+                              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(workingConfig.sashOptions[index]?.ob)}
+                                  onChange={() => updateWorkingSashOption(index, 'ob')}
+                                  className="accent-orange-500"
+                                />
+                                Oscillo-battant
+                              </label>
+                              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(workingConfig.sashOptions[index]?.vent)}
+                                  onChange={() => updateWorkingSashOption(index, 'vent')}
+                                  className="accent-orange-500"
+                                />
+                                Grille de ventilation
+                              </label>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
                 </div>
               </details>
             )}
