@@ -93,6 +93,11 @@ export default function Cart({
           const petitsBoisConfig = getPetitsBoisConfig(item);
           const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
 
+          const sashEntries = item.sashOptions ? Object.values(item.sashOptions) : [];
+          const obCount = sashEntries.filter((s) => s?.ob).length;
+          const ventCount = sashEntries.filter((s) => s?.grille).length;
+          const hasSashOptions = obCount > 0 || ventCount > 0;
+
           return (
             <div
               key={item.id}
@@ -216,6 +221,21 @@ export default function Cart({
                         {item.glazingOption && !item.glazingOption.isBaseIncluded && (
                           <span className="ml-1 font-bold text-blue-600">
                             · {item.glazingOption.shortLabel}
+                          </span>
+                        )}
+                        {item.panneauDecoratif && (
+                          <span className="ml-1 font-bold text-orange-600">
+                            · Panneau decoratif
+                          </span>
+                        )}
+                        {item.hasSousBassement && (
+                          <span className="ml-1 font-bold text-slate-600">
+                            · Sous-bassement ({item.sousBassementHeight}mm)
+                          </span>
+                        )}
+                        {hasSashOptions && (
+                          <span className="ml-1 font-bold text-slate-600">
+                            · {obCount} OB / {ventCount} Grille
                           </span>
                         )}
                         {item.thermalUw !== null && item.thermalUw !== undefined && (

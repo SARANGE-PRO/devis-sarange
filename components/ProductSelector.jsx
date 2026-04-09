@@ -1309,13 +1309,13 @@ export default function ProductSelector({
   };
 
   const simpleModeContent = (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-slate-50/70 p-4 sm:p-6">
+    <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-4 md:p-6">
         <label className="mb-3 block text-xs font-black uppercase tracking-widest text-slate-400 sm:mb-4">
           Choix du produit
         </label>
 
-        <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-2 sm:mb-5 sm:flex-wrap sm:overflow-visible sm:pb-0">
+        <div className="-mx-1 mb-4 flex max-w-full gap-2 overflow-x-auto px-1 pb-2 sm:mb-5 sm:flex-wrap sm:overflow-visible sm:pb-0">
           {CATEGORIES.map((entry) => {
             const Icon = ICONS[entry.icon];
             return (
@@ -1335,7 +1335,7 @@ export default function ProductSelector({
           })}
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {category?.products.map((entry) => (
             <button
               key={entry.id}
@@ -1388,7 +1388,7 @@ export default function ProductSelector({
       )}
 
       {product && !isWasteManagement && (
-        <div className="border-b border-slate-100 bg-orange-50/30 p-4 sm:p-6">
+        <div className="border-b border-slate-100 bg-orange-50/30 p-4 md:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
             Repere (ex : SDB, Chambre 1, Cuisine)
           </label>
@@ -1403,7 +1403,7 @@ export default function ProductSelector({
       )}
 
       {isWasteManagement && (
-        <div className="p-5 text-center sm:p-8">
+        <div className="p-4 text-center md:p-8">
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-50">
             <WasteRecycleIcon size={48} className="text-green-600" />
           </div>
@@ -1416,7 +1416,7 @@ export default function ProductSelector({
       )}
 
       {isCustomProduct && (
-        <div className="grid gap-5 p-4 sm:gap-6 sm:p-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 p-4 md:p-6">
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -1442,7 +1442,7 @@ export default function ProductSelector({
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                   Prix unitaire HT
@@ -1474,7 +1474,7 @@ export default function ProductSelector({
             </div>
           </div>
 
-          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-6 transition-all hover:bg-slate-100">
+          <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 md:p-6 transition-all hover:bg-slate-100">
             {customImage ? (
               <>
                 <img
@@ -1511,8 +1511,8 @@ export default function ProductSelector({
       )}
 
       {product && !isWasteManagement && !isCustomProduct && (
-        <div className="space-y-6 p-6">
-          <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-6 p-4 md:p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Largeur (mm)
@@ -1606,13 +1606,13 @@ export default function ProductSelector({
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
                   <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <Grid3X3 size={14} className="text-slate-400" />
                     Petits bois
                   </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Barres horizontales
@@ -1711,7 +1711,7 @@ export default function ProductSelector({
                         <span>Hauteur visible</span>
                         <span>{simpleConfig.sousBassementHeight} mm</span>
                       </div>
-                      <div className="grid gap-4 md:grid-cols-[1fr_140px]">
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
                         <input
                           type="range"
                           min={100}
@@ -1769,7 +1769,7 @@ export default function ProductSelector({
               <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
                 Options par vantail
               </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {Array.from({ length: workingSashCount }).map((_, index) => (
                   <div
                     key={index}
@@ -1849,7 +1849,7 @@ export default function ProductSelector({
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                 Quantite
@@ -1936,8 +1936,8 @@ export default function ProductSelector({
     </div>
   );
   const compositeModeContent = (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-slate-50/70 p-6">
+    <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-4 md:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
@@ -1951,7 +1951,7 @@ export default function ProductSelector({
             </p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <button
               onClick={() => addCompositeRow('above')}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
@@ -1977,7 +1977,7 @@ export default function ProductSelector({
         </div>
       </div>
 
-      <div className="border-b border-slate-100 px-6 pt-6">
+      <div className="border-b border-slate-100 px-4 pt-4 md:px-6 md:pt-6">
         <MenuiserieVisual
           sheetName="Chassis compose 2D"
           width={compositeDimensions.width || 1200}
@@ -1990,11 +1990,11 @@ export default function ProductSelector({
         />
       </div>
 
-      <div className="space-y-6 p-6">
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="space-y-6 p-4 md:p-6">
+        <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="space-y-4">
             {normalizeCompositeComposition(composition).map((row, rowIndex) => (
-              <div key={row.id} className="flex gap-4 overflow-x-auto pb-2">
+              <div key={row.id} className="flex w-full gap-4 overflow-x-auto snap-x pb-4">
                 {row.modules.map((module, moduleIndex) => {
                   const moduleProduct = getProductById(module.productId);
                   const modulePricing = compositePricing.modulePricing.find(
@@ -2063,8 +2063,8 @@ export default function ProductSelector({
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.3fr_0.9fr]">
-          <div className="space-y-6 rounded-2xl border border-slate-200 p-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_0.9fr] gap-6">
+          <div className="space-y-6 rounded-2xl border border-slate-200 p-4 md:p-6">
             <div>
               <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
                 Module selectionne
@@ -2077,7 +2077,7 @@ export default function ProductSelector({
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                   Famille / type
@@ -2110,7 +2110,7 @@ export default function ProductSelector({
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
                   Largeur module (mm)
@@ -2216,13 +2216,13 @@ export default function ProductSelector({
                   </p>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
                     <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
                       <Grid3X3 size={14} className="text-slate-400" />
                       Petits bois
                     </label>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Barres horizontales
@@ -2328,7 +2328,7 @@ export default function ProductSelector({
                           <span>Hauteur visible</span>
                           <span>{workingConfig.sousBassementHeight} mm</span>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-[1fr_140px]">
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
                           <input
                             type="range"
                             min={100}
@@ -2390,7 +2390,7 @@ export default function ProductSelector({
                 <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
                   Options par vantail
                 </label>
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {Array.from({ length: workingSashCount }).map((_, index) => (
                     <div
                       key={index}
@@ -2464,7 +2464,7 @@ export default function ProductSelector({
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 p-6">
+            <div className="rounded-2xl border border-slate-200 p-4 md:p-6">
               <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
                 Reglages de l&apos;ensemble
               </label>
@@ -2555,7 +2555,7 @@ export default function ProductSelector({
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-6">
               <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
                 Synthese du compose
               </label>
@@ -2611,7 +2611,7 @@ export default function ProductSelector({
       )}
 
       {(previewCalc || isWasteManagement || isCustomProduct || isCompositeMode) && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-widest text-slate-400">
@@ -2695,15 +2695,15 @@ export default function ProductSelector({
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
         <label className="mb-3 block text-xs font-black uppercase tracking-widest text-slate-400">
           Mode de configuration
         </label>
-        <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm">
+        <div className="flex w-full flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1 shadow-sm md:w-auto md:flex-row md:gap-0">
           <button
             type="button"
             onClick={() => handleModeChange('simple')}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+            className={`w-full rounded-xl px-4 py-2 text-sm font-bold transition-colors md:w-auto ${
               !isCompositeMode
                 ? 'bg-slate-900 text-white shadow-sm'
                 : 'text-slate-500 hover:text-slate-900'
@@ -2714,7 +2714,7 @@ export default function ProductSelector({
           <button
             type="button"
             onClick={() => handleModeChange('composite')}
-            className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
+            className={`w-full rounded-xl px-4 py-2 text-sm font-bold transition-colors md:w-auto ${
               isCompositeMode
                 ? 'bg-orange-500 text-white shadow-sm'
                 : 'text-slate-500 hover:text-orange-600'
@@ -2731,3 +2731,4 @@ export default function ProductSelector({
     </div>
   );
 }
+

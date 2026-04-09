@@ -441,8 +441,8 @@ export default function HomePageClient() {
 
       {currentStep === 2 && (
         <>
-          <div className="mx-auto grid max-w-6xl gap-6 sm:gap-8 lg:grid-cols-5">
-            <div className="lg:col-span-3">
+          <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 sm:gap-8 lg:grid-cols-5">
+            <div className="min-w-0 lg:col-span-3">
               <ProductSelector
                 onAddToCart={handleAddToCart}
                 cartItems={cartItems}
@@ -451,8 +451,8 @@ export default function HomePageClient() {
               />
             </div>
 
-            <div ref={cartRef} id="cart-section" className="lg:col-span-2">
-              <div className="lg:sticky lg:top-8">
+            <div ref={cartRef} id="cart-section" className="min-w-0 lg:col-span-2">
+              <div className="min-w-0 lg:sticky lg:top-8">
                 <Cart
                   items={cartItems}
                   tvaRate={tvaRate}

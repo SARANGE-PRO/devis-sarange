@@ -17,7 +17,7 @@ export default function AppShell({ title, subtitle, actions = null, children }) 
   const mobileTitle = PAGE_TITLES[pathname] ?? title;
 
   return (
-    <div className="relative min-h-screen bg-slate-50">
+    <div className="relative min-h-screen bg-slate-50 overflow-x-hidden">
       {/* ── Topbar mobile ──────────────────────────────────────────────── */}
       <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm lg:hidden">
         {/* Logo + titre de la page */}
@@ -42,8 +42,8 @@ export default function AppShell({ title, subtitle, actions = null, children }) 
           Mobile  : pt-14 (topbar) + pb-20 (bottom nav)
           Desktop : pl-64              (sidebar)
       */}
-      <main className="min-h-screen pt-14 pb-20 lg:pl-64 lg:pt-0 lg:pb-0">
-        <div className="px-4 py-5 sm:px-6 lg:px-8 lg:py-10">
+      <main className="min-h-screen pt-14 pb-20 lg:pl-64 lg:pt-0 lg:pb-0 overflow-x-hidden">
+        <div className="w-full max-w-full px-4 py-5 sm:px-6 lg:px-8 lg:py-10">
           {/* Page header — desktop seulement (mobile utilise la topbar) */}
           <div className="mb-6 hidden lg:flex lg:flex-row lg:items-start lg:justify-between lg:gap-4">
             <div className="min-w-0">
