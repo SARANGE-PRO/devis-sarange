@@ -207,13 +207,13 @@ export default function ClientForm({ onNext, initialData = null }) {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:p-10">
-        <div className="mb-8 flex items-center gap-3">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 md:p-10">
+        <div className="mb-5 flex items-center gap-3 sm:mb-8">
           <div className="rounded-xl bg-orange-100 p-2.5">
             <User size={22} className="text-orange-600" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Informations client</h1>
+            <h1 className="text-lg font-bold text-slate-900 sm:text-xl">Informations client</h1>
             <p className="text-sm text-slate-500">
               Renseignez les coordonnees du client pour le devis.
             </p>

@@ -86,7 +86,7 @@ export default function Cart({
         </span>
       </div>
 
-      <div className="max-h-[40vh] space-y-3 overflow-y-auto pr-1">
+      <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[40vh]">
         {items.map((item) => {
           const calc = calculateItemPrice(item);
           const compositeCount = getCompositeModuleCount(item.composition, item.modules);

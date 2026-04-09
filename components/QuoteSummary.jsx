@@ -60,10 +60,10 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header section with Client Info */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-6 sm:p-8 bg-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-5 sm:p-8 bg-slate-900 flex flex-col gap-3 sm:flex-row sm:items-center justify-between sm:gap-4">
           <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Récapitulatif du Devis</h2>
-            <p className="text-slate-400 mt-1">Veuillez vérifier les informations ci-dessous avant validation</p>
+            <h2 className="text-xl font-black text-white tracking-tight sm:text-2xl">Récapitulatif du Devis</h2>
+            <p className="text-slate-400 mt-1 text-sm">Vérifiez les informations avant validation</p>
           </div>
           <div className="flex items-center gap-2 bg-slate-800/50 text-white px-4 py-2 rounded-xl backdrop-blur-sm border border-slate-700/50">
             <FileText size={18} className="text-orange-500" />
@@ -71,7 +71,7 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
           </div>
         </div>
 
-        <div className="p-6 sm:p-8 border-b border-slate-100">
+        <div className="p-5 sm:p-8 border-b border-slate-100">
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Informations Client</h3>
           <div className="grid sm:grid-cols-2 gap-6">
             <div className="flex items-start gap-3">
@@ -108,9 +108,141 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
         </div>
 
         {/* Products Table */}
-        <div className="p-6 sm:p-8">
+        <div className="p-5 sm:p-8">
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Détail des Menuiseries</h3>
-          <div className="overflow-x-auto">
+
+          {/* ── Mobile: Card layout ──────────────────────────────── */}
+          <div className="space-y-3 md:hidden">
+            {cartItems.map((item) => {
+              const calc = calculateItemPrice(item);
+              const petitsBoisConfig = getPetitsBoisConfig(item);
+              const pricing = getItemPricingSummary(item, calc);
+              return (
+                <div key={item.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                  <div className="flex gap-3 p-3">
+                    {/* Visual */}
+                    <div className="shrink-0">
+                      {item.productId === 'gestion-dechets' ? (
+                        <div className="w-12 h-12 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center">
+                          <WasteRecycleIcon size={20} className="text-green-600" />
+                        </div>
+                      ) : item.productId === 'custom-product' ? (
+                        <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                          {item.customImage ? (
+                            <img src={item.customImage} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <Package size={20} className="text-slate-300" />
+                          )}
+                        </div>
+                      ) : (
+                        <MenuiserieVisual
+                          sheetName={item.sheetName}
+                          width={item.widthMm}
+                          height={item.heightMm}
+                          options={{
+                            isComposite: item.isComposite,
+                            composition: item.composition,
+                            colorOption: item.colorOption,
+                            glazingId: item.glazingOption?.id,
+                            petitsBoisH: petitsBoisConfig.petitsBoisH,
+                            petitsBoisV: petitsBoisConfig.petitsBoisV,
+                            panneauDecoratif: item.panneauDecoratif,
+                            hasSousBassement: item.hasSousBassement,
+                            sousBassementHeight: item.sousBassementHeight,
+                            sashOptions: item.sashOptions,
+                            productId: item.productId,
+                            openingDirection: item.openingDirection,
+                            svgColor: item.svgColor,
+                          }}
+                          className="w-12 h-12 shrink-0 bg-white border-slate-100 p-0.5"
+                        />
+                      )}
+                    </div>
+
+                    {/* Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-bold text-slate-900 text-sm truncate flex items-center gap-1.5">
+                          {item.productId === 'gestion-dechets' && <WasteRecycleIcon size={12} className="text-green-500 shrink-0" />}
+                          <span className="truncate">{item.productLabel}</span>
+                          {item.repere && (
+                            <span className="italic text-slate-400 text-[10px] shrink-0">{item.repere}</span>
+                          )}
+                        </p>
+                        <p className="shrink-0 font-black text-slate-900 text-sm">{calc.totalLine.toFixed(2)} €</p>
+                      </div>
+
+                      {/* Dimensions + Qty */}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                        {item.productId !== 'gestion-dechets' && item.productId !== 'custom-product' && (
+                          <span className="bg-slate-100 rounded px-1.5 py-0.5 font-semibold text-slate-600">L{item.widthMm} × H{item.heightMm}</span>
+                        )}
+                        <span>Qté : <strong>{item.quantity}</strong></span>
+                        <span>PU : {calc.unitPriceAfterDiscount.toFixed(2)} €</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Designation — editable */}
+                  {item.productId !== 'gestion-dechets' && (
+                    <div className="border-t border-slate-100 px-3 py-2 group">
+                      {editingDesignationId === item.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={tempDesignation}
+                            onChange={(e) => setTempDesignation(e.target.value)}
+                            className="w-full text-[11px] text-slate-600 bg-white border border-orange-500 rounded-lg p-2 outline-none min-h-[80px] leading-relaxed"
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingDesignationId(null)}
+                              className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100 rounded"
+                            >Annuler</button>
+                            <button
+                              onClick={() => handleSaveEdit(item)}
+                              className="px-2 py-1 text-[10px] font-bold bg-orange-500 text-white hover:bg-orange-600 rounded flex items-center gap-1"
+                            ><Check size={10} />Valider</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2">
+                          <p className="flex-1 text-[10px] text-slate-500 leading-relaxed line-clamp-2 italic">
+                            {item.customDescription || generateDesignation(item, calc, pricing) || '...'}
+                          </p>
+                          <button
+                            onClick={() => handleStartEdit(item)}
+                            className="shrink-0 p-1 text-slate-400 hover:text-orange-500 rounded"
+                          ><Pencil size={11} /></button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Pose sub-row */}
+                  {item.includePose && (
+                    <div className="flex justify-between items-center border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                      <span className="font-semibold text-slate-600">Pose × {item.quantity}</span>
+                      <span className="font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
+                    </div>
+                  )}
+
+                  {/* Option badges */}
+                  <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                    {item.colorOption?.id !== 'blanc' && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 rounded text-slate-500">{item.colorOption?.label}</span>
+                    )}
+                    {item.remise > 0 && (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">-{item.remise}%</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ── Desktop: Table layout ────────────────────────────── */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b-2 border-slate-100">
@@ -122,7 +254,7 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cartItems.map((item, index) => {
+                {cartItems.map((item) => {
                   const calc = calculateItemPrice(item);
                   const petitsBoisConfig = getPetitsBoisConfig(item);
                   return (
@@ -304,7 +436,7 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
         </div>
 
         {/* TVA Selection & Totals Section */}
-        <div className="bg-slate-50 p-6 sm:p-8 border-t border-slate-100 flex flex-col lg:flex-row gap-8">
+        <div className="bg-slate-50 p-5 sm:p-8 border-t border-slate-100 flex flex-col lg:flex-row gap-6 sm:gap-8">
           {/* TVA Selector */}
           <div className="flex-1 space-y-4">
             <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Type de TVA</h4>
@@ -387,7 +519,7 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
       </div>
 
       {/* Action Buttons */}
-      <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-4">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <button
           onClick={onGoBack}
           className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm hover:shadow hover:bg-slate-50 transition-all font-bold"

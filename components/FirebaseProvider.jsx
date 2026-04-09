@@ -41,6 +41,8 @@ const formatFirebaseError = (error) => {
       return 'La fenetre Google a ete fermee avant la fin de la connexion.';
     case 'auth/too-many-requests':
       return 'Trop de tentatives. Reessayez un peu plus tard.';
+    case 'auth/unauthorized-domain':
+      return 'Ce domaine n\'est pas autorisé. Ajoutez votre hébergeur dans Firebase (Authentication > Settings > Authorized domains) ET Google Cloud (Restrictions des ID clients OAuth).';
     default:
       return error?.message || 'Une erreur Firebase est survenue.';
   }
@@ -96,6 +98,7 @@ export function FirebaseProvider({ children }) {
           provider.setCustomParameters({ prompt: 'select_account' });
           return await signInWithPopup(auth, provider);
         } catch (error) {
+          console.error("Firebase Google Auth Error:", error);
           throw new Error(formatFirebaseError(error));
         }
       },

@@ -1310,26 +1310,26 @@ export default function ProductSelector({
 
   const simpleModeContent = (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 bg-slate-50/70 p-6">
-        <label className="mb-4 block text-xs font-black uppercase tracking-widest text-slate-400">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-4 sm:p-6">
+        <label className="mb-3 block text-xs font-black uppercase tracking-widest text-slate-400 sm:mb-4">
           Choix du produit
         </label>
 
-        <div className="mb-5 flex flex-wrap gap-2">
+        <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 pb-2 sm:mb-5 sm:flex-wrap sm:overflow-visible sm:pb-0">
           {CATEGORIES.map((entry) => {
             const Icon = ICONS[entry.icon];
             return (
               <button
                 key={entry.id}
                 onClick={() => handleCategoryChange(entry.id)}
-                className={`flex items-center gap-2.5 rounded-xl px-5 py-3 text-sm font-bold transition-all ${
+                className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all sm:gap-2.5 sm:px-5 sm:py-3 ${
                   selectedCategory === entry.id
                     ? 'bg-slate-900 text-white shadow-lg'
                     : 'border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                {Icon && <Icon size={18} />}
-                <span>{entry.label}</span>
+                {Icon && <Icon size={16} className="sm:h-[18px] sm:w-[18px]" />}
+                <span className="whitespace-nowrap">{entry.label}</span>
               </button>
             );
           })}
@@ -1340,14 +1340,14 @@ export default function ProductSelector({
             <button
               key={entry.id}
               onClick={() => handleProductChange(entry.id)}
-              className={`group flex min-h-[8rem] flex-col items-center justify-between rounded-2xl border-2 p-4 text-center text-sm font-bold transition-all ${
+              className={`group flex min-h-[6rem] flex-col items-center justify-between rounded-2xl border-2 p-3 text-center text-sm font-bold transition-all sm:min-h-[8rem] sm:p-4 ${
                 selectedProduct === entry.id
                   ? 'border-orange-500 bg-orange-50 text-orange-700 shadow-md'
                   : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
               {!entry.id.includes('gestion-dechets') && !entry.id.includes('custom') && (
-                <div className="mb-3 h-16 w-16 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105">
+                <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
                   <MenuiserieVisual
                     sheetName={entry.sheet}
                     width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
@@ -1364,7 +1364,7 @@ export default function ProductSelector({
       </div>
 
       {product && !isWasteManagement && !isCustomProduct && (
-        <div className="border-b border-slate-100 px-6 pt-6">
+        <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           <MenuiserieVisual
             sheetName={product.sheet}
             width={simpleConfig.widthMm || (workingIsPorte ? 900 : 1200)}
@@ -1382,13 +1382,13 @@ export default function ProductSelector({
               productId: product.id,
               svgColor: simpleMarketing.svgColor,
             }}
-            className="h-72 sm:h-80"
+            className="h-48 sm:h-72 md:h-80"
           />
         </div>
       )}
 
       {product && !isWasteManagement && (
-        <div className="border-b border-slate-100 bg-orange-50/30 p-6">
+        <div className="border-b border-slate-100 bg-orange-50/30 p-4 sm:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
             Repere (ex : SDB, Chambre 1, Cuisine)
           </label>
@@ -1403,7 +1403,7 @@ export default function ProductSelector({
       )}
 
       {isWasteManagement && (
-        <div className="p-8 text-center">
+        <div className="p-5 text-center sm:p-8">
           <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-green-50">
             <WasteRecycleIcon size={48} className="text-green-600" />
           </div>
@@ -1416,7 +1416,7 @@ export default function ProductSelector({
       )}
 
       {isCustomProduct && (
-        <div className="grid gap-6 p-6 md:grid-cols-2">
+        <div className="grid gap-5 p-4 sm:gap-6 sm:p-6 md:grid-cols-2">
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">

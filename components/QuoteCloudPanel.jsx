@@ -24,8 +24,8 @@ export default function QuoteCloudPanel({
   quoteLoadError,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <div className="rounded-xl bg-orange-100 p-2 text-orange-600">
@@ -38,7 +38,7 @@ export default function QuoteCloudPanel({
               <h3 className="text-lg font-bold text-slate-900">Sauvegarde cloud</h3>
             </div>
           </div>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="hidden text-sm text-slate-500 sm:mt-2 sm:block">
             Le PDF enregistre aussi automatiquement votre devis dans Firebase pour le reprendre depuis n&apos;importe ou.
           </p>
         </div>
@@ -49,7 +49,7 @@ export default function QuoteCloudPanel({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-600"
           >
             <FolderOpen size={16} />
-            Mes devis
+            <span className="hidden sm:inline">Mes devis</span>
           </Link>
           <button
             type="button"
@@ -57,7 +57,7 @@ export default function QuoteCloudPanel({
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-100"
           >
             <RefreshCw size={16} />
-            Nouveau
+            <span className="hidden sm:inline">Nouveau</span>
           </button>
         </div>
       </div>

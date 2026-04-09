@@ -1,19 +1,20 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ClientForm from '@/components/ClientForm';
 import ProductSelector from '@/components/ProductSelector';
 import Cart from '@/components/Cart';
 import QuoteSummary from '@/components/QuoteSummary';
 import AppShell from '@/components/AppShell';
-import QuoteCloudPanel from '@/components/QuoteCloudPanel';
+
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { hasMeaningfulClientData } from '@/lib/client-cloud';
 import { getClientById, saveClientProfile } from '@/lib/firebase/clients';
+import { calculateItemPrice } from '@/lib/products';
 import { generateQuotePDF } from '@/lib/pdf-generator';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
-import { ArrowLeft, FileDown, FileText, ShoppingCart, User } from 'lucide-react';
+import { ArrowLeft, CloudUpload, FileDown, FileText, Loader2, ShoppingCart, User } from 'lucide-react';
 
 const STEPS = [
   { number: 1, label: 'Client', icon: User },
@@ -36,13 +37,40 @@ export default function HomePageClient() {
   const [tvaRate, setTvaRate] = useState(DEFAULT_TVA_RATE);
   const [editingItem, setEditingItem] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
-  const [quoteTitle, setQuoteTitle] = useState('');
-  const [lastSavedAt, setLastSavedAt] = useState(null);
   const [isSavingQuote, setIsSavingQuote] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [saveError, setSaveError] = useState('');
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteLoadError, setQuoteLoadError] = useState('');
+  const cartRef = useRef(null);
+  const [cartVisible, setCartVisible] = useState(true);
+
+  // Floating cart bar totals
+  const cartBarTotals = useMemo(() => {
+    let totalHT = 0;
+    cartItems.forEach((item) => {
+      const calc = calculateItemPrice(item);
+      totalHT += calc.totalLine;
+      if (item.includePose) totalHT += calc.posePrice * item.quantity;
+    });
+    const totalTTC = Math.round(totalHT * (1 + tvaRate / 100) * 100) / 100;
+    return { totalHT: Math.round(totalHT * 100) / 100, totalTTC };
+  }, [cartItems, tvaRate]);
+
+  // Observe cart visibility for floating bar
+  useEffect(() => {
+    if (!cartRef.current) return undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => setCartVisible(entry.isIntersecting),
+      { threshold: 0.1 }
+    );
+    observer.observe(cartRef.current);
+    return () => observer.disconnect();
+  }, [currentStep]);
+
+  const scrollToCart = () => {
+    cartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const requestedQuoteId = searchParams.get('quote');
   const requestedClientId = searchParams.get('client');
@@ -55,8 +83,6 @@ export default function HomePageClient() {
     setTvaRate(DEFAULT_TVA_RATE);
     setEditingItem(null);
     setActiveQuoteId(null);
-    setQuoteTitle('');
-    setLastSavedAt(null);
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
@@ -76,10 +102,6 @@ export default function HomePageClient() {
     );
     setEditingItem(null);
     setActiveQuoteId(quote.id);
-    setQuoteTitle(quote.title || '');
-    setLastSavedAt(
-      typeof quote.updatedAt?.toDate === 'function' ? quote.updatedAt.toDate() : quote.updatedAt
-    );
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
@@ -278,7 +300,7 @@ export default function HomePageClient() {
       const savedQuote = await saveQuoteDraft({
         userId: user.uid,
         quoteId: activeQuoteId,
-        title: quoteTitle,
+        title: undefined,
         clientData: nextClientData,
         cartItems,
         tvaRate,
@@ -286,12 +308,6 @@ export default function HomePageClient() {
       });
 
       setActiveQuoteId(savedQuote.id);
-      setQuoteTitle(savedQuote.title || quoteTitle);
-      setLastSavedAt(
-        typeof savedQuote.updatedAt?.toDate === 'function'
-          ? savedQuote.updatedAt.toDate()
-          : savedQuote.updatedAt
-      );
 
       if (origin === 'pdf') {
         setSaveMessage(
@@ -333,40 +349,54 @@ export default function HomePageClient() {
     await generateQuotePDF(clientData, cartItems, tvaRate);
   };
 
-  const backButton =
-    currentStep > 1 ? (
-      <button
-        onClick={handleGoBack}
-        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
-      >
-        <ArrowLeft size={14} />
-        Retour
-      </button>
-    ) : null;
+  const headerActions = (
+    <div className="flex items-center gap-2">
+      {firebaseConfigured && user && canSaveCloudQuote && (
+        <button
+          onClick={() => void handleSaveQuote()}
+          disabled={isSavingQuote}
+          className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Enregistrer le brouillon"
+        >
+          {isSavingQuote ? (
+            <Loader2 size={16} className="animate-spin text-orange-500" />
+          ) : (
+            <CloudUpload size={16} className={saveMessage ? 'text-green-500' : ''} />
+          )}
+          <span className="hidden sm:inline">
+            {isSavingQuote ? '...' : saveMessage ? 'Enregistre' : 'Enregistrer'}
+          </span>
+        </button>
+      )}
+      {currentStep > 1 && (
+        <button
+          onClick={handleGoBack}
+          className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
+        >
+          <ArrowLeft size={16} />
+          <span className="hidden sm:inline">Retour</span>
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <AppShell
       title="Nouveau Devis"
-      subtitle="Creez un devis professionnel, sauvegarde localement et dans votre espace cloud."
-      actions={backButton}
+      actions={headerActions}
     >
-      {(currentStep > 1 || clientData || cartItems.length > 0 || activeQuoteId || quoteLoadError) && (
-        <div className="mx-auto mb-8 max-w-6xl">
-          <QuoteCloudPanel
-            user={user}
-            authInitializing={authInitializing}
-            quoteTitle={quoteTitle}
-            onQuoteTitleChange={setQuoteTitle}
-            onSave={() => void handleSaveQuote()}
-            onStartNew={resetQuoteState}
-            activeQuoteId={activeQuoteId}
-            isSaving={isSavingQuote}
-            canSave={canSaveCloudQuote}
-            saveMessage={saveMessage}
-            saveError={saveError}
-            lastSavedAt={lastSavedAt}
-            quoteLoadError={quoteLoadError}
-          />
+      {(quoteLoadError || saveError || (saveMessage && isSavingQuote === false)) && (
+        <div className="mx-auto mb-4 max-w-3xl px-4 sm:px-0">
+          {quoteLoadError && (
+            <div className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-600 border border-red-100">
+              {quoteLoadError}
+            </div>
+          )}
+          {saveError && !quoteLoadError && (
+            <div className="rounded-xl bg-orange-50 p-3 text-sm font-semibold text-orange-600 border border-orange-100">
+              {saveError}
+            </div>
+          )}
         </div>
       )}
 
@@ -376,16 +406,16 @@ export default function HomePageClient() {
         </div>
       )}
 
-      <div className="mx-auto mb-8 flex max-w-3xl items-center gap-2">
+      <div className="mx-auto mb-5 flex max-w-3xl items-center justify-center gap-1 sm:mb-8 sm:gap-2">
         {STEPS.map((step, index) => {
           const Icon = step.icon;
           const isActive = step.number === currentStep;
           const isCompleted = step.number < currentStep;
 
           return (
-            <div key={step.number} className="flex items-center gap-2">
+            <div key={step.number} className="flex items-center gap-1 sm:gap-2">
               <div
-                className={`flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition-all ${
+                className={`flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all sm:gap-2 sm:px-4 ${
                   isActive
                     ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30'
                     : isCompleted
@@ -400,7 +430,7 @@ export default function HomePageClient() {
                 <span className="hidden sm:inline">{step.label}</span>
               </div>
               {index < STEPS.length - 1 && (
-                <div className={`h-px w-6 ${isCompleted ? 'bg-green-300' : 'bg-slate-200'}`} />
+                <div className={`h-px w-3 sm:w-6 ${isCompleted ? 'bg-green-300' : 'bg-slate-200'}`} />
               )}
             </div>
           );
@@ -410,32 +440,62 @@ export default function HomePageClient() {
       {currentStep === 1 && <ClientForm onNext={handleClientNext} initialData={clientData} />}
 
       {currentStep === 2 && (
-        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-5">
-          <div className="lg:col-span-3">
-            <ProductSelector
-              onAddToCart={handleAddToCart}
-              cartItems={cartItems}
-              editingItem={editingItem}
-              onCancelEdit={() => setEditingItem(null)}
-            />
-          </div>
-
-          <div className="lg:col-span-2">
-            <div className="lg:sticky lg:top-8">
-              <Cart
-                items={cartItems}
-                tvaRate={tvaRate}
-                setTvaRate={setTvaRate}
-                onRemove={handleRemoveFromCart}
-                onDuplicate={handleDuplicateItem}
-                onEdit={handleEditItem}
-                onUpdateQuantity={handleUpdateQuantity}
-                onNext={() => setCurrentStep(3)}
-                editingItemId={editingItem?.id}
+        <>
+          <div className="mx-auto grid max-w-6xl gap-6 sm:gap-8 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <ProductSelector
+                onAddToCart={handleAddToCart}
+                cartItems={cartItems}
+                editingItem={editingItem}
+                onCancelEdit={() => setEditingItem(null)}
               />
             </div>
+
+            <div ref={cartRef} id="cart-section" className="lg:col-span-2">
+              <div className="lg:sticky lg:top-8">
+                <Cart
+                  items={cartItems}
+                  tvaRate={tvaRate}
+                  setTvaRate={setTvaRate}
+                  onRemove={handleRemoveFromCart}
+                  onDuplicate={handleDuplicateItem}
+                  onEdit={handleEditItem}
+                  onUpdateQuantity={handleUpdateQuantity}
+                  onNext={() => setCurrentStep(3)}
+                  editingItemId={editingItem?.id}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+
+          {/* Floating cart bar — mobile only, when cart is scrolled out of view */}
+          {cartItems.length > 0 && !cartVisible && (
+            <div className="fixed bottom-16 left-0 right-0 z-30 px-3 lg:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+              <button
+                type="button"
+                onClick={scrollToCart}
+                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-xl shadow-slate-900/10"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500 text-white">
+                    <ShoppingCart size={16} />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-slate-900">
+                      {cartItems.length} article{cartItems.length > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {cartBarTotals.totalTTC.toFixed(2)} € TTC
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-xl bg-orange-500 px-4 py-2 text-xs font-bold text-white">
+                  Voir panier
+                </span>
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {currentStep === 3 && (
@@ -454,28 +514,29 @@ export default function HomePageClient() {
       )}
 
       {currentStep === 4 && (
-        <div className="mx-auto max-w-3xl animate-in py-20 text-center zoom-in duration-500">
-          <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-green-100 text-green-600 shadow-xl shadow-green-500/20">
-            <FileDown size={48} />
+        <div className="mx-auto max-w-3xl animate-in px-1 py-10 text-center zoom-in duration-500 sm:py-20">
+          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600 shadow-xl shadow-green-500/20 sm:mb-6 sm:h-24 sm:w-24">
+            <FileDown size={40} className="sm:hidden" />
+            <FileDown size={48} className="hidden sm:block" />
           </div>
-          <h3 className="mb-3 text-3xl font-black tracking-tight text-slate-900">
-            C&apos;est pret !
+          <h3 className="mb-2 text-2xl font-black tracking-tight text-slate-900 sm:mb-3 sm:text-3xl">
+            C&apos;est prêt !
           </h3>
-          <p className="mx-auto mb-10 max-w-md text-lg text-slate-500">
-            Votre devis professionnel a ete genere avec toutes les mentions legales et CGV.
+          <p className="mx-auto mb-8 max-w-md text-base text-slate-500 sm:mb-10 sm:text-lg">
+            Votre devis professionnel a été généré avec toutes les mentions légales et CGV.
           </p>
 
-          <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
             <button
               onClick={() => void handleGeneratePdf()}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-orange-500 px-10 py-4 font-black text-white shadow-xl shadow-orange-500/40 transition-all duration-300 hover:-translate-y-1 hover:bg-orange-600 sm:w-auto"
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-orange-500 px-8 py-4 text-sm font-black text-white shadow-xl shadow-orange-500/40 transition-all duration-300 hover:-translate-y-1 hover:bg-orange-600 sm:w-auto sm:rounded-full sm:px-10"
             >
               <FileDown size={20} />
-              Telecharger a nouveau
+              Télécharger à nouveau
             </button>
             <button
               onClick={resetQuoteState}
-              className="w-full rounded-full border-2 border-slate-100 bg-white px-10 py-4 font-bold text-slate-600 transition-all hover:bg-slate-50 sm:w-auto"
+              className="w-full rounded-2xl border-2 border-slate-100 bg-white px-8 py-4 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50 sm:w-auto sm:rounded-full sm:px-10"
             >
               Nouveau devis
             </button>
@@ -483,9 +544,9 @@ export default function HomePageClient() {
 
           <button
             onClick={() => setCurrentStep(3)}
-            className="mt-12 text-sm font-bold text-slate-400 transition-colors hover:text-slate-600"
+            className="mt-8 text-sm font-bold text-slate-400 transition-colors hover:text-slate-600 sm:mt-12"
           >
-            Retour au recapitulatif
+            Retour au récapitulatif
           </button>
         </div>
       )}
