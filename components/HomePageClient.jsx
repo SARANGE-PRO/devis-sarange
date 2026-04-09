@@ -14,13 +14,12 @@ import { getClientById, saveClientProfile } from '@/lib/firebase/clients';
 import { calculateItemPrice } from '@/lib/products';
 import { generateQuotePDF } from '@/lib/pdf-generator';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
-import { ArrowLeft, CloudUpload, FileDown, FileText, Loader2, ShoppingCart, User } from 'lucide-react';
+import { ArrowLeft, CloudUpload, FileText, Loader2, ShoppingCart, User } from 'lucide-react';
 
 const STEPS = [
   { number: 1, label: 'Client', icon: User },
   { number: 2, label: 'Produits', icon: ShoppingCart },
   { number: 3, label: 'Recapitulatif', icon: FileText },
-  { number: 4, label: 'PDF', icon: FileDown },
 ];
 
 const DEFAULT_TVA_RATE = 10;
@@ -42,6 +41,7 @@ export default function HomePageClient() {
   const [saveError, setSaveError] = useState('');
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteLoadError, setQuoteLoadError] = useState('');
+  const [pdfGenerated, setPdfGenerated] = useState(false);
   const cartRef = useRef(null);
   const [cartVisible, setCartVisible] = useState(true);
 
@@ -86,6 +86,7 @@ export default function HomePageClient() {
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
+    setPdfGenerated(false);
     router.replace('/');
   };
 
@@ -97,14 +98,16 @@ export default function HomePageClient() {
     setTvaRate(
       Number.isFinite(Number(payload.tvaRate)) ? Number(payload.tvaRate) : DEFAULT_TVA_RATE
     );
-    setCurrentStep(
-      Number.isFinite(Number(payload.currentStep)) ? Number(payload.currentStep) : 2
-    );
+    const nextStep = Number.isFinite(Number(payload.currentStep))
+      ? Number(payload.currentStep)
+      : 2;
+    setCurrentStep(Math.min(3, Math.max(1, nextStep)));
     setEditingItem(null);
     setActiveQuoteId(quote.id);
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
+    setPdfGenerated(false);
   };
 
   useEffect(() => {
@@ -223,6 +226,7 @@ export default function HomePageClient() {
     });
     setEditingItem(null);
     setSaveMessage('');
+    setPdfGenerated(false);
   };
 
   const handleDuplicateItem = (itemId) => {
@@ -236,6 +240,7 @@ export default function HomePageClient() {
 
     setCartItems((prev) => [...prev, newItem]);
     setSaveMessage('');
+    setPdfGenerated(false);
   };
 
   const handleEditItem = (itemId) => {
@@ -247,6 +252,7 @@ export default function HomePageClient() {
   const handleRemoveFromCart = (itemId) => {
     setCartItems((prev) => prev.filter((item) => item.id !== itemId));
     setSaveMessage('');
+    setPdfGenerated(false);
   };
 
   const handleUpdateQuantity = (itemId, newQty) => {
@@ -254,6 +260,7 @@ export default function HomePageClient() {
       prev.map((item) => (item.id === itemId ? { ...item, quantity: newQty } : item))
     );
     setSaveMessage('');
+    setPdfGenerated(false);
   };
 
   const handleGoBack = () => {
@@ -304,7 +311,7 @@ export default function HomePageClient() {
         clientData: nextClientData,
         cartItems,
         tvaRate,
-        currentStep: origin === 'pdf' ? 4 : currentStep,
+        currentStep: origin === 'pdf' ? 3 : currentStep,
       });
 
       setActiveQuoteId(savedQuote.id);
@@ -347,6 +354,7 @@ export default function HomePageClient() {
     }
 
     await generateQuotePDF(clientData, cartItems, tvaRate);
+    setPdfGenerated(true);
   };
 
   const headerActions = (
@@ -442,7 +450,16 @@ export default function HomePageClient() {
       {currentStep === 2 && (
         <>
           <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 sm:gap-8 lg:grid-cols-5">
-            <div className="min-w-0 lg:col-span-3">
+            {editingItem && (
+              <div className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" />
+            )}
+            <div
+              className={`min-w-0 lg:col-span-3 ${
+                editingItem
+                  ? 'fixed inset-0 z-50 overflow-y-auto bg-white px-4 pb-6 pt-16 lg:static lg:z-auto lg:bg-transparent lg:px-0 lg:pb-0 lg:pt-0'
+                  : ''
+              }`}
+            >
               <ProductSelector
                 onAddToCart={handleAddToCart}
                 cartItems={cartItems}
@@ -506,50 +523,15 @@ export default function HomePageClient() {
           setTvaRate={setTvaRate}
           onGoBack={() => setCurrentStep(2)}
           onUpdateItem={handleAddToCart}
-          onNext={() => {
-            setCurrentStep(4);
-            void handleGeneratePdf();
-          }}
+          onGeneratePdf={() => void handleGeneratePdf()}
+          onDownloadAgain={() => void handleGeneratePdf()}
+          pdfGenerated={pdfGenerated}
         />
-      )}
-
-      {currentStep === 4 && (
-        <div className="mx-auto max-w-3xl animate-in px-1 py-10 text-center zoom-in duration-500 sm:py-20">
-          <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-600 shadow-xl shadow-green-500/20 sm:mb-6 sm:h-24 sm:w-24">
-            <FileDown size={40} className="sm:hidden" />
-            <FileDown size={48} className="hidden sm:block" />
-          </div>
-          <h3 className="mb-2 text-2xl font-black tracking-tight text-slate-900 sm:mb-3 sm:text-3xl">
-            C&apos;est prêt !
-          </h3>
-          <p className="mx-auto mb-8 max-w-md text-base text-slate-500 sm:mb-10 sm:text-lg">
-            Votre devis professionnel a été généré avec toutes les mentions légales et CGV.
-          </p>
-
-          <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-            <button
-              onClick={() => void handleGeneratePdf()}
-              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-orange-500 px-8 py-4 text-sm font-black text-white shadow-xl shadow-orange-500/40 transition-all duration-300 hover:-translate-y-1 hover:bg-orange-600 sm:w-auto sm:rounded-full sm:px-10"
-            >
-              <FileDown size={20} />
-              Télécharger à nouveau
-            </button>
-            <button
-              onClick={resetQuoteState}
-              className="w-full rounded-2xl border-2 border-slate-100 bg-white px-8 py-4 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50 sm:w-auto sm:rounded-full sm:px-10"
-            >
-              Nouveau devis
-            </button>
-          </div>
-
-          <button
-            onClick={() => setCurrentStep(3)}
-            className="mt-8 text-sm font-bold text-slate-400 transition-colors hover:text-slate-600 sm:mt-12"
-          >
-            Retour au récapitulatif
-          </button>
-        </div>
       )}
     </AppShell>
   );
 }
+
+
+
+

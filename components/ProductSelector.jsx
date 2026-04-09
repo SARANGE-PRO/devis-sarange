@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
   ArrowLeftRight,
+  ChevronDown,
   DoorOpen,
   DoorClosed,
   Blinds,
@@ -1512,297 +1513,322 @@ export default function ProductSelector({
 
       {product && !isWasteManagement && !isCustomProduct && (
         <div className="space-y-6 p-4 md:p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Largeur (mm)
-              </label>
-              <input
-                type="number"
-                min={1}
-                {...NUMERIC_INPUT_PROPS}
-                value={simpleConfig.widthMm}
-                onChange={(event) => updateSimpleOptions({ widthMm: event.target.value })}
-                placeholder="Ex : 1200"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              />
+          <details open className="group rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+              Dimensions
+              <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Largeur (mm)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  {...NUMERIC_INPUT_PROPS}
+                  value={simpleConfig.widthMm}
+                  onChange={(event) => updateSimpleOptions({ widthMm: event.target.value })}
+                  placeholder="Ex : 1200"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Hauteur (mm)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  {...NUMERIC_INPUT_PROPS}
+                  value={simpleConfig.heightMm}
+                  onChange={(event) => updateSimpleOptions({ heightMm: event.target.value })}
+                  placeholder="Ex : 1250"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+              </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Hauteur (mm)
-              </label>
-              <input
-                type="number"
-                min={1}
-                {...NUMERIC_INPUT_PROPS}
-                value={simpleConfig.heightMm}
-                onChange={(event) => updateSimpleOptions({ heightMm: event.target.value })}
-                placeholder="Ex : 1250"
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              />
-            </div>
-          </div>
+          </details>
 
-          {buildColorOptionsFields({
-            value: simpleConfig.colorOptionId,
-            colorState: simpleConfig.rawColorState,
-            onColorChange: (value) => updateSimpleOptions({ colorOptionId: value }),
-            onColorStateChange: (patch) =>
-              updateSimpleOptions({
-                rawColorState: {
-                  ...simpleConfig.rawColorState,
-                  ...patch,
-                },
-              }),
-            availableOptions: workingColorOptions,
-          })}
+          <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+              Coloration
+              <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-4">
+              {buildColorOptionsFields({
+                value: simpleConfig.colorOptionId,
+                colorState: simpleConfig.rawColorState,
+                onColorChange: (value) => updateSimpleOptions({ colorOptionId: value }),
+                onColorStateChange: (patch) =>
+                  updateSimpleOptions({
+                    rawColorState: {
+                      ...simpleConfig.rawColorState,
+                      ...patch,
+                    },
+                  }),
+                availableOptions: workingColorOptions,
+              })}
+            </div>
+          </details>
 
           {workingIsGlazed && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
                 Vitrage / remplissage
-              </label>
-              <select
-                value={simpleConfig.glazingId}
-                onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              >
-                {simpleFillingMeta.options.map(({ glazing, pricing }) => (
-                  <option key={glazing.id} value={glazing.id}>
-                    {formatFillingOptionLabel(glazing, pricing)}
-                  </option>
-                ))}
-              </select>
-              {simpleSelectedGlazing && (
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-sm font-bold text-slate-800">
-                    {simpleSelectedGlazing.label}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {getFillingOptionDetails(
-                      simpleSelectedGlazing,
-                      simpleFillingMeta.selectedPricing
-                    )}
-                  </p>
-                  {simpleConfig.hasSousBassement &&
-                    getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
-                      <p className="mt-2 text-xs font-semibold text-slate-500">
-                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
-                      </p>
-                    )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {!workingIsVolet && (
-            <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div>
-                <label className="block text-xs font-black uppercase tracking-widest text-slate-400">
-                  Options & Accessoires
-                </label>
-                <p className="mt-1 text-sm text-slate-500">
-                  Regroupez ici les accessoires, le soubassement et le sens d&apos;ouverture.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Grid3X3 size={14} className="text-slate-400" />
-                    Petits bois
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Barres horizontales
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        {...NUMERIC_INPUT_PROPS}
-                        value={simpleConfig.petitsBoisH}
-                        onChange={(event) =>
-                          updateSimpleOptions({
-                            petitsBoisH: normalizePetitsBoisValue(event.target.value),
-                          })
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Barres verticales
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        {...NUMERIC_INPUT_PROPS}
-                        value={simpleConfig.petitsBoisV}
-                        onChange={(event) =>
-                          updateSimpleOptions({
-                            petitsBoisV: normalizePetitsBoisValue(event.target.value),
-                          })
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Sens d&apos;ouverture
-                  </label>
-                  <select
-                    value={simpleConfig.openingDirection}
-                    onChange={(event) =>
-                      updateSimpleOptions({ openingDirection: event.target.value })
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="inverse">Inverse</option>
-                  </select>
-                </div>
-
-                {workingIsPorte ? (
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={simpleConfig.panneauDecoratif}
-                      onChange={(event) =>
-                        updateSimpleOptions({ panneauDecoratif: event.target.checked })
-                      }
-                      className="h-4 w-4 accent-orange-500"
-                    />
-                    Panneau decoratif
-                  </label>
-                ) : (
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={simpleConfig.hasLockingHandle}
-                      onChange={(event) =>
-                        updateSimpleOptions({ hasLockingHandle: event.target.checked })
-                      }
-                      className="h-4 w-4 accent-orange-500"
-                    />
-                    Poignee Schuco verrouillable a cle
-                  </label>
-                )}
-
-                <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
-                  <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={simpleConfig.hasSousBassement}
-                      onChange={(event) =>
-                        updateSimpleOptions({ hasSousBassement: event.target.checked })
-                      }
-                      className="h-4 w-4 accent-orange-500"
-                    />
-                    Sous-bassement
-                  </label>
-
-                  {simpleConfig.hasSousBassement && (
-                    <div className="mt-4 space-y-3">
-                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <span>Hauteur visible</span>
-                        <span>{simpleConfig.sousBassementHeight} mm</span>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
-                        <input
-                          type="range"
-                          min={100}
-                          max={Math.max(
-                            100,
-                            parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                          )}
-                          step={10}
-                          value={simpleConfig.sousBassementHeight}
-                          onChange={(event) =>
-                            updateSimpleOptions({
-                              sousBassementHeight: Number.parseInt(
-                                event.target.value,
-                                10
-                              ),
-                            })
-                          }
-                          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
-                        />
-                        <input
-                          type="number"
-                          min={100}
-                          max={Math.max(
-                            100,
-                            parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                          )}
-                          step={10}
-                          {...NUMERIC_INPUT_PROPS}
-                          value={simpleConfig.sousBassementHeight}
-                          onChange={(event) =>
-                            updateSimpleOptions({
-                              sousBassementHeight: Math.max(
-                                100,
-                                Number.parseInt(event.target.value, 10) || 100
-                              ),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                        />
-                      </div>
-                      {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
-                        <p className="text-xs font-semibold text-slate-500">
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4">
+                <select
+                  value={simpleConfig.glazingId}
+                  onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                >
+                  {simpleFillingMeta.options.map(({ glazing, pricing }) => (
+                    <option key={glazing.id} value={glazing.id}>
+                      {formatFillingOptionLabel(glazing, pricing)}
+                    </option>
+                  ))}
+                </select>
+                {simpleSelectedGlazing && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-800">
+                      {simpleSelectedGlazing.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {getFillingOptionDetails(
+                        simpleSelectedGlazing,
+                        simpleFillingMeta.selectedPricing
+                      )}
+                    </p>
+                    {simpleConfig.hasSousBassement &&
+                      getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                        <p className="mt-2 text-xs font-semibold text-slate-500">
                           {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
                         </p>
                       )}
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            </div>
+            </details>
           )}
 
-          {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
-            <div className="space-y-4">
-              <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                Options par vantail
-              </label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {Array.from({ length: workingSashCount }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                  >
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Vantail {index + 1}
-                    </p>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+          {!workingIsVolet && (
+            <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                Options & Accessoires
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4 space-y-6">
+                <div>
+                  <p className="text-sm text-slate-500">
+                    Regroupez ici les accessoires, le soubassement et le sens d&apos;ouverture.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Grid3X3 size={14} className="text-slate-400" />
+                      Petits bois
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres horizontales
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={Boolean(simpleConfig.sashOptions[index]?.ob)}
-                          onChange={() => updateWorkingSashOption(index, 'ob')}
-                          className="accent-orange-500"
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={simpleConfig.petitsBoisH}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              petitsBoisH: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                         />
-                        Oscillo-battant
-                      </label>
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres verticales
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={Boolean(simpleConfig.sashOptions[index]?.vent)}
-                          onChange={() => updateWorkingSashOption(index, 'vent')}
-                          className="accent-orange-500"
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={simpleConfig.petitsBoisV}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              petitsBoisV: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                         />
-                        Grille de ventilation
-                      </label>
+                      </div>
                     </div>
                   </div>
-                ))}
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Sens d&apos;ouverture
+                    </label>
+                    <select
+                      value={simpleConfig.openingDirection}
+                      onChange={(event) =>
+                        updateSimpleOptions({ openingDirection: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    >
+                      <option value="standard">Standard</option>
+                      <option value="inverse">Inverse</option>
+                    </select>
+                  </div>
+
+                  {workingIsPorte ? (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.panneauDecoratif}
+                        onChange={(event) =>
+                          updateSimpleOptions({ panneauDecoratif: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Panneau decoratif
+                    </label>
+                  ) : (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.hasLockingHandle}
+                        onChange={(event) =>
+                          updateSimpleOptions({ hasLockingHandle: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Poignee Schuco verrouillable a cle
+                    </label>
+                  )}
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.hasSousBassement}
+                        onChange={(event) =>
+                          updateSimpleOptions({ hasSousBassement: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Sous-bassement
+                    </label>
+
+                    {simpleConfig.hasSousBassement && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Hauteur visible</span>
+                          <span>{simpleConfig.sousBassementHeight} mm</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
+                          <input
+                            type="range"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            value={simpleConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSimpleOptions({
+                                sousBassementHeight: Number.parseInt(
+                                  event.target.value,
+                                  10
+                                ),
+                              })
+                            }
+                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
+                          />
+                          <input
+                            type="number"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            {...NUMERIC_INPUT_PROPS}
+                            value={simpleConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSimpleOptions({
+                                sousBassementHeight: Math.max(
+                                  100,
+                                  Number.parseInt(event.target.value, 10) || 100
+                                ),
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                          <p className="text-xs font-semibold text-slate-500">
+                            {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {workingSashCount > 0 && !workingIsPorte && (
+                  <div className="space-y-4">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Options par vantail
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Array.from({ length: workingSashCount }).map((_, index) => (
+                        <div
+                          key={index}
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                        >
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Vantail {index + 1}
+                          </p>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(simpleConfig.sashOptions[index]?.ob)}
+                                onChange={() => updateWorkingSashOption(index, 'ob')}
+                                className="accent-orange-500"
+                              />
+                              Oscillo-battant
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(simpleConfig.sashOptions[index]?.vent)}
+                                onChange={() => updateWorkingSashOption(index, 'vent')}
+                                className="accent-orange-500"
+                              />
+                              Grille de ventilation
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            </details>
           )}
+
+
+
+
+
 
           {false && workingIsGlazed && (
             <div className="space-y-3">
@@ -1991,92 +2017,8 @@ export default function ProductSelector({
       </div>
 
       <div className="space-y-6 p-4 md:p-6">
-        <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <div className="space-y-4">
-            {normalizeCompositeComposition(composition).map((row, rowIndex) => (
-              <div key={row.id} className="flex w-full gap-4 overflow-x-auto snap-x pb-4">
-                {row.modules.map((module, moduleIndex) => {
-                  const moduleProduct = getProductById(module.productId);
-                  const modulePricing = compositePricing.modulePricing.find(
-                    (entry) => entry.id === module.id
-                  );
-                  const isActive = selectedCompositeModuleId === module.id;
-
-                  return (
-                    <div
-                      key={module.id}
-                      role="button"
-                      tabIndex={0}
-                      aria-pressed={isActive}
-                      onClick={() => setSelectedCompositeModuleId(module.id)}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return;
-                        event.preventDefault();
-                        setSelectedCompositeModuleId(module.id);
-                      }}
-                      className={`min-w-[220px] cursor-pointer rounded-2xl border bg-white p-4 text-left shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-orange-200 ${
-                        isActive
-                          ? 'border-orange-500 ring-2 ring-orange-500/10'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-black text-slate-900">
-                            Module {moduleIndex + 1}
-                          </p>
-                          <p className="text-xs text-slate-500">Rangee {rowIndex + 1}</p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            removeCompositeModule(module.id);
-                          }}
-                          className="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                      <p className="text-sm font-bold text-slate-700">
-                        {moduleProduct?.label || module.productId}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        L {module.widthMm} x H {module.heightMm} mm
-                      </p>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {getColorSummary(
-                          module.options.colorOptionId,
-                          module.options.rawColorState
-                        )}
-                      </p>
-                      <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
-                        {modulePricing?.unitPrice !== null
-                          ? `${modulePricing?.unitPrice?.toFixed(2)} EUR HT`
-                          : 'Dimensions hors grille'}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-[1.3fr_0.9fr] gap-6">
-          <div className="space-y-6 rounded-2xl border border-slate-200 p-4 md:p-6">
-            <div>
-              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-                Module selectionne
-              </label>
-              <h4 className="text-lg font-black text-slate-900">
-                {activeModuleProduct?.label || 'Aucun module'}
-              </h4>
-              <p className="mt-1 text-sm text-slate-500">
-                Ce formulaire pilote uniquement le module actif.
-              </p>
-            </div>
-
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
+          <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
@@ -2110,62 +2052,79 @@ export default function ProductSelector({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Largeur module (mm)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  {...NUMERIC_INPUT_PROPS}
-                  value={activeCompositeModule?.widthMm || ''}
-                  onChange={(event) =>
-                    updateCompositeModule(selectedCompositeModuleId, {
-                      widthMm: event.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                />
+            <details open className="group rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                Dimensions du module
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Largeur module (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    {...NUMERIC_INPUT_PROPS}
+                    value={activeCompositeModule?.widthMm || ''}
+                    onChange={(event) =>
+                      updateCompositeModule(selectedCompositeModuleId, {
+                        widthMm: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Hauteur module (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    {...NUMERIC_INPUT_PROPS}
+                    value={activeCompositeModule?.heightMm || ''}
+                    onChange={(event) =>
+                      updateCompositeModule(selectedCompositeModuleId, {
+                        heightMm: event.target.value,
+                      })
+                    }
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Hauteur module (mm)
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  {...NUMERIC_INPUT_PROPS}
-                  value={activeCompositeModule?.heightMm || ''}
-                  onChange={(event) =>
-                    updateCompositeModule(selectedCompositeModuleId, {
-                      heightMm: event.target.value,
-                    })
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                />
-              </div>
-            </div>
+            </details>
 
-            {buildColorOptionsFields({
-              value: workingConfig.colorOptionId,
-              colorState: workingColorState,
-              onColorChange: (value) => updateSelectedModuleOptions({ colorOptionId: value }),
-              onColorStateChange: (patch) =>
-                updateSelectedModuleOptions({
-                  rawColorState: {
-                    ...workingColorState,
-                    ...patch,
-                  },
-                }),
-              availableOptions: workingColorOptions,
-            })}
+            <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                Coloration
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4">
+                {buildColorOptionsFields({
+                  value: workingConfig.colorOptionId,
+                  colorState: workingColorState,
+                  onColorChange: (value) =>
+                    updateSelectedModuleOptions({ colorOptionId: value }),
+                  onColorStateChange: (patch) =>
+                    updateSelectedModuleOptions({
+                      rawColorState: {
+                        ...workingColorState,
+                        ...patch,
+                      },
+                    }),
+                  availableOptions: workingColorOptions,
+                })}
+              </div>
+            </details>
 
             {workingIsGlazed && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
                   Vitrage / remplissage du module
-                </label>
+                  <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-4">
                 <select
                   value={workingConfig.glazingId}
                   onChange={(event) =>
@@ -2202,19 +2161,20 @@ export default function ProductSelector({
                       )}
                   </div>
                 )}
-              </div>
+                </div>
+              </details>
             )}
 
             {!workingIsVolet && (
-              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div>
-                  <label className="block text-xs font-black uppercase tracking-widest text-slate-400">
-                    Options & Accessoires
-                  </label>
-                  <p className="mt-1 text-sm text-slate-500">
+              <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                  Options & Accessoires
+                  <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="mt-4 space-y-4">
+                  <p className="text-sm text-slate-500">
                     Chaque module garde ses accessoires et son remplissage bas.
                   </p>
-                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-3">
@@ -2382,47 +2342,47 @@ export default function ProductSelector({
                     )}
                   </div>
                 </div>
-              </div>
-            )}
-
-            {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
-              <div className="space-y-4">
-                <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                  Options par vantail
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Array.from({ length: workingSashCount }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Vantail {index + 1}
-                      </p>
-                      <div className="space-y-2">
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(workingConfig.sashOptions[index]?.ob)}
-                            onChange={() => updateWorkingSashOption(index, 'ob')}
-                            className="accent-orange-500"
-                          />
-                          Oscillo-battant
-                        </label>
-                        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(workingConfig.sashOptions[index]?.vent)}
-                            onChange={() => updateWorkingSashOption(index, 'vent')}
-                            className="accent-orange-500"
-                          />
-                          Grille de ventilation
-                        </label>
-                      </div>
+                {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
+                  <div className="space-y-4">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Options par vantail
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Array.from({ length: workingSashCount }).map((_, index) => (
+                        <div
+                          key={index}
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                        >
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Vantail {index + 1}
+                          </p>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(workingConfig.sashOptions[index]?.ob)}
+                                onChange={() => updateWorkingSashOption(index, 'ob')}
+                                className="accent-orange-500"
+                              />
+                              Oscillo-battant
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(workingConfig.sashOptions[index]?.vent)}
+                                onChange={() => updateWorkingSashOption(index, 'vent')}
+                                className="accent-orange-500"
+                              />
+                              Grille de ventilation
+                            </label>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                )}
                 </div>
-              </div>
+              </details>
             )}
 
             {false && workingIsGlazed && (
@@ -2731,4 +2691,5 @@ export default function ProductSelector({
     </div>
   );
 }
+
 

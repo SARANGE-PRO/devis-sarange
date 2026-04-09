@@ -21,7 +21,17 @@ const getPetitsBoisConfig = (item = {}) => {
   return { petitsBoisH, petitsBoisV };
 };
 
-export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRate, onGoBack, onNext, onUpdateItem }) {
+export default function QuoteSummary({
+  clientData,
+  cartItems,
+  tvaRate,
+  setTvaRate,
+  onGoBack,
+  onGeneratePdf,
+  onDownloadAgain,
+  pdfGenerated = false,
+  onUpdateItem,
+}) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
@@ -526,19 +536,31 @@ export default function QuoteSummary({ clientData, cartItems, tvaRate, setTvaRat
         >
           Retourner au panier
         </button>
-        <button
-          onClick={onNext}
-          disabled={(tvaRate === 5.5 || tvaRate === 10) && !certifyTva}
-          className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
-            (tvaRate === 5.5 || tvaRate === 10) && !certifyTva
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-              : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
-          }`}
-        >
-          <Download size={18} />
-          Générer le devis PDF
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+          {pdfGenerated && (
+            <button
+              onClick={onDownloadAgain}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            >
+              <Download size={18} />
+              Telecharger a nouveau
+            </button>
+          )}
+          <button
+            onClick={onGeneratePdf}
+            disabled={(tvaRate === 5.5 || tvaRate === 10) && !certifyTva}
+            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
+              (tvaRate === 5.5 || tvaRate === 10) && !certifyTva
+                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
+            }`}
+          >
+            <Download size={18} />
+            Valider & Generer PDF
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
