@@ -7,9 +7,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node tests/pricing-margin.test.mjs"
+    "test": "node tests/pricing-margin.test.mjs && node tests/quote-settings.test.mjs"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "firebase": "^12.11.0",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.1",

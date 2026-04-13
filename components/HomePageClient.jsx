@@ -13,6 +13,7 @@ import { hasMeaningfulClientData } from '@/lib/client-cloud';
 import { getClientById, saveClientProfile } from '@/lib/firebase/clients';
 import { calculateItemPrice } from '@/lib/products';
 import { generateQuotePDF } from '@/lib/pdf-generator';
+import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
 import { ArrowLeft, CloudUpload, FileText, Loader2, ShoppingCart, User } from 'lucide-react';
 
@@ -34,6 +35,7 @@ export default function HomePageClient() {
   const [clientData, setClientData] = useState(null);
   const [cartItems, setCartItems] = useState([]);
   const [tvaRate, setTvaRate] = useState(DEFAULT_TVA_RATE);
+  const [quoteSettings, setQuoteSettings] = useState(() => getDefaultQuoteSettings());
   const [editingItem, setEditingItem] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [isSavingQuote, setIsSavingQuote] = useState(false);
@@ -81,6 +83,7 @@ export default function HomePageClient() {
     setClientData(null);
     setCartItems([]);
     setTvaRate(DEFAULT_TVA_RATE);
+    setQuoteSettings(getDefaultQuoteSettings());
     setEditingItem(null);
     setActiveQuoteId(null);
     setSaveMessage('');
@@ -98,6 +101,7 @@ export default function HomePageClient() {
     setTvaRate(
       Number.isFinite(Number(payload.tvaRate)) ? Number(payload.tvaRate) : DEFAULT_TVA_RATE
     );
+    setQuoteSettings(normalizeQuoteSettings(payload.quoteSettings));
     const nextStep = Number.isFinite(Number(payload.currentStep))
       ? Number(payload.currentStep)
       : 2;
@@ -267,6 +271,12 @@ export default function HomePageClient() {
     setCurrentStep((prev) => Math.max(1, prev - 1));
   };
 
+  const handleReorderItems = (nextItems) => {
+    setCartItems(nextItems);
+    setSaveMessage('');
+    setPdfGenerated(false);
+  };
+
   const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
     if (!firebaseConfigured) {
       if (origin === 'manual') {
@@ -311,6 +321,7 @@ export default function HomePageClient() {
         clientData: nextClientData,
         cartItems,
         tvaRate,
+        quoteSettings,
         currentStep: origin === 'pdf' ? 3 : currentStep,
       });
 
@@ -353,7 +364,7 @@ export default function HomePageClient() {
       await persistQuoteToCloud({ origin: 'pdf' });
     }
 
-    await generateQuotePDF(clientData, cartItems, tvaRate);
+    await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings);
     setPdfGenerated(true);
   };
 
@@ -478,6 +489,7 @@ export default function HomePageClient() {
                   onDuplicate={handleDuplicateItem}
                   onEdit={handleEditItem}
                   onUpdateQuantity={handleUpdateQuantity}
+                  onReorder={handleReorderItems}
                   onNext={() => setCurrentStep(3)}
                   editingItemId={editingItem?.id}
                 />
@@ -521,6 +533,8 @@ export default function HomePageClient() {
           cartItems={cartItems}
           tvaRate={tvaRate}
           setTvaRate={setTvaRate}
+          quoteSettings={quoteSettings}
+          setQuoteSettings={setQuoteSettings}
           onGoBack={() => setCurrentStep(2)}
           onUpdateItem={handleAddToCart}
           onGeneratePdf={() => void handleGeneratePdf()}

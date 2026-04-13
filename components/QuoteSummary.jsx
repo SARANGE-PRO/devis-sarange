@@ -6,9 +6,11 @@ import {
   getItemPricingSummary,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
-import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, AlertCircle, Package, Pencil, Check, X } from 'lucide-react';
+import { getPaymentScheduleValidation } from '@/lib/quote-settings.mjs';
+import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, Package, Pencil, Check, X } from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+import QuoteCommercialTerms from '@/components/QuoteCommercialTerms';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -26,6 +28,8 @@ export default function QuoteSummary({
   cartItems,
   tvaRate,
   setTvaRate,
+  quoteSettings,
+  setQuoteSettings,
   onGoBack,
   onGeneratePdf,
   onDownloadAgain,
@@ -49,6 +53,12 @@ export default function QuoteSummary({
     const totalTTC = Math.round((totalHT + tva) * 100) / 100;
     return { totalHT: Math.round(totalHT * 100) / 100, tva, totalTTC };
   }, [cartItems, tvaRate]);
+  const paymentValidation = useMemo(
+    () => getPaymentScheduleValidation(quoteSettings),
+    [quoteSettings]
+  );
+  const isGenerateDisabled =
+    ((tvaRate === 5.5 || tvaRate === 10) && !certifyTva) || !paymentValidation.isValid;
 
   const handleStartEdit = (item) => {
     const calc = calculateItemPrice(item);
@@ -124,6 +134,29 @@ export default function QuoteSummary({
           {/* ── Mobile: Card layout ──────────────────────────────── */}
           <div className="space-y-3 md:hidden">
             {cartItems.map((item) => {
+              if (item.productId === 'text-only') {
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-amber-200 bg-amber-50/70 p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-white p-2 text-amber-600 shadow-sm">
+                        <FileText size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black uppercase tracking-widest text-amber-700">
+                          Texte seul
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                          {item.textContent || '...'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               const calc = calculateItemPrice(item);
               const petitsBoisConfig = getPetitsBoisConfig(item);
               const pricing = getItemPricingSummary(item, calc);
@@ -265,6 +298,28 @@ export default function QuoteSummary({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {cartItems.map((item) => {
+                  if (item.productId === 'text-only') {
+                    return (
+                      <tr key={item.id} className="bg-amber-50/70">
+                        <td colSpan={5} className="px-4 py-4">
+                          <div className="flex items-start gap-3">
+                            <div className="rounded-xl bg-white p-2 text-amber-600 shadow-sm">
+                              <FileText size={18} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black uppercase tracking-widest text-amber-700">
+                                Texte seul
+                              </p>
+                              <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                                {item.textContent || '...'}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+
                   const calc = calculateItemPrice(item);
                   const petitsBoisConfig = getPetitsBoisConfig(item);
                   return (
@@ -393,7 +448,11 @@ export default function QuoteSummary({
                         <td className="py-4 px-4 text-center">
                           <div className="space-y-1">
                             <span className="inline-block px-2.5 py-1 bg-slate-100 rounded-md text-xs font-bold text-slate-600">
-                              {item.productId === 'gestion-dechets' ? "Service" : (item.productId === 'custom-product' ? "Sur mesure" : `L${item.widthMm} × H${item.heightMm}`)}
+                              {item.productId === 'gestion-dechets'
+                                ? 'Service'
+                                : item.productId === 'custom-product'
+                                  ? 'Produit/Service'
+                                  : `L${item.widthMm} × H${item.heightMm}`}
                             </span>
                             {item.isComposite &&
                               getCompositeModuleCount(item.composition, item.modules) > 0 && (
@@ -444,6 +503,12 @@ export default function QuoteSummary({
             </table>
           </div>
         </div>
+
+        <QuoteCommercialTerms
+          quoteSettings={quoteSettings}
+          onChange={setQuoteSettings}
+          totalTTC={totals.totalTTC}
+        />
 
         {/* TVA Selection & Totals Section */}
         <div className="bg-slate-50 p-5 sm:p-8 border-t border-slate-100 flex flex-col lg:flex-row gap-6 sm:gap-8">
@@ -540,7 +605,12 @@ export default function QuoteSummary({
           {pdfGenerated && (
             <button
               onClick={onDownloadAgain}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+              disabled={isGenerateDisabled}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border ${
+                isGenerateDisabled
+                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
             >
               <Download size={18} />
               Telecharger a nouveau
@@ -548,9 +618,9 @@ export default function QuoteSummary({
           )}
           <button
             onClick={onGeneratePdf}
-            disabled={(tvaRate === 5.5 || tvaRate === 10) && !certifyTva}
+            disabled={isGenerateDisabled}
             className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
-              (tvaRate === 5.5 || tvaRate === 10) && !certifyTva
+              isGenerateDisabled
                 ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                 : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
             }`}

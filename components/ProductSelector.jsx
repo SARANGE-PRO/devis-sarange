@@ -34,6 +34,7 @@ import {
   getProductById,
   getProductCategory,
   getProductType,
+  getPosePriceForType,
   calculateSurface,
   calculateItemPrice,
   normalizeCompositeComposition,
@@ -570,13 +571,16 @@ export default function ProductSelector({
   const [quantity, setQuantity] = useState(1);
   const [includePose, setIncludePose] = useState(false);
   const [remise, setRemise] = useState(0);
+  const [netAdjustmentMode, setNetAdjustmentMode] = useState('margin');
   const [netMarginWanted, setNetMarginWanted] = useState(0);
+  const [netDiscountWanted, setNetDiscountWanted] = useState(0);
   const [repere, setRepere] = useState('');
   const [showThermalData, setShowThermalData] = useState(true);
   const [customLabel, setCustomLabel] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [customImage, setCustomImage] = useState(null);
+  const [textOnlyContent, setTextOnlyContent] = useState('');
   const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
   const [selectedCompositeModuleId, setSelectedCompositeModuleId] = useState(
     () => createCompositeBuilderState().selectedModuleId
@@ -592,6 +596,13 @@ export default function ProductSelector({
 
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
+  const isTextOnlyProduct = product?.id === 'text-only';
+  const netAdjustmentValue =
+    netAdjustmentMode === 'discount' ? netDiscountWanted : netMarginWanted;
+  const netAdjustmentLabel =
+    netAdjustmentMode === 'discount'
+      ? 'Remise nette souhaitée'
+      : 'Marge nette souhaitée';
 
   const normalizedComposition = useMemo(
     () => normalizeCompositeComposition(composition),
@@ -649,7 +660,8 @@ export default function ProductSelector({
     simpleConfig.heightMm &&
     simpleConfig.widthMm &&
     !isWasteManagement &&
-    !isCustomProduct
+    !isCustomProduct &&
+    !isTextOnlyProduct
       ? getPriceForMm(
           product.sheet,
           parsePositiveInt(simpleConfig.heightMm),
@@ -658,9 +670,13 @@ export default function ProductSelector({
       : null;
 
   const addButtonLabel = editingItem
-    ? 'Mettre a jour le produit'
+    ? isTextOnlyProduct
+      ? 'Mettre à jour le texte'
+      : 'Mettre à jour le produit'
     : isCompositeMode
-      ? 'Ajouter le chassis compose'
+      ? 'Ajouter le châssis composé'
+      : isTextOnlyProduct
+        ? 'Insérer le texte'
       : 'Ajouter au panier';
 
   const handleImageUpload = (event) => {
@@ -732,7 +748,11 @@ export default function ProductSelector({
   const wasteCalculation = useMemo(() => {
     return cartItems.reduce(
       (accumulator, item) => {
-        if (item.productId === 'gestion-dechets' || item.productId === 'custom-product') {
+        if (
+          item.productId === 'gestion-dechets' ||
+          item.productId === 'custom-product' ||
+          item.productId === 'text-only'
+        ) {
           return accumulator;
         }
 
@@ -817,12 +837,16 @@ export default function ProductSelector({
       };
     }
 
+    if (isTextOnlyProduct) {
+      return null;
+    }
+
     if (isCompositeMode) {
       if (!compositePricing.totalPrice || compositePricing.hasInvalidModule) return null;
       return {
         productId: 'composite-builder',
-        productLabel: 'Chassis compose 2D',
-        sheetName: 'Chassis compose 2D',
+        productLabel: 'Châssis composé 2D',
+        sheetName: 'Châssis composé 2D',
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         unitPrice: compositePricing.totalPrice,
@@ -830,6 +854,7 @@ export default function ProductSelector({
         includePose,
         remise,
         netMarginWanted,
+        netDiscountWanted,
         isComposite: true,
         composition: compositePricing.composition,
       };
@@ -847,6 +872,7 @@ export default function ProductSelector({
       includePose,
       remise,
       netMarginWanted,
+      netDiscountWanted,
       colorOption: workingColorOption,
       ...(workingIsVolet
         ? { petitsBoisH: 0, petitsBoisV: 0 }
@@ -870,12 +896,38 @@ export default function ProductSelector({
 
   const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
 
+  const handleNetAdjustmentModeChange = (nextMode) => {
+    const normalizedMode = nextMode === 'discount' ? 'discount' : 'margin';
+    setNetAdjustmentMode(normalizedMode);
+
+    if (normalizedMode === 'discount') {
+      setNetMarginWanted(0);
+      return;
+    }
+
+    setNetDiscountWanted(0);
+  };
+
+  const handleNetAdjustmentValueChange = (rawValue) => {
+    const nextValue = Math.max(0, Number.parseFloat(rawValue) || 0);
+
+    if (netAdjustmentMode === 'discount') {
+      setNetDiscountWanted(nextValue);
+      setNetMarginWanted(0);
+      return;
+    }
+
+    setNetMarginWanted(nextValue);
+    setNetDiscountWanted(0);
+  };
+
   const resetSimpleSelection = () => {
     setSimpleConfig(createSimpleConfig());
     setCustomLabel('');
     setCustomDescription('');
     setCustomPrice('');
     setCustomImage(null);
+    setTextOnlyContent('');
   };
 
   const resetCompositeSelection = () => {
@@ -888,7 +940,9 @@ export default function ProductSelector({
     setQuantity(1);
     setIncludePose(false);
     setRemise(0);
+    setNetAdjustmentMode('margin');
     setNetMarginWanted(0);
+    setNetDiscountWanted(0);
     setRepere('');
     setShowThermalData(true);
   };
@@ -1107,7 +1161,14 @@ export default function ProductSelector({
     setQuantity(editingItem.quantity || 1);
     setIncludePose(Boolean(editingItem.includePose));
     setRemise(editingItem.remise || 0);
+    setNetAdjustmentMode(
+      editingItem.netAdjustmentMode === 'discount' ||
+      Number(editingItem.netDiscountWanted || 0) > 0
+        ? 'discount'
+        : 'margin'
+    );
     setNetMarginWanted(Number(editingItem.netMarginWanted || 0));
+    setNetDiscountWanted(Number(editingItem.netDiscountWanted || 0));
     setRepere(editingItem.repere || '');
     setShowThermalData(
       editingItem.showThermalData !== undefined ? editingItem.showThermalData : true
@@ -1134,6 +1195,11 @@ export default function ProductSelector({
       setCustomDescription(editingItem.customDescription || '');
       setCustomPrice(editingItem.customPrice?.toString() || '');
       setCustomImage(editingItem.customImage || null);
+      return;
+    }
+
+    if (editingItem.productId === 'text-only') {
+      setTextOnlyContent(editingItem.textContent || '');
       return;
     }
 
@@ -1201,15 +1267,17 @@ export default function ProductSelector({
       onAddToCart({
         id: editingItem ? editingItem.id : createCartItemId(),
         productId: 'composite-builder',
-        productLabel: 'Chassis compose 2D',
-        sheetName: 'Chassis compose 2D',
+        productLabel: 'Châssis composé 2D',
+        sheetName: 'Châssis composé 2D',
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         quantity,
         unitPrice: compositePricing.totalPrice,
         includePose,
         remise,
+        netAdjustmentMode,
         netMarginWanted,
+        netDiscountWanted,
         repere,
         showThermalData,
         isComposite: true,
@@ -1239,6 +1307,7 @@ export default function ProductSelector({
         includePose: false,
         remise: 0,
         netMarginWanted: 0,
+        netDiscountWanted: 0,
       });
       return;
     }
@@ -1260,6 +1329,29 @@ export default function ProductSelector({
         includePose: false,
         remise: 0,
         netMarginWanted: 0,
+        netDiscountWanted: 0,
+      });
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (isTextOnlyProduct) {
+      const trimmedContent = textOnlyContent.trim();
+      if (!trimmedContent) return;
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: 'text-only',
+        productLabel: product.label,
+        textContent: trimmedContent,
+        quantity: 1,
+        unitPrice: 0,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+        netDiscountWanted: 0,
       });
 
       resetSimpleSelection();
@@ -1286,7 +1378,9 @@ export default function ProductSelector({
         : buildPetitsBoisState(simpleConfig)),
       includePose,
       remise,
+      netAdjustmentMode,
       netMarginWanted,
+      netDiscountWanted,
       panneauDecoratif: workingIsPorte ? simpleConfig.panneauDecoratif : false,
       hasSousBassement: !workingIsVolet && simpleConfig.hasSousBassement,
       sousBassementHeight: simpleConfig.hasSousBassement
@@ -1351,7 +1445,9 @@ export default function ProductSelector({
                   : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              {!entry.id.includes('gestion-dechets') && !entry.id.includes('custom') && (
+              {!entry.id.includes('gestion-dechets') &&
+                !entry.id.includes('custom') &&
+                entry.id !== 'text-only' && (
                 <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
                   <MenuiserieVisual
                     sheetName={entry.sheet}
@@ -1368,7 +1464,7 @@ export default function ProductSelector({
         </div>
       </div>
 
-      {product && !isWasteManagement && !isCustomProduct && (
+      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           <MenuiserieVisual
             sheetName={product.sheet}
@@ -1392,10 +1488,10 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && (
+      {product && !isWasteManagement && !isTextOnlyProduct && (
         <div className="border-b border-slate-100 bg-orange-50/30 p-4 md:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
-            Repere (ex : SDB, Chambre 1, Cuisine)
+            Repère (ex : SDB, Chambre 1, Cuisine)
           </label>
           <input
             type="text"
@@ -1425,7 +1521,7 @@ export default function ProductSelector({
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Nom du produit
+                Nom du produit/service
               </label>
               <input
                 type="text"
@@ -1463,7 +1559,7 @@ export default function ProductSelector({
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Quantite
+                  Quantité
                 </label>
               <input
                 type="number"
@@ -1515,7 +1611,27 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && (
+      {isTextOnlyProduct && (
+        <div className="p-4 md:p-6">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 md:p-6">
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Texte libre
+            </label>
+            <textarea
+              rows={8}
+              value={textOnlyContent}
+              onChange={(event) => setTextOnlyContent(event.target.value)}
+              placeholder="Commentaires, description technique, note de mise en page..."
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            />
+            <p className="mt-3 text-xs font-medium text-slate-500">
+              Ce bloc sera insere dans le devis sans prix ni quantite.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
         <div className="space-y-6 p-4 md:p-6">
           <details open className="group rounded-2xl border border-slate-200 bg-white p-4">
             <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
@@ -1879,10 +1995,10 @@ export default function ProductSelector({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Quantite
+                Quantité
               </label>
               <input
                 type="number"
@@ -1897,19 +2013,28 @@ export default function ProductSelector({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Marge nette souhaitee (EUR)
+                Ajustement net
+              </label>
+              <select
+                value={netAdjustmentMode}
+                onChange={(event) => handleNetAdjustmentModeChange(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              >
+                <option value="margin">Marge nette souhaitée</option>
+                <option value="discount">Remise nette souhaitée</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                {netAdjustmentLabel}
               </label>
               <input
                 type="number"
                 min={0}
                 step={0.01}
                 {...DECIMAL_INPUT_PROPS}
-                value={netMarginWanted}
-                onChange={(event) =>
-                  setNetMarginWanted(
-                    Math.max(0, Number.parseFloat(event.target.value) || 0)
-                  )
-                }
+                value={netAdjustmentValue}
+                onChange={(event) => handleNetAdjustmentValueChange(event.target.value)}
                 className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
               />
             </div>
@@ -1944,11 +2069,7 @@ export default function ProductSelector({
             />
             <Wrench size={14} className="text-slate-400" />
             Inclure la pose (
-            {getProductType(product.sheet) === 'porte'
-              ? '400 EUR'
-              : getProductType(product.sheet) === 'volet'
-                ? '100 EUR'
-                : '250 EUR'}
+            {getPosePriceForType(getProductType(product.sheet))} EUR
             )
           </label>
 
@@ -1959,7 +2080,7 @@ export default function ProductSelector({
               onChange={(event) => setShowThermalData(event.target.checked)}
               className="h-4 w-4 accent-orange-500"
             />
-            Afficher les donnees thermiques sur le devis
+            Afficher les données thermiques sur le devis
           </label>
         </div>
       )}
@@ -1974,7 +2095,7 @@ export default function ProductSelector({
               Builder 2D
             </label>
             <h3 className="text-lg font-black text-slate-900">
-              Constructeur de chassis composes
+              Constructeur de châssis composés
             </h3>
             <p className="mt-1 text-sm text-slate-500">
               Cliquez sur un module pour ouvrir son formulaire complet.
@@ -1987,21 +2108,21 @@ export default function ProductSelector({
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
             >
               <Plus size={16} />
-              Ajouter une rangee au-dessus
+              Ajouter une rangée au-dessus
             </button>
             <button
               onClick={addCompositeModuleBeside}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
             >
               <Plus size={16} />
-              Ajouter un module a cote
+              Ajouter un module à côté
             </button>
             <button
               onClick={() => addCompositeRow('below')}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
             >
               <Plus size={16} />
-              Ajouter une rangee en dessous
+              Ajouter une rangée en dessous
             </button>
           </div>
         </div>
@@ -2009,7 +2130,7 @@ export default function ProductSelector({
 
       <div className="border-b border-slate-100 px-4 pt-4 md:px-6 md:pt-6">
         <MenuiserieVisual
-          sheetName="Chassis compose 2D"
+          sheetName="Châssis composé 2D"
           width={compositeDimensions.width || 1200}
           height={compositeDimensions.height || 1250}
           options={{
@@ -2492,24 +2613,24 @@ export default function ProductSelector({
           <div className="space-y-6">
             <div className="rounded-2xl border border-slate-200 p-4 md:p-6">
               <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-                Reglages de l&apos;ensemble
+                Réglages de l&apos;ensemble
               </label>
               <div className="space-y-4">
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Repere
+                    Repère
                   </label>
                   <input
                     type="text"
                     value={repere}
                     onChange={(event) => setRepere(event.target.value)}
-                    placeholder="Ex : Facade nord"
+                    placeholder="Ex : Façade nord"
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                   />
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Quantite
+                    Quantité
                   </label>
                   <input
                     type="number"
@@ -2524,19 +2645,28 @@ export default function ProductSelector({
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Marge nette souhaitee (EUR)
+                    Ajustement net
                   </label>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                {...DECIMAL_INPUT_PROPS}
-                value={netMarginWanted}
-                    onChange={(event) =>
-                      setNetMarginWanted(
-                        Math.max(0, Number.parseFloat(event.target.value) || 0)
-                      )
-                    }
+                  <select
+                    value={netAdjustmentMode}
+                    onChange={(event) => handleNetAdjustmentModeChange(event.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  >
+                    <option value="margin">Marge nette souhaitée</option>
+                    <option value="discount">Remise nette souhaitée</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    {netAdjustmentLabel}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    {...DECIMAL_INPUT_PROPS}
+                    value={netAdjustmentValue}
+                    onChange={(event) => handleNetAdjustmentValueChange(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                   />
                 </div>
@@ -2567,7 +2697,7 @@ export default function ProductSelector({
                     className="h-4 w-4 accent-orange-500"
                   />
                   <Wrench size={14} className="text-slate-400" />
-                  Inclure la pose (250 EUR)
+                  Inclure la pose ({getPosePriceForType('menuiserie')} EUR)
                 </label>
                 <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
                   <input
@@ -2576,14 +2706,14 @@ export default function ProductSelector({
                     onChange={(event) => setShowThermalData(event.target.checked)}
                     className="h-4 w-4 accent-orange-500"
                   />
-                  Afficher les donnees thermiques sur le devis
+                  Afficher les données thermiques sur le devis
                 </label>
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-6">
               <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-                Synthese du compose
+                Synthèse du composé
               </label>
               <div className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
@@ -2601,7 +2731,7 @@ export default function ProductSelector({
                 </div>
                 <div className="border-t border-slate-200 pt-3">
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Prix compose HT
+                    Prix composé HT
                   </p>
                   <p className="mt-2 text-2xl font-black text-slate-900">
                     {compositePricing.totalPrice !== null
@@ -2622,6 +2752,7 @@ export default function ProductSelector({
         !isCompositeMode &&
         !isWasteManagement &&
         !isCustomProduct &&
+        !isTextOnlyProduct &&
         simpleConfig.widthMm &&
         simpleConfig.heightMm &&
         !simplePriceData && (
@@ -2632,16 +2763,16 @@ export default function ProductSelector({
 
       {isCompositeMode && compositePricing.hasInvalidModule && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-          Au moins un module du compose est hors de la grille tarifaire. Ajustez ses dimensions ou son type.
+          Au moins un module du composé est hors de la grille tarifaire. Ajustez ses dimensions ou son type.
         </div>
       )}
 
-      {(previewCalc || isWasteManagement || isCustomProduct || isCompositeMode) && (
+      {(previewCalc || isWasteManagement || isCustomProduct || isTextOnlyProduct || isCompositeMode) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-                Estimation HT
+                {isTextOnlyProduct ? 'Bloc libre' : 'Estimation HT'}
               </p>
               <p className="mt-2 text-3xl font-black tracking-tight text-slate-900">
                 {previewCalc
@@ -2650,6 +2781,8 @@ export default function ProductSelector({
                     ? `${wasteCalculation.totalWastePrice.toFixed(2)} EUR`
                     : isCustomProduct
                       ? `${((Number.parseFloat(customPrice) || 0) * quantity).toFixed(2)} EUR`
+                      : isTextOnlyProduct
+                        ? 'Element non chiffre'
                       : compositePricing.totalPrice !== null
                         ? `${(compositePricing.totalPrice * quantity).toFixed(2)} EUR`
                         : 'A definir'}
@@ -2669,9 +2802,11 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&
-                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice))))
+                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
+                (isTextOnlyProduct && !textOnlyContent.trim())
               }
               className={`inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-bold transition-all ${
                 (isCompositeMode &&
@@ -2679,9 +2814,11 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&
-                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice))))
+                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
+                (isTextOnlyProduct && !textOnlyContent.trim())
                   ? 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
                   : 'bg-orange-500 text-white shadow-xl shadow-orange-500/30 hover:bg-orange-600'
               }`}
@@ -2746,7 +2883,7 @@ export default function ProductSelector({
                 : 'text-slate-500 hover:text-orange-600'
             }`}
           >
-            Chassis compose
+            Châssis composé
           </button>
         </div>
       </div>

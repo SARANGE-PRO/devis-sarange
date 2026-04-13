@@ -419,6 +419,7 @@ export default function SavedQuotesPage() {
         clientData: quote.payload?.clientData,
         cartItems: quote.payload?.cartItems,
         tvaRate: quote.payload?.tvaRate,
+        quoteSettings: quote.payload?.quoteSettings,
         currentStep: quote.payload?.currentStep,
       });
       setActionMessage('Copie créée.');
@@ -433,7 +434,8 @@ export default function SavedQuotesPage() {
       await generateQuotePDF(
         quote.payload?.clientData || null,
         quote.payload?.cartItems || [],
-        quote.payload?.tvaRate || 10
+        quote.payload?.tvaRate || 10,
+        quote.payload?.quoteSettings || null
       );
     } catch (e) {
       setActionError(e.message || 'Impossible de générer le PDF.');
