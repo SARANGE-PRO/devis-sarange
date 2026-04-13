@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell';
 import {
   CATEGORIES,
 } from '@/lib/products';
+import { GLAZING_OPTIONS, PANEL_SANDWICH_GLAZING_ID } from '@/lib/glazing';
 import {
   formatCoefficientDelta,
   getCatalogueCoefficientsServerSnapshot,
@@ -13,7 +14,16 @@ import {
   setProductCoefficient,
   subscribeToCatalogueCoefficients,
 } from '@/lib/catalogue-coefficients';
-import { RotateCcw, Save, SlidersHorizontal } from 'lucide-react';
+import {
+  getCataloguePricingServerSnapshot,
+  getCataloguePricingSnapshot,
+  resetCataloguePricing,
+  setCataloguePricingValue,
+  setGlazingPrice,
+  setPosePrice,
+  subscribeToCataloguePricing,
+} from '@/lib/catalogue-pricing';
+import { RotateCcw, Save, SlidersHorizontal, Wrench } from 'lucide-react';
 
 const CONFIGURABLE_CATEGORY_IDS = [
   'fenetres',
@@ -25,10 +35,16 @@ const CONFIGURABLE_CATEGORY_IDS = [
 
 const formatCoefficientInput = (value) =>
   String(value ?? 1).replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+const formatPriceInput = (value) =>
+  String(value ?? '').replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
 
 export default function CataloguePage() {
   const configurableCategories = useMemo(
     () => CATEGORIES.filter((category) => CONFIGURABLE_CATEGORY_IDS.includes(category.id)),
+    []
+  );
+  const glazingEntries = useMemo(
+    () => GLAZING_OPTIONS.filter((glazing) => glazing.id !== PANEL_SANDWICH_GLAZING_ID),
     []
   );
 
@@ -37,8 +53,15 @@ export default function CataloguePage() {
     getCatalogueCoefficientsSnapshot,
     getCatalogueCoefficientsServerSnapshot
   );
+  const currentPricing = useSyncExternalStore(
+    subscribeToCataloguePricing,
+    getCataloguePricingSnapshot,
+    getCataloguePricingServerSnapshot
+  );
   const [draftInputs, setDraftInputs] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
+  const [pricingDrafts, setPricingDrafts] = useState({});
+  const [pricingMessage, setPricingMessage] = useState('');
 
   const handleCoefficientChange = (productId, nextValue) => {
     setDraftInputs((prev) => ({
@@ -74,6 +97,32 @@ export default function CataloguePage() {
     resetAllProductCoefficients();
     setDraftInputs({});
     setSaveMessage('Tous les coefficients sont revenus a 1.');
+  };
+
+  const handlePricingChange = (key, nextValue) => {
+    setPricingDrafts((prev) => ({
+      ...prev,
+      [key]: nextValue,
+    }));
+  };
+
+  const handlePricingBlur = (key, currentValue, onSave, message) => {
+    const inputValue = pricingDrafts[key] ?? formatPriceInput(currentValue);
+    onSave(inputValue);
+    setPricingDrafts((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (message) {
+      setPricingMessage(message);
+    }
+  };
+
+  const handleResetPricing = () => {
+    resetCataloguePricing();
+    setPricingDrafts({});
+    setPricingMessage('Parametres de prix reinitialises.');
   };
 
   const activeCoefficientCount = configurableCategories.reduce((count, category) => {
@@ -141,14 +190,249 @@ export default function CataloguePage() {
             </div>
           </div>
 
-          {saveMessage && (
-            <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-              {saveMessage}
+        {saveMessage && (
+          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {saveMessage}
+          </div>
+        )}
+      </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="rounded-xl bg-slate-100 p-2 text-slate-600">
+                <Wrench size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                  Parametres de prix
+                </p>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Valeurs metier configurees
+                </h3>
+              </div>
             </div>
-          )}
+            <p className="mt-2 text-sm text-slate-500">
+              Ces valeurs alimentent automatiquement les options, vitrages, panneaux et poses.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleResetPricing}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+          >
+            <RotateCcw size={14} />
+            Reinitialiser les valeurs
+          </button>
         </div>
 
-        {configurableCategories.map((category) => (
+        {pricingMessage && (
+          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+            {pricingMessage}
+          </div>
+        )}
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-bold text-slate-900">Pose</h4>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                { id: 'menuiserie', label: 'Menuiseries', value: currentPricing.posePrices?.menuiserie },
+                { id: 'porte', label: 'Portes entree', value: currentPricing.posePrices?.porte },
+                { id: 'volet', label: 'Volets roulants', value: currentPricing.posePrices?.volet },
+              ].map((entry) => {
+                const key = `pose:${entry.id}`;
+                const inputValue = pricingDrafts[key] ?? formatPriceInput(entry.value);
+                return (
+                  <label key={entry.id} className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                      {entry.label}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={inputValue}
+                      onChange={(event) => handlePricingChange(key, event.target.value)}
+                      onBlur={() =>
+                        handlePricingBlur(key, entry.value, (value) => setPosePrice(entry.id, value), 'Pose mise a jour.')
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-bold text-slate-900">Remplissages & soubassement</h4>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                {
+                  key: 'pricing:baseGlassPricePerM2',
+                  label: 'Vitrage standard (EUR/m2)',
+                  value: currentPricing.baseGlassPricePerM2,
+                  onSave: (value) => setCataloguePricingValue('baseGlassPricePerM2', value),
+                },
+                {
+                  key: 'pricing:panelSandwichPricePerM2',
+                  label: 'Panneau sandwich (EUR/m2)',
+                  value: currentPricing.panelSandwichPricePerM2,
+                  onSave: (value) => setCataloguePricingValue('panelSandwichPricePerM2', value),
+                },
+                {
+                  key: 'pricing:panelSandwichColorMultiplier',
+                  label: 'Majoration panneau couleur',
+                  value: currentPricing.panelSandwichColorMultiplier,
+                  onSave: (value) => setCataloguePricingValue('panelSandwichColorMultiplier', value),
+                },
+                {
+                  key: 'pricing:sousBassementTraversePricePerMl',
+                  label: 'Traverse soubassement (EUR/ml)',
+                  value: currentPricing.sousBassementTraversePricePerMl,
+                  onSave: (value) => setCataloguePricingValue('sousBassementTraversePricePerMl', value),
+                },
+              ].map((entry) => {
+                const inputValue = pricingDrafts[entry.key] ?? formatPriceInput(entry.value);
+                return (
+                  <label key={entry.key} className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                      {entry.label}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={inputValue}
+                      onChange={(event) => handlePricingChange(entry.key, event.target.value)}
+                      onBlur={() =>
+                        handlePricingBlur(entry.key, entry.value, entry.onSave, 'Remplissages mis a jour.')
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h4 className="text-sm font-bold text-slate-900">Options</h4>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                {
+                  key: 'pricing:petitsBoisPricePerMl',
+                  label: 'Petits bois (EUR/ml)',
+                  value: currentPricing.petitsBoisPricePerMl,
+                  onSave: (value) => setCataloguePricingValue('petitsBoisPricePerMl', value),
+                },
+                {
+                  key: 'pricing:obPrice',
+                  label: 'Oscillo-battant (EUR)',
+                  value: currentPricing.obPrice,
+                  onSave: (value) => setCataloguePricingValue('obPrice', value),
+                },
+                {
+                  key: 'pricing:grillePrice',
+                  label: 'Grille ventilation (EUR)',
+                  value: currentPricing.grillePrice,
+                  onSave: (value) => setCataloguePricingValue('grillePrice', value),
+                },
+                {
+                  key: 'pricing:lockingHandlePrice',
+                  label: 'Poignee a cle (EUR)',
+                  value: currentPricing.lockingHandlePrice,
+                  onSave: (value) => setCataloguePricingValue('lockingHandlePrice', value),
+                },
+                {
+                  key: 'pricing:panneauDecoratifPrice',
+                  label: 'Panneau decoratif (EUR)',
+                  value: currentPricing.panneauDecoratifPrice,
+                  onSave: (value) => setCataloguePricingValue('panneauDecoratifPrice', value),
+                },
+                {
+                  key: 'pricing:panneauDecoratifMultiplier',
+                  label: 'Majoration panneau decoratif',
+                  value: currentPricing.panneauDecoratifMultiplier,
+                  onSave: (value) => setCataloguePricingValue('panneauDecoratifMultiplier', value),
+                },
+              ].map((entry) => {
+                const inputValue = pricingDrafts[entry.key] ?? formatPriceInput(entry.value);
+                return (
+                  <label key={entry.key} className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                      {entry.label}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={inputValue}
+                      onChange={(event) => handlePricingChange(entry.key, event.target.value)}
+                      onBlur={() =>
+                        handlePricingBlur(entry.key, entry.value, entry.onSave, 'Options mises a jour.')
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
+            <h4 className="text-sm font-bold text-slate-900">Vitrages (prix au m2)</h4>
+            <p className="mt-1 text-xs text-slate-500">
+              Ces valeurs impactent les plus-values vitrages. Le vitrage standard est gere
+              separement.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {glazingEntries.map((glazing) => {
+                const currentValue =
+                  currentPricing.glazingPrices?.[glazing.id] ?? glazing.purchasePricePerM2;
+                const key = `glazing:${glazing.id}`;
+                const inputValue = pricingDrafts[key] ?? formatPriceInput(currentValue);
+                return (
+                  <div
+                    key={glazing.id}
+                    className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900">{glazing.shortLabel}</p>
+                      <p className="mt-1 text-xs text-slate-500">{glazing.label}</p>
+                    </div>
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                        Prix EUR/m2
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        value={inputValue}
+                        onChange={(event) => handlePricingChange(key, event.target.value)}
+                        onBlur={() =>
+                          handlePricingBlur(key, currentValue, (value) => setGlazingPrice(glazing.id, value), 'Tarifs vitrages mis a jour.')
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {configurableCategories.map((category) => (
           <section
             key={category.id}
             className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"

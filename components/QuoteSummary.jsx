@@ -11,6 +11,7 @@ import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, Package, Pe
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import QuoteCommercialTerms from '@/components/QuoteCommercialTerms';
+import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -39,26 +40,15 @@ export default function QuoteSummary({
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
+  const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
-  const totals = useMemo(() => {
-    let totalHT = 0;
-    cartItems.forEach((item) => {
-      const calc = calculateItemPrice(item);
-      totalHT += calc.totalLine;
-      if (item.includePose) {
-        totalHT += calc.posePrice * item.quantity;
-      }
-    });
-    const tva = Math.round(totalHT * (tvaRate / 100) * 100) / 100;
-    const totalTTC = Math.round((totalHT + tva) * 100) / 100;
-    return { totalHT: Math.round(totalHT * 100) / 100, tva, totalTTC };
-  }, [cartItems, tvaRate]);
+  const totals = useMemo(() => computeQuoteTotals(cartItems, tvaRate), [cartItems, tvaRate]);
   const paymentValidation = useMemo(
     () => getPaymentScheduleValidation(quoteSettings),
     [quoteSettings]
   );
   const isGenerateDisabled =
-    ((tvaRate === 5.5 || tvaRate === 10) && !certifyTva) || !paymentValidation.isValid;
+    (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
 
   const handleStartEdit = (item) => {
     const calc = calculateItemPrice(item);
@@ -216,12 +206,27 @@ export default function QuoteSummary({
                       </div>
 
                       {/* Dimensions + Qty */}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
                         {item.productId !== 'gestion-dechets' && item.productId !== 'custom-product' && (
                           <span className="bg-slate-100 rounded px-1.5 py-0.5 font-semibold text-slate-600">L{item.widthMm} × H{item.heightMm}</span>
                         )}
                         <span>Qté : <strong>{item.quantity}</strong></span>
                         <span>PU : {calc.unitPriceAfterDiscount.toFixed(2)} €</span>
+                        {isMultiTva && (
+                          <div className="flex items-center gap-1 ml-auto shrink-0 animate-in fade-in slide-in-from-right-2">
+                            <span className="font-bold text-slate-400">TVA</span>
+                            <select
+                              value={item.tvaRate ?? tvaRate}
+                              onChange={(e) => onUpdateItem({ ...item, tvaRate: Number(e.target.value) })}
+                              className="text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white font-bold text-slate-700 outline-none hover:border-orange-500 transition-colors cursor-pointer"
+                            >
+                              <option value={0}>0%</option>
+                              <option value={5.5}>5.5%</option>
+                              <option value={10}>10%</option>
+                              <option value={20}>20%</option>
+                            </select>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -293,6 +298,7 @@ export default function QuoteSummary({
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Dimensions</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Qté</th>
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">PU HT</th>
+                  {isMultiTva && <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center animate-in fade-in w-[110px]">TVA %</th>}
                   <th className="py-3 px-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Total HT</th>
                 </tr>
               </thead>
@@ -301,7 +307,7 @@ export default function QuoteSummary({
                   if (item.productId === 'text-only') {
                     return (
                       <tr key={item.id} className="bg-amber-50/70">
-                        <td colSpan={5} className="px-4 py-4">
+                        <td colSpan={isMultiTva ? 6 : 5} className="px-4 py-4">
                           <div className="flex items-start gap-3">
                             <div className="rounded-xl bg-white p-2 text-amber-600 shadow-sm">
                               <FileText size={18} />
@@ -468,6 +474,20 @@ export default function QuoteSummary({
                         <td className="py-4 px-4 text-right text-sm">
                           <div className="text-slate-900 font-medium">{calc.unitPriceAfterDiscount.toFixed(2)} €</div>
                         </td>
+                        {isMultiTva && (
+                          <td className="py-4 px-4 text-center animate-in fade-in">
+                            <select
+                              value={item.tvaRate ?? tvaRate}
+                              onChange={(e) => onUpdateItem({ ...item, tvaRate: Number(e.target.value) })}
+                              className="w-full cursor-pointer text-xs font-bold text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5 outline-none hover:border-orange-400 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors bg-white shadow-sm"
+                            >
+                              <option value={0}>0%</option>
+                              <option value={5.5}>5.5%</option>
+                              <option value={10}>10%</option>
+                              <option value={20}>20%</option>
+                            </select>
+                          </td>
+                        )}
                         <td className="py-4 px-4 text-right font-black text-slate-900">
                           {calc.totalLine.toFixed(2)} €
                         </td>
@@ -491,6 +511,7 @@ export default function QuoteSummary({
                           <td className="py-3 px-4 text-right text-sm text-slate-900 font-medium">
                             {calc.posePrice.toFixed(2)} €
                           </td>
+                          {isMultiTva && <td className="py-3 px-4"></td>}
                           <td className="py-3 px-4 text-right font-black text-slate-900">
                             {(calc.posePrice * item.quantity).toFixed(2)} €
                           </td>
@@ -514,31 +535,55 @@ export default function QuoteSummary({
         <div className="bg-slate-50 p-5 sm:p-8 border-t border-slate-100 flex flex-col lg:flex-row gap-6 sm:gap-8">
           {/* TVA Selector */}
           <div className="flex-1 space-y-4">
-            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Type de TVA</h4>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { value: 0, label: '0%', sub: 'Exonéré' },
-                { value: 5.5, label: '5.5%', sub: 'Réduit' },
-                { value: 10, label: '10%', sub: 'Rénovation' },
-                { value: 20, label: '20%', sub: 'Normal' }
-              ].map((rate) => (
-                <button
-                  key={rate.value}
-                  onClick={() => setTvaRate(rate.value)}
-                  className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
-                    tvaRate === rate.value
-                      ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
-                      : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Type de TVA</h4>
+              <button
+                type="button"
+                onClick={() => setIsMultiTva(!isMultiTva)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 bg-white hover:bg-slate-50 transition-all focus:outline-none"
+              >
+                <span className={`text-xs font-bold ${isMultiTva ? 'text-orange-500' : 'text-slate-500'}`}>TVA par ligne</span>
+                <div
+                  className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out ${
+                    isMultiTva ? 'bg-orange-500' : 'bg-slate-200'
                   }`}
                 >
-                  <span className="text-sm font-black">{rate.label}</span>
-                  <span className="text-[10px] uppercase font-bold opacity-60">{rate.sub}</span>
-                </button>
-              ))}
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      isMultiTva ? 'translate-x-1.5' : '-translate-x-1.5'
+                    }`}
+                  />
+                </div>
+              </button>
             </div>
             
-            {tvaRate === 0 && (
-              <div className="p-4 bg-orange-100/50 border border-orange-200 rounded-xl">
+            {!isMultiTva && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                {[
+                  { value: 0, label: '0%', sub: 'Exonéré' },
+                  { value: 5.5, label: '5.5%', sub: 'Réduit' },
+                  { value: 10, label: '10%', sub: 'Rénovation' },
+                  { value: 20, label: '20%', sub: 'Normal' }
+                ].map((rate) => (
+                  <button
+                    key={rate.value}
+                    onClick={() => setTvaRate(rate.value)}
+                    className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all ${
+                      tvaRate === rate.value
+                        ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
+                    }`}
+                  >
+                    <span className="text-sm font-black">{rate.label}</span>
+                    <span className="text-[10px] uppercase font-bold opacity-60">{rate.sub}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {totals.hasZeroVat && (
+              <div className="p-4 bg-orange-100/50 border border-orange-200 rounded-xl animate-in fade-in duration-300">
                 <p className="text-xs text-orange-700 font-bold leading-relaxed italic">
                   &quot;Autoliquidation de la TVA – Article 283-2 du Code Général des Impôts. TVA due par le preneur.&quot;
                 </p>
@@ -546,8 +591,8 @@ export default function QuoteSummary({
               </div>
             )}
 
-            {(tvaRate === 5.5 || tvaRate === 10) && (
-              <div className={`p-4 rounded-xl border-2 transition-all ${certifyTva ? 'bg-green-50 border-green-200 text-green-700' : 'bg-orange-50 border-orange-200 text-orange-700'}`}>
+            {totals.hasReducedVat && (
+              <div className={`p-4 rounded-xl border-2 transition-all animate-in fade-in duration-300 ${certifyTva ? 'bg-green-50 border-green-200 text-green-700' : 'bg-orange-50 border-orange-200 text-orange-700'}`}>
                 <label className="flex items-start gap-3 cursor-pointer group">
                   <div className="relative mt-0.5">
                     <input 
@@ -576,15 +621,33 @@ export default function QuoteSummary({
               <span className="text-slate-500 font-semibold">Total HT</span>
               <span className="font-bold text-slate-900">{totals.totalHT.toFixed(2)} €</span>
             </div>
-            <div className="flex justify-between items-center text-sm pb-3 border-b border-slate-200">
-              <span className="text-slate-500 font-semibold">TVA ({tvaRate}%)</span>
-              <span className="font-bold text-slate-900">{totals.tva.toFixed(2)} €</span>
-            </div>
+            
+            {totals.activeVatBuckets?.length > 1 ? (
+              totals.activeVatBuckets.map((bucket) => (
+                <div key={bucket.rate} className="flex justify-between items-center text-sm pb-1 border-b border-slate-100 last:border-b-0 animate-in fade-in duration-300">
+                  <span className="text-slate-500 font-semibold">TVA ({formatTvaRateLabel(bucket.rate)})</span>
+                  <span className="font-bold text-slate-900">{bucket.tva.toFixed(2)} €</span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between items-center text-sm pb-3 border-b border-slate-200">
+                <span className="text-slate-500 font-semibold">{totals.vatSummaryLabel || `TVA (${tvaRate}%)`}</span>
+                <span className="font-bold text-slate-900">{totals.tva.toFixed(2)} €</span>
+              </div>
+            )}
+
+            {totals.activeVatBuckets?.length > 1 && (
+              <div className="flex justify-between items-center text-sm pb-3 border-b border-slate-200 pt-2 animate-in fade-in duration-300">
+                <span className="text-slate-500 font-bold">Total TVA</span>
+                <span className="font-bold text-slate-900">{totals.tva.toFixed(2)} €</span>
+              </div>
+            )}
+
             <div className="flex justify-between items-end pt-1">
               <div className="space-y-0.5">
                 <span className="block text-sm font-bold text-slate-900">Net à payer TTC</span>
                 <span className="block text-[10px] text-slate-400 uppercase tracking-wider">
-                  {tvaRate === 0 ? 'Exonération de TVA' : `TVA à ${tvaRate}%`}
+                  {totals.hasZeroVat && totals.activeVatBuckets?.length === 1 ? 'Exonération de TVA' : (totals.activeVatBuckets?.length > 1 ? 'TVA Mixte' : `TVA à ${tvaRate}%`)}
                 </span>
               </div>
               <span className="text-2xl font-black text-orange-500">{totals.totalTTC.toFixed(2)} €</span>

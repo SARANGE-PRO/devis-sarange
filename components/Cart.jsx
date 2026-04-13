@@ -36,6 +36,7 @@ import {
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -359,20 +360,7 @@ export default function Cart({
   onNext,
   editingItemId,
 }) {
-  const totals = useMemo(() => {
-    let totalHT = 0;
-    items.forEach((item) => {
-      const calc = calculateItemPrice(item);
-      totalHT += calc.totalLine;
-      if (item.includePose) {
-        totalHT += calc.posePrice * item.quantity;
-      }
-    });
-
-    const tva = Math.round(totalHT * (tvaRate / 100) * 100) / 100;
-    const totalTTC = Math.round((totalHT + tva) * 100) / 100;
-    return { totalHT: Math.round(totalHT * 100) / 100, tva, totalTTC };
-  }, [items, tvaRate]);
+  const totals = useMemo(() => computeQuoteTotals(items, tvaRate), [items, tvaRate]);
 
   const itemIds = useMemo(() => items.map((item) => item.id), [items]);
   const sensors = useSensors(
@@ -465,10 +453,25 @@ export default function Cart({
             <span className="font-medium text-slate-500">Total HT</span>
             <span className="font-bold text-slate-700">{totals.totalHT.toFixed(2)} EUR</span>
           </div>
-          <div className="flex justify-between border-b border-slate-100 pb-2 text-sm">
-            <span className="font-medium text-slate-500">TVA ({tvaRate}%)</span>
-            <span className="font-bold text-slate-700">{totals.tva.toFixed(2)} EUR</span>
-          </div>
+          {totals.activeVatBuckets?.length > 1 ? (
+            totals.activeVatBuckets.map((bucket) => (
+              <div key={bucket.rate} className="flex justify-between border-b border-slate-100 pb-2 text-sm mt-2">
+                <span className="font-medium text-slate-500">TVA ({formatTvaRateLabel(bucket.rate)})</span>
+                <span className="font-bold text-slate-700">{bucket.tva.toFixed(2)} EUR</span>
+              </div>
+            ))
+          ) : (
+            <div className="flex justify-between border-b border-slate-100 pb-2 text-sm mt-2">
+              <span className="font-medium text-slate-500">{totals.vatSummaryLabel || `TVA (${tvaRate}%)`}</span>
+              <span className="font-bold text-slate-700">{totals.tva.toFixed(2)} EUR</span>
+            </div>
+          )}
+          {totals.activeVatBuckets?.length > 1 && (
+            <div className="flex justify-between pb-2 text-sm mt-2">
+              <span className="font-bold text-slate-500">Total TVA</span>
+              <span className="font-bold text-slate-700">{totals.tva.toFixed(2)} EUR</span>
+            </div>
+          )}
           <div className="flex items-end justify-between pt-2">
             <div>
               <span className="block text-xs font-bold uppercase leading-none text-slate-900">
