@@ -24,6 +24,63 @@ const getPetitsBoisConfig = (item = {}) => {
   return { petitsBoisH, petitsBoisV };
 };
 
+const formatPriceLabel = (value) => `${Number(value || 0).toFixed(2)} €`;
+
+const stripDiscountLines = (value = '') =>
+  String(value)
+    .split('\n')
+    .filter((line) => {
+      const trimmedLine = line.trim();
+      return !trimmedLine.startsWith('Remise :') && !trimmedLine.startsWith('Avant remise');
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+const buildDesignationWithDiscount = (baseText, item, pricing) => {
+  const safeBaseText = String(baseText || '').trim();
+  const hasDiscountLine = safeBaseText
+    .split('\n')
+    .some((line) => line.trim().startsWith('Remise :'));
+
+  if (!(item?.remise > 0) || !(pricing?.discountLineHT > 0) || hasDiscountLine) {
+    return safeBaseText;
+  }
+
+  const discountText = `Remise : -${item.remise}% (gain -${formatPriceLabel(pricing.discountLineHT)})`;
+  return safeBaseText ? `${safeBaseText}\n\n${discountText}` : discountText;
+};
+
+const PriceStack = ({
+  finalValue,
+  originalValue,
+  align = 'right',
+  emphasis = 'regular',
+  className = '',
+}) => {
+  const showOriginal =
+    Number.isFinite(Number(originalValue)) &&
+    Number(originalValue) > Number(finalValue);
+  const alignClass = align === 'left' ? 'items-start text-left' : 'items-end text-right';
+  const finalClass =
+    emphasis === 'strong'
+      ? 'text-base font-black text-slate-900'
+      : emphasis === 'compact'
+        ? 'text-sm font-bold text-slate-900'
+        : 'text-sm font-black text-slate-900';
+
+  return (
+    <div className={`flex flex-col ${alignClass} leading-tight ${className}`.trim()}>
+      {showOriginal && (
+        <del className="mb-0.5 text-[10px] text-slate-400 decoration-slate-300">
+          {formatPriceLabel(originalValue)}
+        </del>
+      )}
+      <span className={finalClass}>{formatPriceLabel(finalValue)}</span>
+    </div>
+  );
+};
+
 export default function QuoteSummary({
   clientData,
   cartItems,
@@ -53,7 +110,9 @@ export default function QuoteSummary({
   const handleStartEdit = (item) => {
     const calc = calculateItemPrice(item);
     const pricing = getItemPricingSummary(item, calc);
-    const initialText = item.customDescription || generateDesignation(item, calc, pricing) || '';
+    const initialText = stripDiscountLines(
+      item.customDescription || generateDesignation(item, calc, pricing) || ''
+    );
     setTempDesignation(initialText);
     setEditingDesignationId(item.id);
   };
@@ -194,15 +253,21 @@ export default function QuoteSummary({
 
                     {/* Info */}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-bold text-slate-900 text-sm truncate flex items-center gap-1.5">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="font-bold text-slate-900 text-sm flex min-w-0 flex-wrap items-center gap-1.5">
                           {item.productId === 'gestion-dechets' && <WasteRecycleIcon size={12} className="text-green-500 shrink-0" />}
                           <span className="truncate">{item.productLabel}</span>
+                          
                           {item.repere && (
                             <span className="italic text-slate-400 text-[10px] shrink-0">{item.repere}</span>
                           )}
                         </p>
-                        <p className="shrink-0 font-black text-slate-900 text-sm">{calc.totalLine.toFixed(2)} €</p>
+                        <PriceStack
+                          finalValue={calc.totalLine}
+                          originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
+                          emphasis="strong"
+                          className="shrink-0"
+                        />
                       </div>
 
                       {/* Dimensions + Qty */}
@@ -211,7 +276,15 @@ export default function QuoteSummary({
                           <span className="bg-slate-100 rounded px-1.5 py-0.5 font-semibold text-slate-600">L{item.widthMm} × H{item.heightMm}</span>
                         )}
                         <span>Qté : <strong>{item.quantity}</strong></span>
-                        <span>PU : {calc.unitPriceAfterDiscount.toFixed(2)} €</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-semibold text-slate-400">PU</span>
+                          <PriceStack
+                            finalValue={calc.unitPriceAfterDiscount}
+                            originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
+                            align="left"
+                            emphasis="compact"
+                          />
+                        </div>
                         {isMultiTva && (
                           <div className="flex items-center gap-1 ml-auto shrink-0 animate-in fade-in slide-in-from-right-2">
                             <span className="font-bold text-slate-400">TVA</span>
@@ -255,8 +328,16 @@ export default function QuoteSummary({
                         </div>
                       ) : (
                         <div className="flex items-start gap-2">
-                          <p className="flex-1 text-[10px] text-slate-500 leading-relaxed line-clamp-2 italic">
-                            {item.customDescription || generateDesignation(item, calc, pricing) || '...'}
+                          <p
+                            className={`flex-1 text-[10px] text-slate-500 leading-relaxed italic ${
+                              item.remise > 0 ? 'whitespace-pre-wrap' : 'line-clamp-2'
+                            }`}
+                          >
+                            {buildDesignationWithDiscount(
+                              item.customDescription || generateDesignation(item, calc, pricing) || '',
+                              item,
+                              pricing
+                            ) || '...'}
                           </p>
                           <button
                             onClick={() => handleStartEdit(item)}
@@ -279,9 +360,6 @@ export default function QuoteSummary({
                   <div className="flex flex-wrap gap-1.5 px-3 pb-2">
                     {item.colorOption?.id !== 'blanc' && (
                       <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 rounded text-slate-500">{item.colorOption?.label}</span>
-                    )}
-                    {item.remise > 0 && (
-                      <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">-{item.remise}%</span>
                     )}
                   </div>
                 </div>
@@ -327,6 +405,7 @@ export default function QuoteSummary({
                   }
 
                   const calc = calculateItemPrice(item);
+                  const pricing = getItemPricingSummary(item, calc);
                   const petitsBoisConfig = getPetitsBoisConfig(item);
                   return (
                     <React.Fragment key={item.id}>
@@ -374,6 +453,7 @@ export default function QuoteSummary({
                                   <WasteRecycleIcon size={14} className="text-green-500 shrink-0" />
                                 )}
                                 <span>{item.productLabel}</span>
+                                
                                 {item.repere && (
                                   <span className="italic text-slate-500 text-[10px] bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 shrink-0 font-medium tracking-tight">
                                     {item.repere}
@@ -414,7 +494,11 @@ export default function QuoteSummary({
                                     <div className="space-y-1">
                                       <div className="flex items-start justify-between gap-4">
                                         <div className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-wrap italic">
-                                          {item.customDescription || (generateDesignation(item, calc, getItemPricingSummary(item, calc)) || 'Désignation en cours...')}
+                                          {buildDesignationWithDiscount(
+                                            item.customDescription || generateDesignation(item, calc, pricing) || '',
+                                            item,
+                                            pricing
+                                          ) || 'Désignation en cours...'}
                                         </div>
                                         <button
                                           onClick={() => handleStartEdit(item)}
@@ -440,9 +524,6 @@ export default function QuoteSummary({
                                         {item.includePose && (
                                           <span className="text-[9px] px-1.5 py-0.5 bg-green-50 rounded text-green-600 font-bold">Pose incluse</span>
                                         )}
-                                        {item.remise > 0 && (
-                                          <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">-{item.remise}%</span>
-                                        )}
                                       </div>
                                     </div>
                                   )}
@@ -460,6 +541,7 @@ export default function QuoteSummary({
                                   ? 'Produit/Service'
                                   : `L${item.widthMm} × H${item.heightMm}`}
                             </span>
+                            
                             {item.isComposite &&
                               getCompositeModuleCount(item.composition, item.modules) > 0 && (
                               <p className="text-[10px] font-semibold text-slate-500">
@@ -472,7 +554,11 @@ export default function QuoteSummary({
                           {item.quantity}
                         </td>
                         <td className="py-4 px-4 text-right text-sm">
-                          <div className="text-slate-900 font-medium">{calc.unitPriceAfterDiscount.toFixed(2)} €</div>
+                          <PriceStack
+                            finalValue={calc.unitPriceAfterDiscount}
+                            originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
+                            emphasis="compact"
+                          />
                         </td>
                         {isMultiTva && (
                           <td className="py-4 px-4 text-center animate-in fade-in">
@@ -488,8 +574,12 @@ export default function QuoteSummary({
                             </select>
                           </td>
                         )}
-                        <td className="py-4 px-4 text-right font-black text-slate-900">
-                          {calc.totalLine.toFixed(2)} €
+                        <td className="py-4 px-4 text-right">
+                          <PriceStack
+                            finalValue={calc.totalLine}
+                            originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
+                            emphasis="strong"
+                          />
                         </td>
                       </tr>
                       {item.includePose && (

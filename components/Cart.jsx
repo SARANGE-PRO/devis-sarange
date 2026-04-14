@@ -33,6 +33,8 @@ import {
   calculateItemPrice,
   formatCompositeModules,
   getCompositeModuleCount,
+  getItemPricingSummary,
+  getItemThermalMetrics,
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
@@ -54,6 +56,34 @@ const formatPetitsBoisLabel = ({ petitsBoisH, petitsBoisV }) => {
   if (petitsBoisH && petitsBoisV) return `${petitsBoisH}H / ${petitsBoisV}V petits bois`;
   if (petitsBoisH) return `${petitsBoisH} barre(s) horizontale(s)`;
   return `${petitsBoisV} barre(s) verticale(s)`;
+};
+
+const formatPriceLabel = (value) => `${Number(value || 0).toFixed(2)} €`;
+
+const PriceStack = ({
+  finalValue,
+  originalValue,
+  emphasis = 'regular',
+  className = '',
+}) => {
+  const showOriginal =
+    Number.isFinite(Number(originalValue)) &&
+    Number(originalValue) > Number(finalValue);
+  const finalClass =
+    emphasis === 'strong'
+      ? 'text-base font-black text-slate-900'
+      : 'text-sm font-black text-slate-900';
+
+  return (
+    <div className={`flex flex-col items-end text-right leading-tight ${className}`.trim()}>
+      {showOriginal && (
+        <del className="mb-0.5 text-[10px] text-slate-400 decoration-slate-300">
+          {formatPriceLabel(originalValue)}
+        </del>
+      )}
+      <span className={finalClass}>{formatPriceLabel(finalValue)}</span>
+    </div>
+  );
 };
 
 function SortableCartItem({
@@ -80,7 +110,9 @@ function SortableCartItem({
   };
 
   const calc = calculateItemPrice(item);
+  const pricing = getItemPricingSummary(item, calc);
   const compositeCount = getCompositeModuleCount(item.composition, item.modules);
+  const thermalMetrics = getItemThermalMetrics(item);
   const petitsBoisConfig = getPetitsBoisConfig(item);
   const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
   const isTextOnly = item.productId === 'text-only';
@@ -220,6 +252,7 @@ function SortableCartItem({
               )}
               <p className="flex items-center gap-1.5 truncate text-sm font-bold text-slate-900">
                 {item.productLabel}
+                
                 {item.repere && (
                   <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] italic text-slate-500">
                     {item.repere}
@@ -272,6 +305,9 @@ function SortableCartItem({
             ) : (
               <>
                 L {item.widthMm} x H {item.heightMm} mm
+                {item.remise > 0 && (
+                  <span className="ml-1 font-bold text-orange-500">· -{item.remise}%</span>
+                )}
                 {item.isComposite && compositeCount > 0 && (
                   <span className="ml-1">
                     · {formatCompositeModules(item.composition || item.modules)}
@@ -300,15 +336,12 @@ function SortableCartItem({
                     · {obCount} OB / {ventCount} Grille
                   </span>
                 )}
-                {item.thermalUw !== null && item.thermalUw !== undefined && (
+                {thermalMetrics?.thermalUw !== null && thermalMetrics?.thermalUw !== undefined && (
                   <span className="ml-1 text-blue-500">
-                    · Uw={item.thermalUw} · Sw={item.thermalSw}
+                    · Uw={thermalMetrics.thermalUw} · Sw={thermalMetrics.thermalSw}
                   </span>
                 )}
               </>
-            )}
-            {item.remise > 0 && (
-              <span className="ml-1 font-bold text-orange-600">· -{item.remise}%</span>
             )}
           </p>
         </div>
@@ -334,12 +367,18 @@ function SortableCartItem({
         </div>
 
         <div className="text-right">
-          <p className="text-sm font-black text-slate-900">
-            {(calc.totalLine + (item.includePose ? calc.posePrice * item.quantity : 0)).toFixed(2)} EUR
-          </p>
+          <PriceStack
+            finalValue={calc.totalLine + (item.includePose ? calc.posePrice * item.quantity : 0)}
+            originalValue={
+              pricing.hasDiscount
+                ? pricing.originalLineHT + (item.includePose ? calc.posePrice * item.quantity : 0)
+                : null
+            }
+            emphasis="strong"
+          />
           {item.includePose && (
             <p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">
-              Dont pose {(calc.posePrice * item.quantity).toFixed(2)} EUR
+              Dont pose {(calc.posePrice * item.quantity).toFixed(2)} €
             </p>
           )}
         </div>

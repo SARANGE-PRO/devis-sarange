@@ -29,6 +29,7 @@ import {
   createDefaultColorState,
   getCompositeDimensions,
   getCompositeModuleCount,
+  getItemThermalMetrics,
   getCompositePricing,
   getPriceForMm,
   getProductById,
@@ -49,8 +50,6 @@ import {
   getFrameSystemForProduct,
   isGlazedProduct,
   calculateGlassAreas,
-  calculateUw,
-  calculateSw,
   calculateGlazingExtra,
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
@@ -700,35 +699,8 @@ export default function ProductSelector({
     sousBassementHeight: simpleConfig.sousBassementHeight,
     colorOptionId: simpleConfig.colorOptionId,
   });
-  const simpleFrameSystem = simpleFillingMeta.frameSystem;
   const simpleGlassAreas = simpleFillingMeta.glassAreas;
   const simpleSelectedGlazing = simpleFillingMeta.selectedGlazing;
-  const simpleThermalUw =
-    !simpleFillingMeta.thermalEligible ||
-    !simpleGlassAreas ||
-    !simpleFrameSystem ||
-    !simpleSelectedGlazing
-      ? null
-      : calculateUw({
-          Ag: simpleGlassAreas.Ag,
-          Af: simpleGlassAreas.Af,
-          Aw: simpleGlassAreas.Aw,
-          Lg: simpleGlassAreas.Lg,
-          Ug: simpleSelectedGlazing.ug,
-          Uf: simpleFrameSystem.uf,
-        });
-
-  const simpleThermalSw =
-    !simpleFillingMeta.thermalEligible ||
-    !simpleGlassAreas ||
-    !simpleSelectedGlazing
-      ? null
-      : calculateSw({
-          Ag: simpleGlassAreas.Ag,
-          Aw: simpleGlassAreas.Aw,
-          g: simpleSelectedGlazing.g,
-        });
-
   const simpleGlazingExtra = simpleFillingMeta.selectedPricing.totalExtra;
 
   const activeModuleFillingMeta = buildFillingSelectionMeta({
@@ -843,7 +815,7 @@ export default function ProductSelector({
 
     if (isCompositeMode) {
       if (!compositePricing.totalPrice || compositePricing.hasInvalidModule) return null;
-      return {
+      const compositePreviewItem = {
         productId: 'composite-builder',
         productLabel: 'Châssis composé 2D',
         sheetName: 'Châssis composé 2D',
@@ -858,11 +830,17 @@ export default function ProductSelector({
         isComposite: true,
         composition: compositePricing.composition,
       };
+      const thermalMetrics = getItemThermalMetrics(compositePreviewItem);
+      return {
+        ...compositePreviewItem,
+        thermalUw: thermalMetrics?.thermalUw ?? null,
+        thermalSw: thermalMetrics?.thermalSw ?? null,
+      };
     }
 
     if (!product || !simplePriceData) return null;
 
-    return {
+    const simplePreviewItem = {
       productId: product.id,
       sheetName: product.sheet,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
@@ -886,11 +864,15 @@ export default function ProductSelector({
       openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
       glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
       glazingExtra: workingIsGlazed ? simpleGlazingExtra : 0,
-      thermalUw: workingIsGlazed ? simpleThermalUw : null,
-      thermalSw: workingIsGlazed ? simpleThermalSw : null,
       hasLockingHandle: !workingIsVolet && !workingIsPorte
         ? simpleConfig.hasLockingHandle
         : false,
+    };
+    const thermalMetrics = getItemThermalMetrics(simplePreviewItem);
+    return {
+      ...simplePreviewItem,
+      thermalUw: thermalMetrics?.thermalUw ?? null,
+      thermalSw: thermalMetrics?.thermalSw ?? null,
     };
   })();
 
@@ -1264,7 +1246,7 @@ export default function ProductSelector({
 
       const flatModules = pricedComposition.flatMap((row) => row.modules);
 
-      onAddToCart({
+      const nextCompositeItem = {
         id: editingItem ? editingItem.id : createCartItemId(),
         productId: 'composite-builder',
         productLabel: 'Châssis composé 2D',
@@ -1284,6 +1266,13 @@ export default function ProductSelector({
         composition: pricedComposition,
         modules: flatModules,
         modulePricing: flatModules,
+      };
+      const thermalMetrics = getItemThermalMetrics(nextCompositeItem);
+
+      onAddToCart({
+        ...nextCompositeItem,
+        thermalUw: thermalMetrics?.thermalUw ?? null,
+        thermalSw: thermalMetrics?.thermalSw ?? null,
       });
 
       resetCompositeSelection();
@@ -1361,7 +1350,7 @@ export default function ProductSelector({
 
     if (!simplePriceData) return;
 
-    onAddToCart({
+    const nextSimpleItem = {
       id: editingItem ? editingItem.id : createCartItemId(),
       productId: product.id,
       productLabel: product.label,
@@ -1390,8 +1379,6 @@ export default function ProductSelector({
       openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
       glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
       glazingExtra: workingIsGlazed ? simpleGlazingExtra : 0,
-      thermalUw: workingIsGlazed ? simpleThermalUw : null,
-      thermalSw: workingIsGlazed ? simpleThermalSw : null,
       marketingBase: simpleMarketing.marketingBase,
       marketingFinition: simpleMarketing.marketingFinition,
       svgColor: simpleMarketing.svgColor,
@@ -1401,6 +1388,13 @@ export default function ProductSelector({
       rawColorState: simpleConfig.rawColorState,
       repere,
       showThermalData,
+    };
+    const thermalMetrics = getItemThermalMetrics(nextSimpleItem);
+
+    onAddToCart({
+      ...nextSimpleItem,
+      thermalUw: thermalMetrics?.thermalUw ?? null,
+      thermalSw: thermalMetrics?.thermalSw ?? null,
     });
 
     resetSimpleSelection();
