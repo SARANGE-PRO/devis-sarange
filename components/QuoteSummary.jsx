@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import Image from 'next/image';
+import styles from './QuoteSummary.module.css';
 import {
   calculateItemPrice,
   formatCompositeModules,
@@ -81,6 +83,74 @@ const PriceStack = ({
   );
 };
 
+const waitForLoaderPaint = () =>
+  new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve);
+    });
+  });
+
+const PdfGenerationLoader = () => (
+  <div
+    className={styles.loaderOverlay}
+    role="status"
+    aria-live="polite"
+    aria-label="Generation du devis en cours"
+  >
+    <div className={styles.loaderCard}>
+      <div className={styles.loaderWrapper}>
+        <div className={styles.iconContainer} aria-hidden="true">
+          <svg
+            viewBox="0 0 100 100"
+            xmlns="http://www.w3.org/2000/svg"
+            className={styles.loaderSvg}
+          >
+            <defs>
+              <clipPath id="quote-loader-window-clip">
+                <rect x="14" y="24" width="72" height="66" />
+              </clipPath>
+            </defs>
+
+            <rect x="10" y="10" width="80" height="80" rx="3" fill="none" stroke="#1A1A1A" strokeWidth="5" />
+            <rect x="15" y="15" width="70" height="70" fill="#FFFFFF" />
+            <line x1="50" y1="15" x2="50" y2="85" stroke="#1A1A1A" strokeWidth="3" />
+            <line x1="15" y1="50" x2="85" y2="50" stroke="#1A1A1A" strokeWidth="3" />
+            <polygon points="15,45 45,15 60,15 15,60" fill="#F0F0F0" fillOpacity="0.8" />
+            <polygon points="15,85 85,15 90,15 15,90" fill="#F0F0F0" fillOpacity="0.5" />
+
+            <g clipPath="url(#quote-loader-window-clip)">
+              <g className={styles.shutter}>
+                <rect x="15" y="25" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="33" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="41" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="49" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="57" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="65" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="73" width="70" height="7" fill="#FF5F1F" />
+                <rect x="15" y="81" width="70" height="9" fill="#1A1A1A" />
+              </g>
+            </g>
+
+            <rect x="8" y="8" width="84" height="18" rx="2" fill="#1A1A1A" />
+          </svg>
+        </div>
+
+        <div className="text-center">
+          <p className="m-0 text-sm font-black uppercase tracking-[0.24em] text-slate-900 sm:text-base">
+            Creation du devis
+          </p>
+          <p className={styles.subtitle}>Veuillez patienter...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function QuoteSummary({
   clientData,
   cartItems,
@@ -97,6 +167,7 @@ export default function QuoteSummary({
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
   const totals = useMemo(() => computeQuoteTotals(cartItems, tvaRate), [cartItems, tvaRate]);
@@ -125,10 +196,28 @@ export default function QuoteSummary({
     setEditingDesignationId(null);
   };
 
+  const runPdfAction = async (action) => {
+    if (!action || isGenerateDisabled || isGeneratingPdf) {
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+
+    try {
+      await waitForLoaderPaint();
+      await Promise.resolve(action());
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Header section with Client Info */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <>
+      {isGeneratingPdf && <PdfGenerationLoader />}
+
+      <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* Header section with Client Info */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-5 sm:p-8 bg-slate-900 flex flex-col gap-3 sm:flex-row sm:items-center justify-between sm:gap-4">
           <div>
             <h2 className="text-xl font-black text-white tracking-tight sm:text-2xl">Récapitulatif du Devis</h2>
@@ -219,9 +308,16 @@ export default function QuoteSummary({
                           <WasteRecycleIcon size={20} className="text-green-600" />
                         </div>
                       ) : item.productId === 'custom-product' ? (
-                        <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                        <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                           {item.customImage ? (
-                            <img src={item.customImage} alt="" className="w-full h-full object-cover" />
+                            <Image
+                              src={item.customImage}
+                              alt="Aperçu du produit personnalisé"
+                              fill
+                              unoptimized
+                              sizes="48px"
+                              className="object-cover"
+                            />
                           ) : (
                             <Package size={20} className="text-slate-300" />
                           )}
@@ -417,9 +513,16 @@ export default function QuoteSummary({
                                 <WasteRecycleIcon size={24} className="text-green-600" />
                               </div>
                             ) : item.productId === 'custom-product' ? (
-                              <div className="w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                              <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                                 {item.customImage ? (
-                                  <img src={item.customImage} alt="" className="w-full h-full object-cover" />
+                                  <Image
+                                    src={item.customImage}
+                                    alt="Aperçu du produit personnalisé"
+                                    fill
+                                    unoptimized
+                                    sizes="56px"
+                                    className="object-cover"
+                                  />
                                 ) : (
                                   <Package size={24} className="text-slate-300" />
                                 )}
@@ -744,46 +847,52 @@ export default function QuoteSummary({
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <button
-          onClick={onGoBack}
-          className="w-full sm:w-auto px-6 py-3 text-sm font-semibold text-slate-500 hover:text-slate-700 bg-white border border-slate-200 rounded-full shadow-sm hover:shadow hover:bg-slate-50 transition-all font-bold"
-        >
-          Retourner au panier
-        </button>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-          {pdfGenerated && (
+        {/* Action Buttons */}
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <button
+            onClick={onGoBack}
+            disabled={isGeneratingPdf}
+            className={`w-full sm:w-auto px-6 py-3 text-sm font-semibold border rounded-full shadow-sm transition-all font-bold ${
+              isGeneratingPdf
+                ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                : 'text-slate-500 hover:text-slate-700 bg-white border-slate-200 hover:shadow hover:bg-slate-50'
+            }`}
+          >
+            Retourner au panier
+          </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            {pdfGenerated && (
+              <button
+                onClick={() => void runPdfAction(onDownloadAgain)}
+                disabled={isGenerateDisabled || isGeneratingPdf}
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border ${
+                  isGenerateDisabled || isGeneratingPdf
+                    ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <Download size={18} />
+                {isGeneratingPdf ? 'Generation en cours...' : 'Telecharger a nouveau'}
+              </button>
+            )}
             <button
-              onClick={onDownloadAgain}
-              disabled={isGenerateDisabled}
-              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border ${
-                isGenerateDisabled
-                  ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              onClick={() => void runPdfAction(onGeneratePdf)}
+              disabled={isGenerateDisabled || isGeneratingPdf}
+              className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
+                isGenerateDisabled || isGeneratingPdf
+                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
               }`}
             >
               <Download size={18} />
-              Telecharger a nouveau
+              {isGeneratingPdf ? 'Generation en cours...' : 'Valider & Generer PDF'}
             </button>
-          )}
-          <button
-            onClick={onGeneratePdf}
-            disabled={isGenerateDisabled}
-            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
-              isGenerateDisabled
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
-            }`}
-          >
-            <Download size={18} />
-            Valider & Generer PDF
-          </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 

@@ -360,12 +360,18 @@ export default function HomePageClient() {
   };
 
   const handleGeneratePdf = async () => {
-    if (firebaseConfigured && user && canSaveCloudQuote) {
-      await persistQuoteToCloud({ origin: 'pdf' });
-    }
+    setSaveError('');
 
-    await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings);
-    setPdfGenerated(true);
+    try {
+      if (firebaseConfigured && user && canSaveCloudQuote) {
+        await persistQuoteToCloud({ origin: 'pdf' });
+      }
+
+      await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings);
+      setPdfGenerated(true);
+    } catch (error) {
+      setSaveError(error?.message || 'Impossible de generer le PDF.');
+    }
   };
 
   const headerActions = (
@@ -537,8 +543,8 @@ export default function HomePageClient() {
           setQuoteSettings={setQuoteSettings}
           onGoBack={() => setCurrentStep(2)}
           onUpdateItem={handleAddToCart}
-          onGeneratePdf={() => void handleGeneratePdf()}
-          onDownloadAgain={() => void handleGeneratePdf()}
+          onGeneratePdf={handleGeneratePdf}
+          onDownloadAgain={handleGeneratePdf}
           pdfGenerated={pdfGenerated}
         />
       )}

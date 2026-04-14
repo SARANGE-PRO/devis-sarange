@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import {
   LayoutGrid,
@@ -1572,11 +1573,16 @@ export default function ProductSelector({
           <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 md:p-6 transition-all hover:bg-slate-100">
             {customImage ? (
               <>
-                <img
-                  src={customImage}
-                  alt=""
-                  className="h-64 w-full rounded-xl object-contain"
-                />
+                <div className="relative h-64 w-full">
+                  <Image
+                    src={customImage}
+                    alt="Aperçu du produit personnalisé"
+                    fill
+                    unoptimized
+                    sizes="(max-width: 768px) 100vw, 512px"
+                    className="rounded-xl object-contain"
+                  />
+                </div>
                 <button
                   onClick={() => setCustomImage(null)}
                   className="absolute right-3 top-3 rounded-full bg-red-500 p-2 text-white shadow-lg transition-colors hover:bg-red-600"
