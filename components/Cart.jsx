@@ -209,14 +209,20 @@ function SortableCartItem({
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50">
             <WasteRecycleIcon size={28} className="text-green-600" />
           </div>
+        ) : item.customImage ? (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.customImage}
+              alt={item.productLabel || ''}
+              className={`h-full w-full ${
+                item.productId === 'custom-product' ? 'object-cover' : 'object-contain p-1'
+              }`}
+            />
+          </div>
         ) : item.productId === 'custom-product' ? (
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
-            {item.customImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.customImage} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <Package size={28} className="text-slate-300" />
-            )}
+            <Package size={28} className="text-slate-300" />
           </div>
         ) : (
           <MenuiserieVisual
@@ -301,6 +307,13 @@ function SortableCartItem({
                   </span>
                 )}
                 Produit/Service libre
+              </>
+            ) : item.hasDimensions === false ? (
+              <>
+                {item.dimensionLabel || 'Accessoire'}
+                {item.remise > 0 && (
+                  <span className="ml-1 font-bold text-orange-500">Â· -{item.remise}%</span>
+                )}
               </>
             ) : (
               <>

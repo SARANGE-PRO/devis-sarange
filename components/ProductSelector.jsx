@@ -32,9 +32,11 @@ import {
   getCompositeModuleCount,
   getItemThermalMetrics,
   getCompositePricing,
+  getDefaultProductVariant,
   getPriceForMm,
   getProductById,
   getProductCategory,
+  getProductVariant,
   getProductType,
   getPosePriceForType,
   calculateSurface,
@@ -81,6 +83,7 @@ const buildPetitsBoisState = (source = {}) => ({
 });
 
 const createSimpleConfig = (overrides = {}) => ({
+  productVariantId: '',
   widthMm: '',
   heightMm: '',
   colorOptionId: 'blanc',
@@ -597,6 +600,13 @@ export default function ProductSelector({
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
   const isTextOnlyProduct = product?.id === 'text-only';
+  const isFixedPriceProduct = product?.pricingMode === 'fixed';
+  const selectedProductVariant = isFixedPriceProduct
+    ? getProductVariant(product, simpleConfig.productVariantId)
+    : null;
+  const defaultProductVariant = isFixedPriceProduct
+    ? getDefaultProductVariant(product)
+    : null;
   const netAdjustmentValue =
     netAdjustmentMode === 'discount' ? netDiscountWanted : netMarginWanted;
   const netAdjustmentLabel =
@@ -657,16 +667,24 @@ export default function ProductSelector({
   const simplePriceData =
     !isCompositeMode &&
     product &&
-    simpleConfig.heightMm &&
-    simpleConfig.widthMm &&
     !isWasteManagement &&
     !isCustomProduct &&
     !isTextOnlyProduct
-      ? getPriceForMm(
-          product.sheet,
-          parsePositiveInt(simpleConfig.heightMm),
-          parsePositiveInt(simpleConfig.widthMm)
-        )
+      ? isFixedPriceProduct
+        ? selectedProductVariant
+          ? {
+              price: selectedProductVariant.priceHt,
+              billedHeight: null,
+              billedWidth: null,
+            }
+          : null
+        : simpleConfig.heightMm && simpleConfig.widthMm
+          ? getPriceForMm(
+              product.sheet,
+              parsePositiveInt(simpleConfig.heightMm),
+              parsePositiveInt(simpleConfig.widthMm)
+            )
+          : null
       : null;
 
   const addButtonLabel = editingItem
@@ -836,6 +854,30 @@ export default function ProductSelector({
         ...compositePreviewItem,
         thermalUw: thermalMetrics?.thermalUw ?? null,
         thermalSw: thermalMetrics?.thermalSw ?? null,
+      };
+    }
+
+    if (isFixedPriceProduct) {
+      const variant = selectedProductVariant || defaultProductVariant;
+      if (!product || !variant || !simplePriceData) return null;
+
+      return {
+        productId: product.id,
+        productVariantId: variant.id,
+        productLabel: variant.label,
+        sheetName: product.sheet,
+        widthMm: 0,
+        heightMm: 0,
+        unitPrice: simplePriceData.price,
+        quantity,
+        includePose: false,
+        remise,
+        netMarginWanted,
+        netDiscountWanted,
+        customDescription: variant.designation,
+        customImage: variant.imageSrc,
+        hasDimensions: false,
+        dimensionLabel: 'Accessoire',
       };
     }
 
@@ -1188,6 +1230,7 @@ export default function ProductSelector({
 
     setSimpleConfig(
       createSimpleConfig({
+        productVariantId: editingItem.productVariantId || '',
         widthMm: editingItem.widthMm?.toString() || '',
         heightMm: editingItem.heightMm?.toString() || '',
         colorOptionId: editingItem.colorOption?.id || 'blanc',
@@ -1349,6 +1392,40 @@ export default function ProductSelector({
       return;
     }
 
+    if (isFixedPriceProduct) {
+      const variant = selectedProductVariant || defaultProductVariant;
+      if (!product || !variant || !simplePriceData) return;
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: product.id,
+        productVariantId: variant.id,
+        productLabel: variant.label,
+        sheetName: product.sheet,
+        widthMm: 0,
+        heightMm: 0,
+        billedHeightCm: null,
+        billedWidthCm: null,
+        quantity,
+        unitPrice: simplePriceData.price,
+        includePose: false,
+        remise,
+        netAdjustmentMode,
+        netMarginWanted,
+        netDiscountWanted,
+        customDescription: variant.designation,
+        customImage: variant.imageSrc,
+        hasDimensions: false,
+        dimensionLabel: 'Accessoire',
+        repere,
+        showThermalData: false,
+      });
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
     if (!simplePriceData) return;
 
     const nextSimpleItem = {
@@ -1444,13 +1521,25 @@ export default function ProductSelector({
                 !entry.id.includes('custom') &&
                 entry.id !== 'text-only' && (
                 <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
-                  <MenuiserieVisual
-                    sheetName={entry.sheet}
-                    width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
-                    height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
-                    options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
-                    className="h-full w-full"
-                  />
+                  {entry.previewImageSrc ? (
+                    <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <Image
+                        src={entry.previewImageSrc}
+                        alt={entry.label}
+                        fill
+                        sizes="64px"
+                        className="object-contain p-1"
+                      />
+                    </div>
+                  ) : (
+                    <MenuiserieVisual
+                      sheetName={entry.sheet}
+                      width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
+                      height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
+                      options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
+                      className="h-full w-full"
+                    />
+                  )}
                 </div>
               )}
               <span>{entry.shortLabel}</span>
@@ -1461,25 +1550,58 @@ export default function ProductSelector({
 
       {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
-          <MenuiserieVisual
-            sheetName={product.sheet}
-            width={simpleConfig.widthMm || (workingIsPorte ? 900 : 1200)}
-            height={simpleConfig.heightMm || (workingIsPorte ? 2150 : 1250)}
-            options={{
-              colorOption: workingColorOption,
-              glazingId: simpleConfig.glazingId,
-              petitsBoisH: simpleConfig.petitsBoisH,
-              petitsBoisV: simpleConfig.petitsBoisV,
-              panneauDecoratif: simpleConfig.panneauDecoratif,
-              hasSousBassement: simpleConfig.hasSousBassement,
-              sousBassementHeight: simpleConfig.sousBassementHeight,
-              sashOptions: simpleConfig.sashOptions,
-              openingDirection: simpleConfig.openingDirection,
-              productId: product.id,
-              svgColor: simpleMarketing.svgColor,
-            }}
-            className="h-48 sm:h-72 md:h-80"
-          />
+          {isFixedPriceProduct && (selectedProductVariant || defaultProductVariant) ? (
+            <div className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
+              <div className="space-y-3">
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                  Produit additionnel volet roulant
+                </p>
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">
+                    {(selectedProductVariant || defaultProductVariant)?.label}
+                  </h3>
+                  <p className="mt-2 text-sm font-semibold text-orange-600">
+                    {(selectedProductVariant || defaultProductVariant)?.useCase}
+                  </p>
+                </div>
+                <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
+                  {(selectedProductVariant || defaultProductVariant)?.designation}
+                </p>
+                <p className="text-sm font-black text-slate-900">
+                  {((selectedProductVariant || defaultProductVariant)?.priceHt || 0).toFixed(2)} EUR HT
+                </p>
+              </div>
+              <div className="relative mx-auto h-56 w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-slate-50">
+                <Image
+                  src={(selectedProductVariant || defaultProductVariant)?.imageSrc}
+                  alt={(selectedProductVariant || defaultProductVariant)?.label || product.label}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 320px"
+                  className="object-contain p-4"
+                />
+              </div>
+            </div>
+          ) : (
+            <MenuiserieVisual
+              sheetName={product.sheet}
+              width={simpleConfig.widthMm || (workingIsPorte ? 900 : 1200)}
+              height={simpleConfig.heightMm || (workingIsPorte ? 2150 : 1250)}
+              options={{
+                colorOption: workingColorOption,
+                glazingId: simpleConfig.glazingId,
+                petitsBoisH: simpleConfig.petitsBoisH,
+                petitsBoisV: simpleConfig.petitsBoisV,
+                panneauDecoratif: simpleConfig.panneauDecoratif,
+                hasSousBassement: simpleConfig.hasSousBassement,
+                sousBassementHeight: simpleConfig.sousBassementHeight,
+                sashOptions: simpleConfig.sashOptions,
+                openingDirection: simpleConfig.openingDirection,
+                productId: product.id,
+                svgColor: simpleMarketing.svgColor,
+              }}
+              className="h-48 sm:h-72 md:h-80"
+            />
+          )}
         </div>
       )}
 
@@ -1633,6 +1755,76 @@ export default function ProductSelector({
 
       {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
         <div className="space-y-6 p-4 md:p-6">
+          {isFixedPriceProduct && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
+              <div className="mb-4">
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400">
+                  Choix de la box
+                </label>
+                <p className="mt-2 text-sm text-slate-500">
+                  Selectionnez la box adaptee a la motorisation installee.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                {product.variants?.map((variant) => {
+                  const isActive =
+                    (selectedProductVariant || defaultProductVariant)?.id === variant.id;
+
+                  return (
+                    <label
+                      key={variant.id}
+                      className={`cursor-pointer rounded-2xl border-2 bg-white p-4 transition-all ${
+                        isActive
+                          ? 'border-orange-500 shadow-lg shadow-orange-500/10'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={isActive}
+                        onChange={() =>
+                          updateSimpleOptions({ productVariantId: variant.id })
+                        }
+                        className="sr-only"
+                      />
+                      <div className="flex flex-col gap-4">
+                        <div className="relative h-40 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                          <Image
+                            src={variant.imageSrc}
+                            alt={variant.label}
+                            fill
+                            sizes="(max-width: 1024px) 100vw, 320px"
+                            className="object-contain p-3"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-black text-slate-900">
+                                {variant.label}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-orange-600">
+                                {variant.useCase}
+                              </p>
+                            </div>
+                            <span className="shrink-0 rounded-full bg-orange-50 px-3 py-1 text-xs font-black text-orange-600">
+                              {variant.priceHt.toFixed(2)} EUR HT
+                            </span>
+                          </div>
+                          <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-slate-600">
+                            {variant.designation}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isFixedPriceProduct && (
           <details open className="group rounded-2xl border border-slate-200 bg-white p-4">
             <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
               Dimensions
@@ -1669,7 +1861,9 @@ export default function ProductSelector({
               </div>
             </div>
           </details>
+          )}
 
+          {!isFixedPriceProduct && (
           <details className="group rounded-2xl border border-slate-200 bg-white p-4">
             <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
               Coloration
@@ -1691,8 +1885,9 @@ export default function ProductSelector({
               })}
             </div>
           </details>
+          )}
 
-          {workingIsGlazed && (
+          {!isFixedPriceProduct && workingIsGlazed && (
             <details className="group rounded-2xl border border-slate-200 bg-white p-4">
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
                 Vitrage / remplissage
@@ -1733,7 +1928,7 @@ export default function ProductSelector({
             </details>
           )}
 
-          {!workingIsVolet && (
+          {!isFixedPriceProduct && !workingIsVolet && (
             <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
                 Options & Accessoires
@@ -2060,6 +2255,7 @@ export default function ProductSelector({
             />
           </div>
 
+          {!isFixedPriceProduct && (
           <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
@@ -2072,7 +2268,9 @@ export default function ProductSelector({
             {getPosePriceForType(getProductType(product.sheet))} EUR
             )
           </label>
+          )}
 
+          {!isFixedPriceProduct && (
           <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
             <input
               type="checkbox"
@@ -2082,6 +2280,7 @@ export default function ProductSelector({
             />
             Afficher les données thermiques sur le devis
           </label>
+          )}
         </div>
       )}
     </div>

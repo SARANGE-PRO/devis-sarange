@@ -307,7 +307,7 @@ export default function QuoteSummary({
                         <div className="w-12 h-12 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center">
                           <WasteRecycleIcon size={20} className="text-green-600" />
                         </div>
-                      ) : item.productId === 'custom-product' ? (
+                      ) : item.customImage ? (
                         <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                           {item.customImage ? (
                             <Image
@@ -316,11 +316,19 @@ export default function QuoteSummary({
                               fill
                               unoptimized
                               sizes="48px"
-                              className="object-cover"
+                              className={
+                                item.productId === 'custom-product'
+                                  ? 'object-cover'
+                                  : 'object-contain'
+                              }
                             />
                           ) : (
                             <Package size={20} className="text-slate-300" />
                           )}
+                        </div>
+                      ) : item.productId === 'custom-product' ? (
+                        <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                          <Package size={20} className="text-slate-300" />
                         </div>
                       ) : (
                         <MenuiserieVisual
@@ -369,7 +377,11 @@ export default function QuoteSummary({
                       {/* Dimensions + Qty */}
                       <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
                         {item.productId !== 'gestion-dechets' && item.productId !== 'custom-product' && (
-                          <span className="bg-slate-100 rounded px-1.5 py-0.5 font-semibold text-slate-600">L{item.widthMm} × H{item.heightMm}</span>
+                          <span className="bg-slate-100 rounded px-1.5 py-0.5 font-semibold text-slate-600">
+                            {item.hasDimensions === false
+                              ? item.dimensionLabel || 'Accessoire'
+                              : `L${item.widthMm} × H${item.heightMm}`}
+                          </span>
                         )}
                         <span>Qté : <strong>{item.quantity}</strong></span>
                         <div className="flex items-center gap-1.5">
@@ -512,7 +524,7 @@ export default function QuoteSummary({
                               <div className="w-14 h-14 shrink-0 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center">
                                 <WasteRecycleIcon size={24} className="text-green-600" />
                               </div>
-                            ) : item.productId === 'custom-product' ? (
+                            ) : item.customImage ? (
                               <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                                 {item.customImage ? (
                                   <Image
@@ -521,11 +533,19 @@ export default function QuoteSummary({
                                     fill
                                     unoptimized
                                     sizes="56px"
-                                    className="object-cover"
+                                    className={
+                                      item.productId === 'custom-product'
+                                        ? 'object-cover'
+                                        : 'object-contain'
+                                    }
                                   />
                                 ) : (
                                   <Package size={24} className="text-slate-300" />
                                 )}
+                              </div>
+                            ) : item.productId === 'custom-product' ? (
+                              <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                                <Package size={24} className="text-slate-300" />
                               </div>
                             ) : (
                               <MenuiserieVisual 
@@ -642,7 +662,9 @@ export default function QuoteSummary({
                                 ? 'Service'
                                 : item.productId === 'custom-product'
                                   ? 'Produit/Service'
-                                  : `L${item.widthMm} × H${item.heightMm}`}
+                                  : item.hasDimensions === false
+                                    ? item.dimensionLabel || 'Accessoire'
+                                    : `L${item.widthMm} × H${item.heightMm}`}
                             </span>
                             
                             {item.isComposite &&
