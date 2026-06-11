@@ -1,8 +1,13 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileText,
   ImagePlus,
   Loader2,
   PenLine,
@@ -13,6 +18,15 @@ import {
   Upload,
   XCircle,
 } from 'lucide-react';
+
+const MobilePdfViewer = dynamic(() => import('./MobilePdfViewer'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center py-16">
+      <Loader2 size={24} className="animate-spin text-orange-300" />
+    </div>
+  ),
+});
 
 import {
   getQuoteNumberDisplay,
@@ -170,6 +184,7 @@ export default function QuoteSignaturePage({ token }) {
   const [hasSignature, setHasSignature] = useState(false);
   const [stampFileName, setStampFileName] = useState('');
   const [justSigned, setJustSigned] = useState(false);
+  const [pdfExpanded, setPdfExpanded] = useState(false);
 
   const redrawCanvas = () => {
     const canvas = canvasRef.current;
@@ -585,19 +600,75 @@ export default function QuoteSignaturePage({ token }) {
         )}
 
         {!loading && !error && session && (
-          <div className="grid gap-5 xl:grid-cols-[1.4fr,0.9fr]">
+          <div className="flex flex-col gap-5 xl:grid xl:grid-cols-[1.4fr,0.9fr]">
+            {/* PDF Viewer Section */}
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl shadow-black/20">
-              <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <p className="text-sm font-bold text-slate-900">Aperçu du devis</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Le document joint est celui qui sera signé.
-                </p>
+              {/* Mobile: collapsible header */}
+              <button
+                type="button"
+                onClick={() => setPdfExpanded((v) => !v)}
+                className="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4 text-left xl:hidden"
+              >
+                <div className="flex items-center gap-3">
+                  <FileText size={18} className="text-orange-500" />
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">Aperçu du devis</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Appuyez pour {pdfExpanded ? 'réduire' : 'afficher'} le document
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={session.originalDocumentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded-full border border-orange-200 bg-orange-50 p-2 text-orange-600 transition hover:bg-orange-100"
+                    aria-label="Télécharger le PDF"
+                  >
+                    <Download size={16} />
+                  </a>
+                  {pdfExpanded ? (
+                    <ChevronUp size={20} className="text-slate-400" />
+                  ) : (
+                    <ChevronDown size={20} className="text-slate-400" />
+                  )}
+                </div>
+              </button>
+
+              {/* Desktop: always-visible header */}
+              <div className="hidden border-b border-slate-200 bg-slate-50 px-5 py-4 xl:flex xl:items-center xl:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-slate-900">Aperçu du devis</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Le document joint est celui qui sera signé.
+                  </p>
+                </div>
+                <a
+                  href={session.originalDocumentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
+                >
+                  <Download size={14} />
+                  Télécharger
+                </a>
               </div>
-              <iframe
-                title="Aperçu du devis"
-                src={session.originalDocumentUrl}
-                className="h-[72vh] w-full bg-white"
-              />
+
+              {/* Mobile: collapsible content */}
+              <div
+                className={`overflow-hidden transition-all duration-300 xl:!max-h-none xl:!opacity-100 ${
+                  pdfExpanded
+                    ? 'max-h-[80vh] opacity-100'
+                    : 'max-h-0 opacity-0 xl:max-h-none'
+                }`}
+              >
+                <MobilePdfViewer
+                  url={session.originalDocumentUrl}
+                  title="Aperçu du devis"
+                />
+              </div>
             </section>
 
             <aside className="space-y-4">
