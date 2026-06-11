@@ -10,6 +10,10 @@ import {
   signOut,
   updateProfile,
 } from 'firebase/auth';
+import { subscribeToUserCatalogueConfig } from '@/lib/firebase/catalogue';
+import { hydrateCatalogueCoefficients } from '@/lib/catalogue-coefficients';
+import { hydrateCataloguePricing } from '@/lib/catalogue-pricing';
+import { hydrateCustomGlazingOptions } from '@/lib/glazing';
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client';
 
 const FirebaseContext = createContext({
@@ -69,6 +73,25 @@ export function FirebaseProvider({ children }) {
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured || initializing || !user?.uid) {
+      return undefined;
+    }
+
+    return subscribeToUserCatalogueConfig({
+      userId: user.uid,
+      onNext: (catalogueConfig) => {
+        if (!catalogueConfig) return;
+        hydrateCatalogueCoefficients(catalogueConfig.coefficients);
+        hydrateCataloguePricing(catalogueConfig.pricing);
+        hydrateCustomGlazingOptions(catalogueConfig.customGlazingOptions);
+      },
+      onError: (error) => {
+        console.error('Firebase catalogue sync error:', error);
+      },
+    });
+  }, [initializing, user]);
 
   const value = useMemo(
     () => ({

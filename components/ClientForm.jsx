@@ -130,7 +130,13 @@ export default function ClientForm({ onNext, initialData = null }) {
     const { name, value, type, checked } = event.target;
     const finalValue = type === 'checkbox' ? checked : value;
 
-    setFormData((prev) => ({ ...prev, [name]: finalValue }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: finalValue,
+      ...(name === 'nomChantierDifferent' && !checked
+        ? { nomChantier: '', prenomChantier: '' }
+        : {}),
+    }));
 
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: '' }));
@@ -279,10 +285,14 @@ export default function ClientForm({ onNext, initialData = null }) {
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               {activeSavedClient && (
                 <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-900">
-                  Client reconnu : <span className="font-semibold">{activeSavedClient.displayName}</span>
-                  {getClientFullLocation(activeSavedClient.payload)
-                    ? ` / ${getClientFullLocation(activeSavedClient.payload)}`
-                    : ''}
+                  Client reconnu :{' '}
+                  <span className="break-words font-semibold">{activeSavedClient.displayName}</span>
+                  {getClientFullLocation(activeSavedClient.payload) ? (
+                    <span className="break-words">
+                      {' / '}
+                      {getClientFullLocation(activeSavedClient.payload)}
+                    </span>
+                  ) : ''}
                 </div>
               )}
 
@@ -469,7 +479,58 @@ export default function ClientForm({ onNext, initialData = null }) {
 
           {!formData.memeAdresseChantier && (
             <div className="animate-in fade-in slide-in-from-top-2 space-y-5 rounded-xl border border-slate-200 bg-slate-50 p-5">
-              <h3 className="text-sm font-semibold text-slate-800">Adresse du chantier</h3>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-800">Adresse du chantier</h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Renseignez les informations uniquement si elles diffèrent de la facturation.
+                  </p>
+                </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    name="nomChantierDifferent"
+                    checked={formData.nomChantierDifferent}
+                    onChange={handleChange}
+                    className="h-4 w-4 cursor-pointer rounded border-slate-300 text-orange-500 transition-colors focus:ring-2 focus:ring-orange-500"
+                  />
+                  Nom différent
+                </label>
+              </div>
+
+              {formData.nomChantierDifferent && (
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="nomChantier" className={labelClasses}>
+                      Nom chantier
+                    </label>
+                    <input
+                      id="nomChantier"
+                      name="nomChantier"
+                      type="text"
+                      placeholder="Dupont"
+                      value={formData.nomChantier}
+                      onChange={handleChange}
+                      className={inputClasses}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="prenomChantier" className={labelClasses}>
+                      Prenom chantier
+                    </label>
+                    <input
+                      id="prenomChantier"
+                      name="prenomChantier"
+                      type="text"
+                      placeholder="Jean"
+                      value={formData.prenomChantier}
+                      onChange={handleChange}
+                      className={inputClasses}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="relative">
                 <label htmlFor="adresseChantier" className={labelClasses}>
                   Adresse

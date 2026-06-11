@@ -11,11 +11,31 @@ import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { hasMeaningfulClientData } from '@/lib/client-cloud';
 import { getClientById, saveClientProfile } from '@/lib/firebase/clients';
-import { calculateItemPrice } from '@/lib/products';
-import { generateQuotePDF } from '@/lib/pdf-generator';
+import {
+  calculateItemPrice,
+  calculateWasteManagementForItems,
+  createCatalogServiceCartItem,
+  getItemPricingSummary,
+  getProductById,
+} from '@/lib/products';
+import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
+import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
-import { ArrowLeft, CloudUpload, FileText, Loader2, ShoppingCart, User } from 'lucide-react';
+import {
+  ArrowLeft,
+  AlertTriangle,
+  CheckCircle2,
+  CloudUpload,
+  FileText,
+  FolderOpen,
+  Loader2,
+  Plus,
+  RotateCcw,
+  ShoppingCart,
+  X,
+  User,
+} from 'lucide-react';
 
 const STEPS = [
   { number: 1, label: 'Client', icon: User },
@@ -24,6 +44,245 @@ const STEPS = [
 ];
 
 const DEFAULT_TVA_RATE = 10;
+const WASTE_MANAGEMENT_PRODUCT_ID = 'gestion-dechets';
+const TECHNICAL_MEASUREMENT_PRODUCT_ID = 'metrage-technique-validation';
+
+const createCartItemId = (prefix = 'item') =>
+  `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+const createWasteManagementCartItem = (cartItems = []) => {
+  const product = getProductById(WASTE_MANAGEMENT_PRODUCT_ID);
+  const wasteCalculation = calculateWasteManagementForItems(cartItems);
+
+  return {
+    id: createCartItemId('dechets'),
+    productId: WASTE_MANAGEMENT_PRODUCT_ID,
+    productLabel: product?.label || 'Gestion des déchets',
+    sheetName: product?.sheet || 'Gestion Déchets',
+    totalSurface: wasteCalculation.totalSurface,
+    totalWeight: wasteCalculation.totalWeight,
+    totalWastePrice: wasteCalculation.totalWastePrice,
+    quantity: 1,
+    unitPrice: wasteCalculation.totalWastePrice,
+    includePose: false,
+    remise: 0,
+    netMarginWanted: 0,
+    netDiscountWanted: 0,
+  };
+};
+
+const normalizeCartItemsForQuote = (items = []) => {
+  const sourceItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  const regularItems = sourceItems.filter(
+    (item) =>
+      item.productId !== TECHNICAL_MEASUREMENT_PRODUCT_ID &&
+      item.productId !== WASTE_MANAGEMENT_PRODUCT_ID
+  );
+  const existingMeasurement = sourceItems.find(
+    (item) => item.productId === TECHNICAL_MEASUREMENT_PRODUCT_ID
+  );
+  const existingWaste = sourceItems.find(
+    (item) => item.productId === WASTE_MANAGEMENT_PRODUCT_ID
+  );
+
+  const trailingItems = [];
+
+  if (existingMeasurement) {
+    const measurementItem = createCatalogServiceCartItem(
+      TECHNICAL_MEASUREMENT_PRODUCT_ID,
+      { id: existingMeasurement.id || createCartItemId('metrage') }
+    );
+
+    if (measurementItem) {
+      trailingItems.push({
+        ...measurementItem,
+        tvaRate: existingMeasurement.tvaRate,
+      });
+    }
+  }
+
+  if (existingWaste) {
+    const wasteItem = createWasteManagementCartItem(regularItems);
+    trailingItems.push({
+      ...wasteItem,
+      id: existingWaste.id || wasteItem.id,
+      tvaRate: existingWaste.tvaRate,
+    });
+  }
+
+  return [...regularItems, ...trailingItems];
+};
+
+const arrayBufferToBase64 = (arrayBuffer) => {
+  const bytes = new Uint8Array(arrayBuffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return window.btoa(binary);
+};
+
+const normalizeDesignationText = (value = '') =>
+  String(value)
+    .split('\n')
+    .filter((line) => {
+      const trimmedLine = line.trim();
+      return !trimmedLine.startsWith('Remise :') && !trimmedLine.startsWith('Avant remise');
+    })
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const buildGeneratedDesignationSignature = (item) => {
+  if (
+    !item ||
+    item.productId === 'gestion-dechets' ||
+    item.productId === 'custom-product' ||
+    item.productId === 'text-only'
+  ) {
+    return '';
+  }
+
+  try {
+    const comparableItem = { ...item, customDescription: '' };
+    const calc = calculateItemPrice(comparableItem);
+    const pricing = getItemPricingSummary(comparableItem, calc);
+    return normalizeDesignationText(generateDesignation(comparableItem, calc, pricing) || '');
+  } catch {
+    return '';
+  }
+};
+
+const shouldKeepManualDesignation = (previousItem, nextItem) => {
+  if (!previousItem?.customDescription || nextItem?.customDescriptionManual === true) {
+    return false;
+  }
+
+  const previousSignature = buildGeneratedDesignationSignature(previousItem);
+  const nextSignature = buildGeneratedDesignationSignature(nextItem);
+
+  return Boolean(previousSignature && previousSignature === nextSignature);
+};
+
+function QuoteGenerationSuccess({
+  clientName,
+  isCloudAvailable,
+  onCreateNewQuote,
+  onOpenSavedQuotes,
+  onReturnToSummary,
+}) {
+  return (
+    <div className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-emerald-200 bg-white shadow-2xl shadow-emerald-950/10">
+      <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_55%),linear-gradient(135deg,#f0fdf4_0%,#ffffff_60%)] px-6 py-10 sm:px-10">
+        <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-emerald-200/40 blur-3xl" />
+        <div className="relative">
+          <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/30">
+            <CheckCircle2 size={30} />
+          </div>
+          <p className="mt-6 text-xs font-black uppercase tracking-[0.28em] text-emerald-600">
+            Devis genere
+          </p>
+          <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
+            Votre PDF a bien ete telecharge.
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
+            {clientName
+              ? `Le devis de ${clientName} est pret. Vous pouvez maintenant repartir sur un nouveau dossier ou revenir a votre espace devis.`
+              : 'Le devis est pret. Vous pouvez maintenant repartir sur un nouveau dossier ou revenir a votre espace devis.'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 bg-slate-50/70 px-6 py-6 sm:grid-cols-3 sm:px-10">
+        <button
+          type="button"
+          onClick={onCreateNewQuote}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 py-4 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600"
+        >
+          <RotateCcw size={16} />
+          Creer un nouveau devis
+        </button>
+        <button
+          type="button"
+          onClick={onReturnToSummary}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          <FileText size={16} />
+          Revenir au recapitulatif
+        </button>
+        {isCloudAvailable ? (
+          <button
+            type="button"
+            onClick={onOpenSavedQuotes}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+          >
+            <FolderOpen size={16} />
+            Ouvrir mes devis
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onCreateNewQuote}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <ArrowLeft size={16} />
+            Retour a l accueil
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PoseSafetyAlert({ missingItems, onAddMissing, onDismiss }) {
+  return (
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+          <AlertTriangle size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-amber-950">
+            Pose détectée
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-amber-900">
+            Il manque : {missingItems.map((item) => item.label).join(' et ')}.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-lg p-1.5 text-amber-700 transition hover:bg-amber-100"
+          aria-label="Ne pas ajouter ces services"
+        >
+          <X size={15} />
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onAddMissing}
+          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700"
+        >
+          <Plus size={14} />
+          Ajouter au devis
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+        >
+          Ne pas ajouter
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function HomePageClient() {
   const router = useRouter();
@@ -44,8 +303,13 @@ export default function HomePageClient() {
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteLoadError, setQuoteLoadError] = useState('');
   const [pdfGenerated, setPdfGenerated] = useState(false);
+  const [generationSuccess, setGenerationSuccess] = useState(null);
+  const [deliveryAction, setDeliveryAction] = useState('');
+  const [deliveryMessage, setDeliveryMessage] = useState('');
+  const [deliveryError, setDeliveryError] = useState('');
   const cartRef = useRef(null);
   const [cartVisible, setCartVisible] = useState(true);
+  const [dismissedPoseSafetyKey, setDismissedPoseSafetyKey] = useState('');
 
   // Floating cart bar totals
   const cartBarTotals = useMemo(() => {
@@ -58,6 +322,55 @@ export default function HomePageClient() {
     const totalTTC = Math.round(totalHT * (1 + tvaRate / 100) * 100) / 100;
     return { totalHT: Math.round(totalHT * 100) / 100, totalTTC };
   }, [cartItems, tvaRate]);
+
+  const poseSafety = useMemo(() => {
+    const hasPose = cartItems.some((item) => Boolean(item.includePose));
+    const hasWasteManagement = cartItems.some(
+      (item) => item.productId === WASTE_MANAGEMENT_PRODUCT_ID
+    );
+    const hasTechnicalMeasurement = cartItems.some(
+      (item) => item.productId === TECHNICAL_MEASUREMENT_PRODUCT_ID
+    );
+    const missing = [];
+
+    if (hasPose && !hasTechnicalMeasurement) {
+      missing.push({
+        id: TECHNICAL_MEASUREMENT_PRODUCT_ID,
+        label: 'Métrage technique offert',
+      });
+    }
+
+    if (hasPose && !hasWasteManagement) {
+      missing.push({
+        id: WASTE_MANAGEMENT_PRODUCT_ID,
+        label: 'Gestion des déchets',
+      });
+    }
+
+    const signature = hasPose
+      ? [
+          cartItems
+            .filter((item) => Boolean(item.includePose))
+            .map((item) => `${item.id}:${item.productId}:${item.quantity || 1}`)
+            .join('|'),
+          `metrage:${hasTechnicalMeasurement ? 'yes' : 'no'}`,
+          `dechets:${hasWasteManagement ? 'yes' : 'no'}`,
+        ].join('|')
+      : '';
+
+    return {
+      hasPose,
+      hasWasteManagement,
+      hasTechnicalMeasurement,
+      missing,
+      signature,
+    };
+  }, [cartItems]);
+
+  const shouldShowPoseSafety =
+    poseSafety.hasPose &&
+    poseSafety.missing.length > 0 &&
+    poseSafety.signature !== dismissedPoseSafetyKey;
 
   // Observe cart visibility for floating bar
   useEffect(() => {
@@ -77,6 +390,22 @@ export default function HomePageClient() {
   const requestedQuoteId = searchParams.get('quote');
   const requestedClientId = searchParams.get('client');
   const canSaveCloudQuote = Boolean(hasMeaningfulClientData(clientData) && cartItems.length > 0);
+  const canSendQuoteDirectly = Boolean(firebaseConfigured && user && canSaveCloudQuote && clientData?.email);
+  const directSendHint = !clientData?.email
+    ? "Ajoutez l'email du client pour envoyer le devis."
+    : !firebaseConfigured
+      ? 'Connexion cloud indisponible pour le moment.'
+      : !user
+        ? 'Connectez-vous pour envoyer le devis au client.'
+        : '';
+
+  const resetGenerationState = () => {
+    setPdfGenerated(false);
+    setGenerationSuccess(null);
+    setDeliveryAction('');
+    setDeliveryMessage('');
+    setDeliveryError('');
+  };
 
   const resetQuoteState = () => {
     setCurrentStep(1);
@@ -89,15 +418,26 @@ export default function HomePageClient() {
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
-    setPdfGenerated(false);
+    resetGenerationState();
     router.replace('/');
+  };
+
+  const getQuotePdfOptions = (quote) => {
+    const workflow = quote?.signatureWorkflow || {};
+
+    return {
+      quoteNumber: workflow.quoteNumber || quote?.quoteNumber || undefined,
+      issueDate: workflow.issueDate || quote?.quoteIssuedAt || undefined,
+    };
   };
 
   const applySavedQuote = (quote) => {
     const payload = quote?.payload || {};
 
     setClientData(payload.clientData || null);
-    setCartItems(Array.isArray(payload.cartItems) ? payload.cartItems : []);
+    setCartItems(
+      normalizeCartItemsForQuote(Array.isArray(payload.cartItems) ? payload.cartItems : [])
+    );
     setTvaRate(
       Number.isFinite(Number(payload.tvaRate)) ? Number(payload.tvaRate) : DEFAULT_TVA_RATE
     );
@@ -111,7 +451,7 @@ export default function HomePageClient() {
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
-    setPdfGenerated(false);
+    resetGenerationState();
   };
 
   useEffect(() => {
@@ -218,19 +558,69 @@ export default function HomePageClient() {
     setCurrentStep(2);
   };
 
+  const updateCartItems = (updater) => {
+    setCartItems((previousItems) =>
+      normalizeCartItemsForQuote(
+        typeof updater === 'function' ? updater(previousItems) : updater
+      )
+    );
+  };
+
   const handleAddToCart = (item) => {
-    setCartItems((prev) => {
+    updateCartItems((prev) => {
       const existing = prev.findIndex((entry) => entry.id === item.id);
       if (existing >= 0) {
         const nextItems = [...prev];
-        nextItems[existing] = item;
+        const previousItem = nextItems[existing];
+        nextItems[existing] = shouldKeepManualDesignation(previousItem, item)
+          ? {
+              ...item,
+              customDescription: previousItem.customDescription,
+              customDescriptionManual: true,
+            }
+          : item;
         return nextItems;
       }
       return [...prev, item];
     });
     setEditingItem(null);
     setSaveMessage('');
-    setPdfGenerated(false);
+    resetGenerationState();
+  };
+
+  const handleAddMissingPoseServices = () => {
+    updateCartItems((prev) => {
+      const additions = [];
+      const hasTechnicalMeasurement = prev.some(
+        (item) => item.productId === TECHNICAL_MEASUREMENT_PRODUCT_ID
+      );
+      const hasWasteManagement = prev.some(
+        (item) => item.productId === WASTE_MANAGEMENT_PRODUCT_ID
+      );
+
+      if (!hasTechnicalMeasurement) {
+        const measurementItem = createCatalogServiceCartItem(
+          TECHNICAL_MEASUREMENT_PRODUCT_ID,
+          { id: createCartItemId('metrage') }
+        );
+        if (measurementItem) {
+          additions.push(measurementItem);
+        }
+      }
+
+      if (!hasWasteManagement) {
+        additions.push(createWasteManagementCartItem(prev));
+      }
+
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+    setDismissedPoseSafetyKey('');
+    setSaveMessage('');
+    resetGenerationState();
+  };
+
+  const handleDismissPoseSafety = () => {
+    setDismissedPoseSafetyKey(poseSafety.signature);
   };
 
   const handleDuplicateItem = (itemId) => {
@@ -242,9 +632,9 @@ export default function HomePageClient() {
       id: Date.now().toString(),
     };
 
-    setCartItems((prev) => [...prev, newItem]);
+    updateCartItems((prev) => [...prev, newItem]);
     setSaveMessage('');
-    setPdfGenerated(false);
+    resetGenerationState();
   };
 
   const handleEditItem = (itemId) => {
@@ -254,17 +644,17 @@ export default function HomePageClient() {
   };
 
   const handleRemoveFromCart = (itemId) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== itemId));
+    updateCartItems((prev) => prev.filter((item) => item.id !== itemId));
     setSaveMessage('');
-    setPdfGenerated(false);
+    resetGenerationState();
   };
 
   const handleUpdateQuantity = (itemId, newQty) => {
-    setCartItems((prev) =>
+    updateCartItems((prev) =>
       prev.map((item) => (item.id === itemId ? { ...item, quantity: newQty } : item))
     );
     setSaveMessage('');
-    setPdfGenerated(false);
+    resetGenerationState();
   };
 
   const handleGoBack = () => {
@@ -272,9 +662,9 @@ export default function HomePageClient() {
   };
 
   const handleReorderItems = (nextItems) => {
-    setCartItems(nextItems);
+    updateCartItems(nextItems);
     setSaveMessage('');
-    setPdfGenerated(false);
+    resetGenerationState();
   };
 
   const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
@@ -322,7 +712,7 @@ export default function HomePageClient() {
         cartItems,
         tvaRate,
         quoteSettings,
-        currentStep: origin === 'pdf' ? 3 : currentStep,
+        currentStep: ['pdf', 'delivery'].includes(origin) ? 3 : currentStep,
       });
 
       setActiveQuoteId(savedQuote.id);
@@ -332,6 +722,12 @@ export default function HomePageClient() {
           activeQuoteId
             ? 'PDF genere et devis mis a jour automatiquement.'
             : 'PDF genere et devis enregistre automatiquement dans "Mes devis".'
+        );
+      } else if (origin === 'delivery') {
+        setSaveMessage(
+          activeQuoteId
+            ? 'Devis mis à jour avant envoi.'
+            : 'Devis enregistré dans "Mes devis" avant envoi.'
         );
       } else {
         setSaveMessage(
@@ -363,14 +759,104 @@ export default function HomePageClient() {
     setSaveError('');
 
     try {
+      let savedQuote = null;
       if (firebaseConfigured && user && canSaveCloudQuote) {
-        await persistQuoteToCloud({ origin: 'pdf' });
+        savedQuote = await persistQuoteToCloud({ origin: 'pdf' });
       }
 
       await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings);
       setPdfGenerated(true);
+      setGenerationSuccess({
+        clientName:
+          savedQuote?.clientName ||
+          [clientData?.prenom, clientData?.nom].filter(Boolean).join(' ').trim() ||
+          'votre client',
+      });
     } catch (error) {
       setSaveError(error?.message || 'Impossible de generer le PDF.');
+    }
+  };
+
+  const handleSendQuoteDelivery = async (deliveryMode) => {
+    setSaveError('');
+    setDeliveryError('');
+    setDeliveryMessage('');
+
+    if (!firebaseConfigured) {
+      setDeliveryError('Connexion cloud indisponible pour le moment.');
+      return;
+    }
+
+    if (!user) {
+      setDeliveryError('Connectez-vous dans "Mes devis" avant d’envoyer un devis.');
+      return;
+    }
+
+    if (!canSaveCloudQuote) {
+      setDeliveryError('Ajoutez au moins un article et renseignez le client avant l’envoi.');
+      return;
+    }
+
+    const recipientEmail = clientData?.email;
+    if (!recipientEmail) {
+      setDeliveryError("Ajoutez un email client avant d'envoyer ce devis.");
+      return;
+    }
+
+    setDeliveryAction(deliveryMode);
+
+    try {
+      const savedQuote = await persistQuoteToCloud({ origin: 'delivery' });
+      if (!savedQuote?.id) {
+        throw new Error("Impossible d'enregistrer le devis avant l'envoi.");
+      }
+
+      const pdfDocument = await buildQuotePdfDocument(
+        savedQuote.payload?.clientData || clientData || null,
+        savedQuote.payload?.cartItems || cartItems || [],
+        savedQuote.payload?.tvaRate || tvaRate || DEFAULT_TVA_RATE,
+        savedQuote.payload?.quoteSettings || quoteSettings || null,
+        getQuotePdfOptions(savedQuote)
+      );
+
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/quote-signatures/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          quoteId: savedQuote.id,
+          deliveryMode,
+          pdfBase64: arrayBufferToBase64(pdfDocument.arrayBuffer),
+          pdfInfo: {
+            filename: pdfDocument.filename,
+            quoteNumber: pdfDocument.quoteNumber,
+            issueDate: pdfDocument.issueDate,
+            totalHT: pdfDocument.totals?.totalHT || 0,
+            totalTTC: pdfDocument.totals?.totalTTC || 0,
+            quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
+            tvaRate: pdfDocument.tvaRate,
+            signatureAnchors: pdfDocument.signatureAnchors,
+          },
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible d'envoyer le devis.");
+      }
+
+      setDeliveryMessage(
+        deliveryMode === 'signature'
+          ? 'Le devis a été envoyé au client avec son lien de signature.'
+          : 'Le devis a été envoyé au client par email.'
+      );
+    } catch (error) {
+      setDeliveryError(error?.message || "Impossible d'envoyer le devis.");
+    } finally {
+      setDeliveryAction('');
     }
   };
 
@@ -486,7 +972,50 @@ export default function HomePageClient() {
             </div>
 
             <div ref={cartRef} id="cart-section" className="min-w-0 lg:col-span-2">
-              <div className="min-w-0 lg:sticky lg:top-8">
+              <div className="min-w-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:self-start lg:overflow-y-auto lg:pr-1">
+                {shouldShowPoseSafety && (
+                  <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                        <AlertTriangle size={18} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black text-amber-950">
+                          Pose détectée
+                        </p>
+                        <p className="mt-1 break-words text-xs leading-5 text-amber-900">
+                          Il manque : {poseSafety.missing.map((item) => item.label).join(' et ')}.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDismissPoseSafety}
+                        className="rounded-lg p-1.5 text-amber-700 transition hover:bg-amber-100"
+                        aria-label="Ne pas ajouter ces services"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAddMissingPoseServices}
+                        className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-700"
+                      >
+                        <Plus size={14} />
+                        Ajouter au devis
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDismissPoseSafety}
+                        className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+                      >
+                        Ne pas ajouter
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <Cart
                   items={cartItems}
                   tvaRate={tvaRate}
@@ -533,7 +1062,17 @@ export default function HomePageClient() {
         </>
       )}
 
-      {currentStep === 3 && (
+      {currentStep === 3 && generationSuccess && (
+        <QuoteGenerationSuccess
+          clientName={generationSuccess.clientName}
+          isCloudAvailable={Boolean(firebaseConfigured && user)}
+          onCreateNewQuote={resetQuoteState}
+          onOpenSavedQuotes={() => router.push('/devis')}
+          onReturnToSummary={() => setGenerationSuccess(null)}
+        />
+      )}
+
+      {currentStep === 3 && !generationSuccess && (
         <QuoteSummary
           clientData={clientData}
           cartItems={cartItems}
@@ -546,6 +1085,17 @@ export default function HomePageClient() {
           onGeneratePdf={handleGeneratePdf}
           onDownloadAgain={handleGeneratePdf}
           pdfGenerated={pdfGenerated}
+          onSendQuote={() => void handleSendQuoteDelivery('email')}
+          onSendQuoteForSignature={() => void handleSendQuoteDelivery('signature')}
+          isSendingDelivery={Boolean(deliveryAction)}
+          activeDeliveryMode={deliveryAction}
+          deliveryMessage={deliveryMessage}
+          deliveryError={deliveryError}
+          canSendQuoteDirectly={canSendQuoteDirectly}
+          directSendHint={directSendHint}
+          poseSafety={shouldShowPoseSafety ? poseSafety : null}
+          onAddMissingPoseServices={handleAddMissingPoseServices}
+          onDismissPoseSafety={handleDismissPoseSafety}
         />
       )}
     </AppShell>

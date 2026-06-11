@@ -9,11 +9,28 @@ import {
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getPaymentScheduleValidation } from '@/lib/quote-settings.mjs';
-import { User, MapPin, Phone, Mail, FileText, Download, CheckCircle, Package, Pencil, Check, X } from 'lucide-react';
+import {
+  User,
+  MapPin,
+  Phone,
+  Mail,
+  FileText,
+  Download,
+  CheckCircle,
+  Package,
+  Pencil,
+  Check,
+  X,
+  Loader2,
+  PenLine,
+  AlertTriangle,
+  Plus,
+} from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import QuoteCommercialTerms from '@/components/QuoteCommercialTerms';
 import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
+import { getClientJobSiteFullName } from '@/lib/client-cloud';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -163,6 +180,17 @@ export default function QuoteSummary({
   onDownloadAgain,
   pdfGenerated = false,
   onUpdateItem,
+  onSendQuote,
+  onSendQuoteForSignature,
+  isSendingDelivery = false,
+  activeDeliveryMode = '',
+  deliveryMessage = '',
+  deliveryError = '',
+  canSendQuoteDirectly = false,
+  directSendHint = '',
+  poseSafety = null,
+  onAddMissingPoseServices,
+  onDismissPoseSafety,
 }) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
@@ -171,12 +199,24 @@ export default function QuoteSummary({
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
   const totals = useMemo(() => computeQuoteTotals(cartItems, tvaRate), [cartItems, tvaRate]);
+  const billingName =
+    clientData?.prenom || clientData?.nom
+      ? `${clientData?.prenom || ''} ${clientData?.nom || ''}`.trim()
+      : '';
+  const jobSiteName = getClientJobSiteFullName(clientData) || billingName;
+  const jobSiteAddress = clientData?.memeAdresseChantier === false
+    ? clientData?.adresseChantier
+    : clientData?.adresse;
+  const jobSiteCity = clientData?.memeAdresseChantier === false
+    ? [clientData?.codePostalChantier, clientData?.villeChantier].filter(Boolean).join(' ').trim()
+    : [clientData?.codePostal, clientData?.ville].filter(Boolean).join(' ').trim();
   const paymentValidation = useMemo(
     () => getPaymentScheduleValidation(quoteSettings),
     [quoteSettings]
   );
   const isGenerateDisabled =
     (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
+  const isDirectSendDisabled = isGenerateDisabled || isGeneratingPdf || isSendingDelivery || !canSendQuoteDirectly;
 
   const handleStartEdit = (item) => {
     const calc = calculateItemPrice(item);
@@ -191,7 +231,8 @@ export default function QuoteSummary({
   const handleSaveEdit = (item) => {
     onUpdateItem({
       ...item,
-      customDescription: tempDesignation
+      customDescription: tempDesignation,
+      customDescriptionManual: true,
     });
     setEditingDesignationId(null);
   };
@@ -236,17 +277,17 @@ export default function QuoteSummary({
               <div className="mt-0.5 p-2 bg-orange-50 text-orange-500 rounded-lg">
                 <User size={16} />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">
-                  {clientData?.prenom || clientData?.nom ? `${clientData?.prenom || ''} ${clientData?.nom || ''}`.trim() : 'À définir'}
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold text-slate-900">
+                  {billingName || 'À définir'}
                 </p>
                 <div className="flex items-center gap-2 mt-1 text-slate-500">
-                  <Phone size={12} />
-                  <span className="text-sm">{clientData?.telephone || 'À définir'}</span>
+                  <Phone size={12} className="shrink-0" />
+                  <span className="min-w-0 break-words text-sm">{clientData?.telephone || 'À définir'}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-slate-500">
-                  <Mail size={12} />
-                  <span className="text-sm">{clientData?.email || 'À définir'}</span>
+                  <Mail size={12} className="shrink-0" />
+                  <span className="min-w-0 break-all text-sm">{clientData?.email || 'À définir'}</span>
                 </div>
               </div>
             </div>
@@ -254,11 +295,16 @@ export default function QuoteSummary({
               <div className="mt-0.5 p-2 bg-slate-50 text-slate-500 rounded-lg">
                 <MapPin size={16} />
               </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Adresse du chantier</p>
-                <p className="text-sm text-slate-500 mt-1">
-                  {clientData?.adresse || 'À définir'}<br />
-                  {clientData?.codePostal || clientData?.ville ? `${clientData?.codePostal || ''} ${clientData?.ville || ''}`.trim() : 'À définir'}
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold text-slate-900">
+                  Adresse du chantier
+                </p>
+                <p className="mt-1 break-words text-sm font-semibold text-slate-700">
+                  {jobSiteName || 'À définir'}
+                </p>
+                <p className="mt-1 break-words text-sm text-slate-500">
+                  {jobSiteAddress || 'À définir'}<br />
+                  {jobSiteCity || 'À définir'}
                 </p>
               </div>
             </div>
@@ -437,7 +483,7 @@ export default function QuoteSummary({
                       ) : (
                         <div className="flex items-start gap-2">
                           <p
-                            className={`flex-1 text-[10px] text-slate-500 leading-relaxed italic ${
+                            className={`min-w-0 flex-1 break-words text-[10px] italic leading-relaxed text-slate-500 ${
                               item.remise > 0 ? 'whitespace-pre-wrap' : 'line-clamp-2'
                             }`}
                           >
@@ -571,11 +617,11 @@ export default function QuoteSummary({
                               />
                             )}
                             <div className="min-w-0">
-                              <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                              <p className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-900">
                                 {item.productId === 'gestion-dechets' && (
                                   <WasteRecycleIcon size={14} className="text-green-500 shrink-0" />
                                 )}
-                                <span>{item.productLabel}</span>
+                                <span className="min-w-0 truncate">{item.productLabel}</span>
                                 
                                 {item.repere && (
                                   <span className="italic text-slate-500 text-[10px] bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 shrink-0 font-medium tracking-tight">
@@ -616,7 +662,7 @@ export default function QuoteSummary({
                                   ) : (
                                     <div className="space-y-1">
                                       <div className="flex items-start justify-between gap-4">
-                                        <div className="text-[11px] text-slate-500 leading-relaxed whitespace-pre-wrap italic">
+                                        <div className="min-w-0 flex-1 break-words text-[11px] italic leading-relaxed text-slate-500 whitespace-pre-wrap">
                                           {buildDesignationWithDiscount(
                                             item.customDescription || generateDesignation(item, calc, pricing) || '',
                                             item,
@@ -871,6 +917,52 @@ export default function QuoteSummary({
         </div>
         </div>
 
+        {/* Pose Safety Alert — positioned just before action buttons for maximum visibility */}
+        {poseSafety && poseSafety.missing?.length > 0 && (
+          <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-md animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-200 text-amber-800">
+                <AlertTriangle size={20} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-amber-950">
+                  ⚠️ Pose détectée — Éléments manquants
+                </p>
+                <p className="mt-1 break-words text-sm leading-6 text-amber-900">
+                  Il manque : <strong>{poseSafety.missing.map((item) => item.label).join(' et ')}</strong>.
+                  Ajoutez-les avant de valider pour un devis complet.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onDismissPoseSafety}
+                className="rounded-lg p-1.5 text-amber-700 transition hover:bg-amber-200"
+                aria-label="Ne pas ajouter ces services"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onAddMissingPoseServices}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-700"
+              >
+                <Plus size={14} />
+                Ajouter au devis
+              </button>
+              <button
+                type="button"
+                onClick={onDismissPoseSafety}
+                className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-bold text-amber-800 transition hover:bg-amber-100"
+              >
+                Ne pas ajouter
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <button
@@ -912,6 +1004,74 @@ export default function QuoteSummary({
               {isGeneratingPdf ? 'Generation en cours...' : 'Valider & Generer PDF'}
             </button>
           </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">
+                Envoi direct
+              </p>
+              <h3 className="mt-1 text-lg font-black text-slate-900">
+                Envoyer le devis depuis le récapitulatif
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Le devis est enregistré, généré puis envoyé au client en une seule action.
+              </p>
+            </div>
+            {!canSendQuoteDirectly && directSendHint && (
+              <p className="text-sm font-semibold text-amber-600">{directSendHint}</p>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onSendQuote}
+              disabled={isDirectSendDisabled}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
+                isDirectSendDisabled
+                  ? 'cursor-not-allowed bg-slate-100 text-slate-400'
+                  : 'bg-slate-900 text-white hover:bg-slate-800'
+              }`}
+            >
+              {isSendingDelivery && activeDeliveryMode === 'email' ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Mail size={16} />
+              )}
+              Envoyer par email
+            </button>
+            <button
+              type="button"
+              onClick={onSendQuoteForSignature}
+              disabled={isDirectSendDisabled}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
+                isDirectSendDisabled
+                  ? 'cursor-not-allowed bg-slate-100 text-slate-400'
+                  : 'bg-orange-500 text-white hover:bg-orange-600'
+              }`}
+            >
+              {isSendingDelivery && activeDeliveryMode === 'signature' ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <PenLine size={16} />
+              )}
+              Envoyer pour signature
+            </button>
+          </div>
+
+          {deliveryMessage && (
+            <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+              {deliveryMessage}
+            </div>
+          )}
+
+          {deliveryError && (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {deliveryError}
+            </div>
+          )}
         </div>
       </div>
     </>

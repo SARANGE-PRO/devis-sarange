@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
-import FirebaseAuthCard from '@/components/FirebaseAuthCard';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   EMPTY_CLIENT_DATA,
@@ -407,13 +406,6 @@ export default function ClientsPage() {
         <div className="mx-auto max-w-4xl rounded-2xl border border-orange-200 bg-orange-50 p-6 text-sm text-orange-900 shadow-sm">
           Firebase n&apos;est pas encore configuré dans ce projet. Ajoutez d&apos;abord vos clés
           dans la configuration de l&apos;application.
-        </div>
-      )}
-
-      {/* Not logged in */}
-      {isConfigured && !user && !initializing && (
-        <div className="mx-auto max-w-xl">
-          <FirebaseAuthCard />
         </div>
       )}
 

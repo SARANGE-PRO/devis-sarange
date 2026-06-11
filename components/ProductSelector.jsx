@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   LayoutGrid,
   ArrowLeftRight,
@@ -39,21 +39,23 @@ import {
   getProductVariant,
   getProductType,
   getPosePriceForType,
-  calculateSurface,
   calculateItemPrice,
+  calculateWasteManagementForItems,
+  createCatalogServiceCartItem,
   normalizeCompositeComposition,
   formatCompositeModules,
-  WASTE_FACTORS,
   WASTE_PRICE_PER_KG,
 } from '@/lib/products';
 import {
-  GLAZING_OPTIONS,
   calculateGlazingAndPanelExtras,
   getSelectedGlazing,
   getFrameSystemForProduct,
+  getGlazingOptionsServerSnapshot,
+  getGlazingOptionsSnapshot,
   isGlazedProduct,
   calculateGlassAreas,
   calculateGlazingExtra,
+  subscribeToGlazingOptions,
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
@@ -65,6 +67,7 @@ const ICONS = {
   DoorClosed,
   Blinds,
   Recycle: WasteRecycleIcon,
+  Wrench,
   PackagePlus,
 };
 
@@ -127,6 +130,7 @@ const EMPTY_FILLING_PRICING = {
 
 const buildFillingSelectionMeta = ({
   product,
+  glazingOptions,
   isEligible = false,
   widthMm,
   heightMm,
@@ -168,7 +172,7 @@ const buildFillingSelectionMeta = ({
 
   const selectedGlazing = getSelectedGlazing(glazingId);
   const selectedPricing = buildPricing(selectedGlazing);
-  const options = GLAZING_OPTIONS.map((glazing) => ({
+  const options = glazingOptions.map((glazing) => ({
     glazing,
     pricing: buildPricing(glazing),
   }));
@@ -567,6 +571,11 @@ export default function ProductSelector({
   editingItem,
   onCancelEdit,
 }) {
+  const glazingOptions = useSyncExternalStore(
+    subscribeToGlazingOptions,
+    getGlazingOptionsSnapshot,
+    getGlazingOptionsServerSnapshot
+  );
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isCompositeMode, setIsCompositeMode] = useState(false);
@@ -600,6 +609,7 @@ export default function ProductSelector({
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
   const isTextOnlyProduct = product?.id === 'text-only';
+  const isCatalogService = product?.pricingMode === 'service';
   const isFixedPriceProduct = product?.pricingMode === 'fixed';
   const selectedProductVariant = isFixedPriceProduct
     ? getProductVariant(product, simpleConfig.productVariantId)
@@ -669,6 +679,7 @@ export default function ProductSelector({
     product &&
     !isWasteManagement &&
     !isCustomProduct &&
+    !isCatalogService &&
     !isTextOnlyProduct
       ? isFixedPriceProduct
         ? selectedProductVariant
@@ -690,12 +701,16 @@ export default function ProductSelector({
   const addButtonLabel = editingItem
     ? isTextOnlyProduct
       ? 'Mettre à jour le texte'
+      : isCatalogService
+        ? 'Mettre à jour le service'
       : 'Mettre à jour le produit'
     : isCompositeMode
       ? 'Ajouter le châssis composé'
       : isTextOnlyProduct
         ? 'Insérer le texte'
-      : 'Ajouter au panier';
+        : isCatalogService
+          ? 'Ajouter le service'
+          : 'Ajouter au panier';
 
   const handleImageUpload = (event) => {
     const file = event.target.files?.[0];
@@ -707,6 +722,7 @@ export default function ProductSelector({
 
   const simpleFillingMeta = buildFillingSelectionMeta({
     product,
+    glazingOptions,
     isEligible:
       isGlazedProduct(product) ||
       (Boolean(product?.sheet?.startsWith('Porte Entr')) &&
@@ -724,6 +740,7 @@ export default function ProductSelector({
 
   const activeModuleFillingMeta = buildFillingSelectionMeta({
     product: activeModuleProduct,
+    glazingOptions,
     isEligible:
       isGlazedProduct(activeModuleProduct) ||
       (Boolean(activeModuleProduct?.sheet?.startsWith('Porte Entr')) &&
@@ -736,52 +753,10 @@ export default function ProductSelector({
     colorOptionId: workingConfig.colorOptionId,
   });
 
-  const wasteCalculation = useMemo(() => {
-    return cartItems.reduce(
-      (accumulator, item) => {
-        if (
-          item.productId === 'gestion-dechets' ||
-          item.productId === 'custom-product' ||
-          item.productId === 'text-only'
-        ) {
-          return accumulator;
-        }
-
-        if (item.isComposite) {
-          const pricedComposition = getCompositePricing(item.composition, item.modules);
-
-          pricedComposition.modulePricing.forEach((module) => {
-            const factor = WASTE_FACTORS[module.categoryId];
-            if (!factor) return;
-
-            const surface = calculateSurface(
-              module.widthMm,
-              module.heightMm,
-              item.quantity
-            );
-            const weight = surface * factor;
-            accumulator.totalSurface += surface;
-            accumulator.totalWeight += weight;
-            accumulator.totalWastePrice += weight * WASTE_PRICE_PER_KG;
-          });
-
-          return accumulator;
-        }
-
-        const categoryId = getProductCategory(item.productId);
-        const factor = WASTE_FACTORS[categoryId];
-        if (!factor) return accumulator;
-
-        const surface = calculateSurface(item.widthMm, item.heightMm, item.quantity);
-        const weight = surface * factor;
-        accumulator.totalSurface += surface;
-        accumulator.totalWeight += weight;
-        accumulator.totalWastePrice += weight * WASTE_PRICE_PER_KG;
-        return accumulator;
-      },
-      { totalSurface: 0, totalWeight: 0, totalWastePrice: 0 }
-    );
-  }, [cartItems]);
+  const wasteCalculation = useMemo(
+    () => calculateWasteManagementForItems(cartItems),
+    [cartItems]
+  );
 
   const simpleMarketing = getMarketingDetails({
     product,
@@ -832,12 +807,16 @@ export default function ProductSelector({
       return null;
     }
 
+    if (isCatalogService) {
+      return createCatalogServiceCartItem(product?.id);
+    }
+
     if (isCompositeMode) {
       if (!compositePricing.totalPrice || compositePricing.hasInvalidModule) return null;
       const compositePreviewItem = {
         productId: 'composite-builder',
-        productLabel: 'Châssis composé 2D',
-        sheetName: 'Châssis composé 2D',
+        productLabel: 'Châssis composé',
+        sheetName: 'Châssis composé',
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         unitPrice: compositePricing.totalPrice,
@@ -875,6 +854,7 @@ export default function ProductSelector({
         netMarginWanted,
         netDiscountWanted,
         customDescription: variant.designation,
+        customDescriptionManual: false,
         customImage: variant.imageSrc,
         hasDimensions: false,
         dimensionLabel: 'Accessoire',
@@ -946,8 +926,10 @@ export default function ProductSelector({
     setNetDiscountWanted(0);
   };
 
-  const resetSimpleSelection = () => {
-    setSimpleConfig(createSimpleConfig());
+  const resetSimpleSelection = ({ preserveConfiguration = false } = {}) => {
+    setSimpleConfig((previous) =>
+      preserveConfiguration ? createSimpleConfig(previous) : createSimpleConfig()
+    );
     setCustomLabel('');
     setCustomDescription('');
     setCustomPrice('');
@@ -975,12 +957,12 @@ export default function ProductSelector({
   const handleCategoryChange = (categoryId) => {
     setSelectedCategory(categoryId);
     setSelectedProduct(null);
-    resetSimpleSelection();
+    resetSimpleSelection({ preserveConfiguration: true });
   };
 
   const handleProductChange = (productId) => {
     setSelectedProduct(productId);
-    resetSimpleSelection();
+    resetSimpleSelection({ preserveConfiguration: true });
   };
 
   const updateSimpleOptions = (patch) => {
@@ -1161,8 +1143,12 @@ export default function ProductSelector({
 
   const replaceSelectedModuleProduct = (productId) => {
     if (!selectedCompositeModuleId) return;
+    const currentModule = compositeContext?.module;
     const nextTemplate = createCompositeModule(selectedCompositeModuleId, {
       productId,
+      widthMm: currentModule?.widthMm,
+      heightMm: currentModule?.heightMm,
+      options: currentModule?.options,
     });
 
     updateCompositeModule(selectedCompositeModuleId, {
@@ -1293,8 +1279,8 @@ export default function ProductSelector({
       const nextCompositeItem = {
         id: editingItem ? editingItem.id : createCartItemId(),
         productId: 'composite-builder',
-        productLabel: 'Châssis composé 2D',
-        sheetName: 'Châssis composé 2D',
+        productLabel: 'Châssis composé',
+        sheetName: 'Châssis composé',
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         quantity,
@@ -1342,6 +1328,19 @@ export default function ProductSelector({
         netMarginWanted: 0,
         netDiscountWanted: 0,
       });
+      return;
+    }
+
+    if (isCatalogService) {
+      const serviceItem = createCatalogServiceCartItem(product.id, {
+        id: editingItem ? editingItem.id : createCartItemId(),
+      });
+      if (!serviceItem) return;
+
+      onAddToCart(serviceItem);
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
       return;
     }
 
@@ -1414,6 +1413,7 @@ export default function ProductSelector({
         netMarginWanted,
         netDiscountWanted,
         customDescription: variant.designation,
+        customDescriptionManual: false,
         customImage: variant.imageSrc,
         hasDimensions: false,
         dimensionLabel: 'Accessoire',
@@ -1517,11 +1517,13 @@ export default function ProductSelector({
                   : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              {!entry.id.includes('gestion-dechets') &&
-                !entry.id.includes('custom') &&
-                entry.id !== 'text-only' && (
+              {!entry.id.includes('custom') && entry.id !== 'text-only' && (
                 <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
-                  {entry.previewImageSrc ? (
+                  {entry.id === 'gestion-dechets' ? (
+                    <div className="flex h-full w-full items-center justify-center rounded-xl border border-green-100 bg-green-50 text-green-600">
+                      <WasteRecycleIcon size={32} />
+                    </div>
+                  ) : entry.previewImageSrc ? (
                     <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
                       <Image
                         src={entry.previewImageSrc}
@@ -1542,13 +1544,47 @@ export default function ProductSelector({
                   )}
                 </div>
               )}
-              <span>{entry.shortLabel}</span>
+              <span className="line-clamp-2 max-w-full break-words leading-tight">
+                {entry.shortLabel}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
-      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
+      {product && isCatalogService && (
+        <div className="border-b border-slate-100 px-4 py-5 sm:px-6 sm:py-6">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+            <div className="min-w-0 space-y-3">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+                Service offert
+              </p>
+              <h3 className="break-words text-2xl font-black leading-tight text-slate-900">
+                {product.label}
+              </h3>
+              <p className="text-sm leading-relaxed text-slate-600">
+                {product.designation}
+              </p>
+              <p className="text-sm font-black text-green-700">
+                {Number(product.servicePriceHt || 0).toFixed(2)} EUR HT
+              </p>
+            </div>
+            {product.previewImageSrc && (
+              <div className="relative mx-auto h-40 w-full max-w-[220px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                <Image
+                  src={product.previewImageSrc}
+                  alt={product.label}
+                  fill
+                  sizes="220px"
+                  className="object-contain p-4"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && !isCatalogService && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           {isFixedPriceProduct && (selectedProductVariant || defaultProductVariant) ? (
             <div className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
@@ -1557,7 +1593,7 @@ export default function ProductSelector({
                   Produit additionnel volet roulant
                 </p>
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900">
+                  <h3 className="break-words text-2xl font-black text-slate-900">
                     {(selectedProductVariant || defaultProductVariant)?.label}
                   </h3>
                   <p className="mt-2 text-sm font-semibold text-orange-600">
@@ -1605,7 +1641,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCatalogService && !isTextOnlyProduct && (
         <div className="border-b border-slate-100 bg-orange-50/30 p-4 md:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
             Repère (ex : SDB, Chambre 1, Cuisine)
@@ -1753,7 +1789,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCustomProduct && !isCatalogService && !isTextOnlyProduct && (
         <div className="space-y-6 p-4 md:p-6">
           {isFixedPriceProduct && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
@@ -1800,11 +1836,11 @@ export default function ProductSelector({
                         </div>
                         <div>
                           <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-black text-slate-900">
+                            <div className="min-w-0">
+                              <p className="break-words text-sm font-black text-slate-900">
                                 {variant.label}
                               </p>
-                              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-orange-600">
+                              <p className="mt-1 break-words text-xs font-semibold uppercase tracking-wide text-orange-600">
                                 {variant.useCase}
                               </p>
                             </div>
@@ -2149,7 +2185,7 @@ export default function ProductSelector({
             <div className="space-y-3">
               <label className="block text-sm font-semibold text-slate-700">Vitrage</label>
               <div className="grid gap-3">
-                {GLAZING_OPTIONS.map((glazing) => {
+                {glazingOptions.map((glazing) => {
                   const extra =
                     simpleGlassAreas && !glazing.isBaseIncluded
                       ? calculateGlazingExtra({
@@ -2291,7 +2327,7 @@ export default function ProductSelector({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-              Builder 2D
+              Builder
             </label>
             <h3 className="text-lg font-black text-slate-900">
               Constructeur de châssis composés
@@ -2329,7 +2365,7 @@ export default function ProductSelector({
 
       <div className="border-b border-slate-100 px-4 pt-4 md:px-6 md:pt-6">
         <MenuiserieVisual
-          sheetName="Châssis composé 2D"
+          sheetName="Châssis composé"
           width={compositeDimensions.width || 1200}
           height={compositeDimensions.height || 1250}
           options={{
@@ -2777,7 +2813,7 @@ export default function ProductSelector({
                   Vitrage du module
                 </label>
                 <div className="grid gap-3">
-                  {GLAZING_OPTIONS.map((glazing) => (
+                  {glazingOptions.map((glazing) => (
                     <label
                       key={glazing.id}
                       className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
@@ -2951,6 +2987,7 @@ export default function ProductSelector({
         !isCompositeMode &&
         !isWasteManagement &&
         !isCustomProduct &&
+        !isCatalogService &&
         !isTextOnlyProduct &&
         simpleConfig.widthMm &&
         simpleConfig.heightMm &&
@@ -2966,12 +3003,16 @@ export default function ProductSelector({
         </div>
       )}
 
-      {(previewCalc || isWasteManagement || isCustomProduct || isTextOnlyProduct || isCompositeMode) && (
+      {(previewCalc || isWasteManagement || isCustomProduct || isTextOnlyProduct || isCompositeMode || isCatalogService) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-                {isTextOnlyProduct ? 'Bloc libre' : 'Estimation HT'}
+                {isTextOnlyProduct
+                  ? 'Bloc libre'
+                  : isCatalogService
+                    ? 'Service offert'
+                    : 'Estimation HT'}
               </p>
               <p className="mt-2 text-3xl font-black tracking-tight text-slate-900">
                 {previewCalc
@@ -3001,6 +3042,7 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isCatalogService &&
                   !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&
@@ -3013,6 +3055,7 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isCatalogService &&
                   !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&

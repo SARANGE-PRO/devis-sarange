@@ -3,6 +3,8 @@
 import { usePathname } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import Sidebar from '@/components/Sidebar';
+import FirebaseAuthCard from '@/components/FirebaseAuthCard';
+import { useFirebaseAuth } from '@/components/FirebaseProvider';
 
 // Mappe les routes vers un titre court pour la topbar mobile
 const PAGE_TITLES = {
@@ -15,6 +17,22 @@ const PAGE_TITLES = {
 export default function AppShell({ title, subtitle, actions = null, children }) {
   const pathname = usePathname();
   const mobileTitle = PAGE_TITLES[pathname] ?? title;
+  const { user, initializing, isConfigured } = useFirebaseAuth();
+
+  let content = children;
+  if (isConfigured && !user && !initializing) {
+    content = (
+      <div className="mx-auto max-w-xl mt-10">
+        <FirebaseAuthCard 
+          title="Accès sécurisé" 
+          subtitle="Veuillez vous connecter pour utiliser l'application métier."
+        />
+      </div>
+    );
+  } else if (initializing) {
+    // Show nothing or a loading state while initializing so we don't flash content
+    content = null;
+  }
 
   return (
     <div className="relative min-h-screen bg-slate-50 overflow-x-hidden">
@@ -53,7 +71,7 @@ export default function AppShell({ title, subtitle, actions = null, children }) 
             {actions && <div className="shrink-0">{actions}</div>}
           </div>
 
-          {children}
+          {content}
         </div>
       </main>
 

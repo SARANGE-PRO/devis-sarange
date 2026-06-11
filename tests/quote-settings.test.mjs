@@ -93,4 +93,16 @@ run("genere une phrase de reglement adaptee a l'echeancier personnalise", () => 
   );
 });
 
+run("genere une phrase de reglement standard avec l'option au metre", () => {
+  const sentence = buildPaymentTermsSentence({
+    paymentMode: 'standard',
+    standardDepositPercent: 40,
+  });
+
+  assert.equal(
+    sentence,
+    "Règlement d'un acompte de 40% à la commande, ou par chèque ou virement lors de la prise de côtes si un métré SARANGE est prévu, puis solde de 60% à l'achèvement."
+  );
+});
+
 console.log('Tous les tests de reglages de devis ont reussi.');

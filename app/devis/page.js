@@ -3,21 +3,33 @@
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
-import FirebaseAuthCard from '@/components/FirebaseAuthCard';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 import { deleteQuoteById, saveQuoteDraft, subscribeToUserQuotes } from '@/lib/firebase/quotes';
-import { generateQuotePDF } from '@/lib/pdf-generator';
+import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
+  buildSignatureDocumentHref,
+  canQuoteBeSent,
+  getQuoteDisplayStatus,
+  getQuoteSignatureReminderMeta,
+  getQuoteSignatureStatusMeta,
+  getQuoteSignatureWorkflow,
+  quoteNeedsResend,
+} from '@/lib/quote-signature';
+import {
+  BellRing,
   ChevronDown,
   Copy,
+  ExternalLink,
   FileDown,
   FolderOpen,
   Loader2,
   LogOut,
+  Mail,
   Pencil,
+  PenSquare,
   Plus,
   Search,
   SlidersHorizontal,
@@ -38,6 +50,16 @@ const STATUS_META = {
   signed:   { label: 'Signé',     className: 'bg-green-100 text-green-700' },
   archived: { label: 'Archivé',   className: 'bg-amber-100 text-amber-700' },
 };
+
+Object.assign(STATUS_META, {
+  draft: { label: 'Non envoyé', className: 'bg-slate-100 text-slate-600' },
+  sent: { label: 'Envoyé', className: 'bg-blue-100 text-blue-700' },
+  viewed: { label: 'Consulté', className: 'bg-cyan-100 text-cyan-700' },
+  signed: { label: 'Signé', className: 'bg-green-100 text-green-700' },
+  refused: { label: 'Refusé', className: 'bg-rose-100 text-rose-700' },
+  expired: { label: 'Expiré', className: 'bg-amber-100 text-amber-700' },
+  archived: { label: 'Archivé', className: 'bg-orange-100 text-orange-700' },
+});
 
 const normalizeSearchValue = (v) =>
   (typeof v === 'string' ? v : '').trim().toLowerCase();
@@ -89,6 +111,28 @@ const getQuoteProductPreview = (quote) => {
     : `${labels.slice(0, 2).join(' / ')} +${labels.length - 2}`;
 };
 
+const getQuotePdfOptions = (quote) => {
+  const workflow = getQuoteSignatureWorkflow(quote);
+
+  return {
+    quoteNumber: workflow.quoteNumber || quote.quoteNumber || undefined,
+    issueDate: workflow.issueDate || quote.quoteIssuedAt || undefined,
+  };
+};
+
+const arrayBufferToBase64 = (arrayBuffer) => {
+  const bytes = new Uint8Array(arrayBuffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return window.btoa(binary);
+};
+
 const sortQuotes = (quotes, sortBy) =>
   [...quotes].sort((l, r) => {
     if (sortBy === 'updated-asc')  return getTimestampMs(l.updatedAt) - getTimestampMs(r.updatedAt);
@@ -97,6 +141,17 @@ const sortQuotes = (quotes, sortBy) =>
     if (sortBy === 'client-asc')   return (l.clientName || '').localeCompare(r.clientName || '', 'fr');
     return getTimestampMs(r.updatedAt) - getTimestampMs(l.updatedAt);
   });
+
+const canQuoteReceiveReminder = (quote) => {
+  const workflow = getQuoteSignatureWorkflow(quote);
+  const status = getQuoteDisplayStatus(quote);
+
+  return (
+    Boolean(workflow.sessionId) &&
+    workflow.deliveryMode === 'signature' &&
+    !['signed', 'refused', 'archived'].includes(status)
+  );
+};
 
 /* ─── FiltersSheet — bottom sheet mobile ──────────────────────────────────── */
 function FiltersSheet({
@@ -172,6 +227,9 @@ function FiltersSheet({
                 <option value="sent">Envoyés</option>
                 <option value="signed">Signés</option>
                 <option value="archived">Archivés</option>
+                <option value="viewed">Consultés</option>
+                <option value="refused">Refusés</option>
+                <option value="expired">Expirés</option>
               </select>
               <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
             </div>
@@ -235,8 +293,29 @@ function FiltersSheet({
 }
 
 /* ─── QuoteCard ──────────────────────────────────────────────────────────── */
-function QuoteCard({ quote, isWorking, onDelete, onDuplicate, onDownloadPdf }) {
-  const statusMeta = STATUS_META[quote.status || 'draft'] || STATUS_META.draft;
+function QuoteCard({
+  quote,
+  isWorking,
+  onDelete,
+  onDuplicate,
+  onDownloadPdf,
+  onSendQuote,
+  onSendForSignature,
+  onSendReminder,
+  onOpenSignedQuote,
+}) {
+  const workflow = getQuoteSignatureWorkflow(quote);
+  const displayStatus = getQuoteDisplayStatus(quote);
+  const statusMeta =
+    getQuoteSignatureStatusMeta(displayStatus) ||
+    STATUS_META[displayStatus] ||
+    STATUS_META.draft;
+  const hasClientEmail = Boolean(quote.clientEmail || quote.payload?.clientData?.email);
+  const canSend = canQuoteBeSent(quote) && hasClientEmail;
+  const canOpenSignedQuote = Boolean(workflow.sessionId && workflow.signedPdfAvailable);
+  const canSendReminder = canQuoteReceiveReminder(quote);
+  const needsResend = quoteNeedsResend(quote);
+  const lastReminderMeta = getQuoteSignatureReminderMeta(workflow.lastReminderLevel);
   const quoteClient =
     quote.clientName ||
     getClientDisplayName(quote.payload?.clientData) ||
@@ -276,6 +355,16 @@ function QuoteCard({ quote, isWorking, onDelete, onDuplicate, onDownloadPdf }) {
             <p className="mt-1 line-clamp-1 text-xs text-slate-400">
               {getQuoteProductPreview(quote)}
             </p>
+            {needsResend && (
+              <p className="mt-2 text-[11px] font-semibold text-amber-600">
+                Ce devis a été modifié. Un nouvel envoi est nécessaire.
+              </p>
+            )}
+            {workflow.sentAt && !needsResend && (
+              <p className="mt-2 text-[11px] text-slate-500">
+                Dernier suivi : {formatQuoteUpdatedAt(workflow.signedAt || workflow.viewedAt || workflow.sentAt)}
+              </p>
+            )}
           </div>
 
           {/* Total TTC — prominent */}
@@ -310,6 +399,77 @@ function QuoteCard({ quote, isWorking, onDelete, onDuplicate, onDownloadPdf }) {
             </p>
           </div>
         </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onSendQuote(quote)}
+            disabled={isWorking || !canSend}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+            title={hasClientEmail ? 'Envoyer le devis par email' : 'Ajoutez un email client pour envoyer ce devis'}
+          >
+            <Mail size={14} />
+            Envoyer le devis
+          </button>
+          <button
+            type="button"
+            onClick={() => onSendForSignature(quote)}
+            disabled={isWorking || !canSend}
+            className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+            title={hasClientEmail ? 'Envoyer le devis pour signature' : 'Ajoutez un email client pour envoyer ce devis'}
+          >
+            <PenSquare size={14} />
+            Envoyer pour signature
+          </button>
+          {canOpenSignedQuote && (
+            <button
+              type="button"
+              onClick={() => onOpenSignedQuote(quote)}
+              disabled={isWorking}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ExternalLink size={14} />
+              Ouvrir le devis signé
+            </button>
+          )}
+        </div>
+
+        {canSendReminder && (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BellRing size={14} className="text-orange-500" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Relances manuelles
+                </p>
+              </div>
+              {workflow.lastReminderAt && lastReminderMeta && (
+                <p className="text-[11px] text-slate-500">
+                  Derniere : {lastReminderMeta.shortLabel} le{' '}
+                  {formatQuoteUpdatedAt(workflow.lastReminderAt)}
+                </p>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[1, 2, 3].map((level) => {
+                const reminderMeta = getQuoteSignatureReminderMeta(level);
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => onSendReminder(quote, level)}
+                    disabled={isWorking}
+                    title={reminderMeta?.label || 'Relance'}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <BellRing size={12} />
+                    {reminderMeta?.shortLabel || `J+${level}`}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Action row */}
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -435,11 +595,134 @@ export default function SavedQuotesPage() {
         quote.payload?.clientData || null,
         quote.payload?.cartItems || [],
         quote.payload?.tvaRate || 10,
-        quote.payload?.quoteSettings || null
+        quote.payload?.quoteSettings || null,
+        getQuotePdfOptions(quote)
       );
     } catch (e) {
       setActionError(e.message || 'Impossible de générer le PDF.');
     } finally { setActionId(null); }
+  };
+
+  const sendQuoteDelivery = async (quote, deliveryMode) => {
+    if (!user) return;
+    const recipientEmail = quote.clientEmail || quote.payload?.clientData?.email;
+
+    if (!recipientEmail) {
+      setActionError("Ajoutez un email client avant d'envoyer ce devis.");
+      return;
+    }
+
+    setActionId(quote.id);
+    setActionError('');
+    setActionMessage('');
+
+    try {
+      const pdfDocument = await buildQuotePdfDocument(
+        quote.payload?.clientData || null,
+        quote.payload?.cartItems || [],
+        quote.payload?.tvaRate || 10,
+        quote.payload?.quoteSettings || null,
+        getQuotePdfOptions(quote)
+      );
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/quote-signatures/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          quoteId: quote.id,
+          deliveryMode,
+          pdfBase64: arrayBufferToBase64(pdfDocument.arrayBuffer),
+          pdfInfo: {
+            filename: pdfDocument.filename,
+            quoteNumber: pdfDocument.quoteNumber,
+            issueDate: pdfDocument.issueDate,
+            totalHT: pdfDocument.totals?.totalHT || 0,
+            totalTTC: pdfDocument.totals?.totalTTC || 0,
+            quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
+            tvaRate: pdfDocument.tvaRate,
+            signatureAnchors: pdfDocument.signatureAnchors,
+          },
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible d'envoyer le devis.");
+      }
+
+      setActionMessage(
+        deliveryMode === 'signature'
+          ? 'Le devis a été envoyé au client avec son lien de signature.'
+          : 'Le devis a été envoyé au client par email.'
+      );
+    } catch (error) {
+      setActionError(error.message || "Impossible d'envoyer le devis.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleSendQuote = async (quote) => {
+    await sendQuoteDelivery(quote, 'email');
+  };
+
+  const handleSendForSignature = async (quote) => {
+    await sendQuoteDelivery(quote, 'signature');
+  };
+
+  const handleSendReminder = async (quote, reminderLevel) => {
+    if (!user) return;
+
+    const workflow = getQuoteSignatureWorkflow(quote);
+    const reminderMeta = getQuoteSignatureReminderMeta(reminderLevel);
+
+    if (!workflow.sessionId) {
+      setActionError("Aucune session de signature n'est disponible pour ce devis.");
+      return;
+    }
+
+    setActionId(quote.id);
+    setActionError('');
+    setActionMessage('');
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/quote-signatures/remind', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          sessionId: workflow.sessionId,
+          reminderLevel,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible d'envoyer la relance.");
+      }
+
+      setActionMessage(
+        reminderMeta
+          ? `${reminderMeta.label} envoyée au client.`
+          : 'Relance envoyée au client.'
+      );
+    } catch (error) {
+      setActionError(error.message || "Impossible d'envoyer la relance.");
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleOpenSignedQuote = (quote) => {
+    const sessionId = getQuoteSignatureWorkflow(quote).sessionId;
+    if (!sessionId) return;
+    window.open(buildSignatureDocumentHref(sessionId, 'signed'), '_blank', 'noopener,noreferrer');
   };
 
   const normalizedSearch = normalizeSearchValue(deferredSearch);
@@ -458,7 +741,7 @@ export default function SavedQuotesPage() {
   const filteredQuotes = sortQuotes(
     quotes.filter((q) => {
       if (normalizedSearch && !getQuoteSearchText(q).includes(normalizedSearch)) return false;
-      if (statusFilter !== 'all' && (q.status || 'draft') !== statusFilter) return false;
+      if (statusFilter !== 'all' && getQuoteDisplayStatus(q) !== statusFilter) return false;
       if (clientFilter !== 'all' && getQuoteClientId(q) !== clientFilter) return false;
       return matchesPeriodFilter(q, periodFilter);
     }),
@@ -495,13 +778,6 @@ export default function SavedQuotesPage() {
       {!isConfigured && (
         <div className="mx-auto max-w-4xl rounded-2xl border border-orange-200 bg-orange-50 p-5 text-sm text-orange-900 shadow-sm">
           Firebase n&apos;est pas encore configuré. Vérifiez la configuration de l&apos;application.
-        </div>
-      )}
-
-      {/* ── Non connecté ───────────────────────────────────────────────── */}
-      {isConfigured && !user && !initializing && (
-        <div className="mx-auto max-w-xl">
-          <FirebaseAuthCard />
         </div>
       )}
 
@@ -768,6 +1044,10 @@ export default function SavedQuotesPage() {
                   onDelete={handleDelete}
                   onDuplicate={handleDuplicate}
                   onDownloadPdf={handleDownloadPdf}
+                  onSendQuote={handleSendQuote}
+                  onSendForSignature={handleSendForSignature}
+                  onSendReminder={handleSendReminder}
+                  onOpenSignedQuote={handleOpenSignedQuote}
                 />
               ))}
             </div>

@@ -250,14 +250,14 @@ function SortableCartItem({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 truncate">
+            <div className="flex min-w-0 items-center gap-2">
               {item.productId === 'gestion-dechets' ? (
                 <WasteRecycleIcon size={14} className="shrink-0 text-green-500" />
               ) : (
                 <Package size={14} className="shrink-0 text-slate-400" />
               )}
-              <p className="flex items-center gap-1.5 truncate text-sm font-bold text-slate-900">
-                {item.productLabel}
+              <p className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-900">
+                <span className="min-w-0 truncate">{item.productLabel}</span>
                 
                 {item.repere && (
                   <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] italic text-slate-500">
@@ -462,7 +462,7 @@ export default function Cart({
 
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
-          <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[40vh]">
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1 lg:max-h-[calc(100vh-28rem)]">
             {items.map((item) => (
               <SortableCartItem
                 key={item.id}
