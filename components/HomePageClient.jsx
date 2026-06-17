@@ -811,9 +811,21 @@ export default function HomePageClient() {
         throw new Error("Impossible d'enregistrer le devis avant l'envoi.");
       }
 
+      // Merge local customImage values back into saved cart items.
+      // Cloud save strips images exceeding the Firestore size limit,
+      // but the in-memory cartItems still hold the full data-URLs.
+      const savedCartItems = savedQuote.payload?.cartItems || cartItems || [];
+      const mergedCartItems = savedCartItems.map((savedItem) => {
+        const localItem = cartItems.find((ci) => ci.id === savedItem.id);
+        if (localItem?.customImage && !savedItem.customImage) {
+          return { ...savedItem, customImage: localItem.customImage };
+        }
+        return savedItem;
+      });
+
       const pdfDocument = await buildQuotePdfDocument(
         savedQuote.payload?.clientData || clientData || null,
-        savedQuote.payload?.cartItems || cartItems || [],
+        mergedCartItems,
         savedQuote.payload?.tvaRate || tvaRate || DEFAULT_TVA_RATE,
         savedQuote.payload?.quoteSettings || quoteSettings || null,
         getQuotePdfOptions(savedQuote)

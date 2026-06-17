@@ -592,6 +592,9 @@ export default function ProductSelector({
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
   const [customImage, setCustomImage] = useState(null);
+  const [customHasDimensions, setCustomHasDimensions] = useState(false);
+  const [customWidthMm, setCustomWidthMm] = useState('');
+  const [customHeightMm, setCustomHeightMm] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
   const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
   const [selectedCompositeModuleId, setSelectedCompositeModuleId] = useState(
@@ -934,6 +937,9 @@ export default function ProductSelector({
     setCustomDescription('');
     setCustomPrice('');
     setCustomImage(null);
+    setCustomHasDimensions(false);
+    setCustomWidthMm('');
+    setCustomHeightMm('');
     setTextOnlyContent('');
   };
 
@@ -1206,6 +1212,9 @@ export default function ProductSelector({
       setCustomDescription(editingItem.customDescription || '');
       setCustomPrice(editingItem.customPrice?.toString() || '');
       setCustomImage(editingItem.customImage || null);
+      setCustomHasDimensions(Boolean(editingItem.customHasDimensions));
+      setCustomWidthMm(editingItem.customHasDimensions ? (editingItem.widthMm?.toString() || '') : '');
+      setCustomHeightMm(editingItem.customHasDimensions ? (editingItem.heightMm?.toString() || '') : '');
       return;
     }
 
@@ -1348,6 +1357,9 @@ export default function ProductSelector({
       const parsedCustomPrice = Number.parseFloat(customPrice);
       if (!customLabel || !Number.isFinite(parsedCustomPrice)) return;
 
+      const parsedWidthMm = Math.max(0, Number.parseInt(customWidthMm, 10) || 0);
+      const parsedHeightMm = Math.max(0, Number.parseInt(customHeightMm, 10) || 0);
+
       onAddToCart({
         id: editingItem ? editingItem.id : createCartItemId(),
         productId: product.id,
@@ -1355,6 +1367,9 @@ export default function ProductSelector({
         customDescription,
         customPrice: parsedCustomPrice,
         customImage,
+        customHasDimensions: customHasDimensions && parsedWidthMm > 0 && parsedHeightMm > 0,
+        widthMm: customHasDimensions ? parsedWidthMm : 0,
+        heightMm: customHasDimensions ? parsedHeightMm : 0,
         repere,
         quantity,
         unitPrice: parsedCustomPrice,
@@ -1764,6 +1779,57 @@ export default function ProductSelector({
                   className="hidden"
                 />
               </label>
+            )}
+          </div>
+
+          {/* Produit sur mesure — L × H for waste management */}
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={customHasDimensions}
+                onChange={(event) => setCustomHasDimensions(event.target.checked)}
+                className="h-4 w-4 rounded accent-orange-500"
+              />
+              <span className="text-sm font-bold text-slate-700">
+                Produit sur mesure
+              </span>
+              <span className="text-xs text-slate-400">
+                (dimensions pour gestion des déchets)
+              </span>
+            </label>
+
+            {customHasDimensions && (
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">
+                    Largeur (mm)
+                  </label>
+                  <input
+                    type="number"
+                    {...NUMERIC_INPUT_PROPS}
+                    min={0}
+                    value={customWidthMm}
+                    onChange={(event) => setCustomWidthMm(event.target.value)}
+                    placeholder="Ex : 1200"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">
+                    Hauteur (mm)
+                  </label>
+                  <input
+                    type="number"
+                    {...NUMERIC_INPUT_PROPS}
+                    min={0}
+                    value={customHeightMm}
+                    onChange={(event) => setCustomHeightMm(event.target.value)}
+                    placeholder="Ex : 1400"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                </div>
+              </div>
             )}
           </div>
         </div>
