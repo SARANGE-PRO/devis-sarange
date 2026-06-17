@@ -35,6 +35,7 @@ import {
   getCompositeModuleCount,
   getItemPricingSummary,
   getItemThermalMetrics,
+  getPoseLabel,
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
@@ -243,6 +244,8 @@ function SortableCartItem({
               productId: item.productId,
               openingDirection: item.openingDirection,
               svgColor: item.svgColor,
+              voletMonobloc: item.voletMonobloc,
+              voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
             }}
             className="h-16 w-16 shrink-0 border-slate-100 bg-white p-1"
           />
@@ -330,7 +333,6 @@ function SortableCartItem({
                   <span className="ml-1">· {item.colorOption.label}</span>
                 )}
                 {petitsBoisLabel && <span className="ml-1">· {petitsBoisLabel}</span>}
-                {item.includePose && <span className="ml-1">· Pose incluse</span>}
                 {item.glazingOption && !item.glazingOption.isBaseIncluded && (
                   <span className="ml-1 font-bold text-blue-600">
                     · {item.glazingOption.shortLabel}
@@ -381,18 +383,19 @@ function SortableCartItem({
 
         <div className="text-right">
           <PriceStack
-            finalValue={calc.totalLine + (item.includePose ? calc.posePrice * item.quantity : 0)}
-            originalValue={
-              pricing.hasDiscount
-                ? pricing.originalLineHT + (item.includePose ? calc.posePrice * item.quantity : 0)
-                : null
-            }
+            finalValue={calc.totalLine}
+            originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
             emphasis="strong"
           />
           {item.includePose && (
-            <p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">
-              Dont pose {(calc.posePrice * item.quantity).toFixed(2)} €
-            </p>
+            <div className="mt-1 flex items-center justify-end gap-2 text-[11px]">
+              <span className="font-semibold text-slate-500">
+                {getPoseLabel(item)} ×{item.quantity}
+              </span>
+              <span className="font-bold text-slate-700">
+                {(calc.posePrice * item.quantity).toFixed(2)} €
+              </span>
+            </div>
           )}
         </div>
       </div>

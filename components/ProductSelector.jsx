@@ -59,6 +59,8 @@ import {
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+import CustomProductIcon from '@/components/icons/CustomProductIcon';
+import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
 
 const ICONS = {
   LayoutGrid,
@@ -100,6 +102,8 @@ const createSimpleConfig = (overrides = {}) => ({
   openingDirection: 'standard',
   glazingId: 'dv_4_20_4_argon_we',
   hasLockingHandle: false,
+  voletMonobloc: false,
+  voletMonoblocManoeuvre: 'manuel',
   ...overrides,
   ...buildPetitsBoisState(overrides),
   rawColorState: createDefaultColorState(overrides.rawColorState),
@@ -597,6 +601,11 @@ export default function ProductSelector({
   const [customHeightMm, setCustomHeightMm] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
   const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
+  // Option « Volet roulant monobloc » au niveau global du châssis composé :
+  // un seul coffre couvre toute la largeur de l'ensemble.
+  const [compositeVoletMonobloc, setCompositeVoletMonobloc] = useState(false);
+  const [compositeVoletMonoblocManoeuvre, setCompositeVoletMonoblocManoeuvre] =
+    useState('manuel');
   const [selectedCompositeModuleId, setSelectedCompositeModuleId] = useState(
     () => createCompositeBuilderState().selectedModuleId
   );
@@ -676,6 +685,11 @@ export default function ProductSelector({
   const workingIsGlazed =
     isGlazedProduct(formProduct) ||
     (workingIsPorte && !workingConfig?.panneauDecoratif);
+  // L'option « Volet roulant monobloc » est réservée aux fenêtres,
+  // portes-fenêtres et coulissants (jamais volets seuls ni portes d'entrée).
+  const workingSupportsMonobloc = ['fenetres', 'portes-fenetres', 'coulissants'].includes(
+    formProduct?.categoryId || ''
+  );
 
   const simplePriceData =
     !isCompositeMode &&
@@ -830,6 +844,8 @@ export default function ProductSelector({
         netDiscountWanted,
         isComposite: true,
         composition: compositePricing.composition,
+        voletMonobloc: compositeVoletMonobloc,
+        voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
       };
       const thermalMetrics = getItemThermalMetrics(compositePreviewItem);
       return {
@@ -893,6 +909,10 @@ export default function ProductSelector({
       hasLockingHandle: !workingIsVolet && !workingIsPorte
         ? simpleConfig.hasLockingHandle
         : false,
+      voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
+      voletMonoblocManoeuvre: workingSupportsMonobloc
+        ? simpleConfig.voletMonoblocManoeuvre
+        : 'manuel',
     };
     const thermalMetrics = getItemThermalMetrics(simplePreviewItem);
     return {
@@ -947,6 +967,8 @@ export default function ProductSelector({
     const nextState = createCompositeBuilderState();
     setComposition(nextState.composition);
     setSelectedCompositeModuleId(nextState.selectedModuleId);
+    setCompositeVoletMonobloc(false);
+    setCompositeVoletMonoblocManoeuvre('manuel');
   };
 
   const resetGlobalCommercialFields = () => {
@@ -1199,6 +1221,8 @@ export default function ProductSelector({
       setIsCompositeMode(true);
       setComposition(nextComposition);
       setSelectedCompositeModuleId(nextComposition[0].modules[0].id);
+      setCompositeVoletMonobloc(Boolean(editingItem.voletMonobloc));
+      setCompositeVoletMonoblocManoeuvre(editingItem.voletMonoblocManoeuvre || 'manuel');
       return;
     }
 
@@ -1238,6 +1262,8 @@ export default function ProductSelector({
         openingDirection: editingItem.openingDirection || 'standard',
         glazingId: editingItem.glazingOption?.id || 'dv_4_20_4_argon_we',
         hasLockingHandle: editingItem.hasLockingHandle || false,
+        voletMonobloc: editingItem.voletMonobloc || false,
+        voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
       })
     );
   }, [editingItem]);
@@ -1305,6 +1331,8 @@ export default function ProductSelector({
         composition: pricedComposition,
         modules: flatModules,
         modulePricing: flatModules,
+        voletMonobloc: compositeVoletMonobloc,
+        voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
       };
       const thermalMetrics = getItemThermalMetrics(nextCompositeItem);
 
@@ -1478,6 +1506,10 @@ export default function ProductSelector({
       hasLockingHandle: !workingIsVolet && !workingIsPorte
         ? simpleConfig.hasLockingHandle
         : false,
+      voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
+      voletMonoblocManoeuvre: workingSupportsMonobloc
+        ? simpleConfig.voletMonoblocManoeuvre
+        : 'manuel',
       rawColorState: simpleConfig.rawColorState,
       repere,
       showThermalData,
@@ -1532,33 +1564,39 @@ export default function ProductSelector({
                   : 'border-slate-200 bg-white text-slate-600 shadow-sm hover:border-slate-300 hover:bg-slate-50'
               }`}
             >
-              {!entry.id.includes('custom') && entry.id !== 'text-only' && (
-                <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
-                  {entry.id === 'gestion-dechets' ? (
-                    <div className="flex h-full w-full items-center justify-center rounded-xl border border-green-100 bg-green-50 text-green-600">
-                      <WasteRecycleIcon size={32} />
-                    </div>
-                  ) : entry.previewImageSrc ? (
-                    <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
-                      <Image
-                        src={entry.previewImageSrc}
-                        alt={entry.label}
-                        fill
-                        sizes="64px"
-                        className="object-contain p-1"
-                      />
-                    </div>
-                  ) : (
-                    <MenuiserieVisual
-                      sheetName={entry.sheet}
-                      width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
-                      height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
-                      options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
-                      className="h-full w-full"
+              <div className="mb-2 h-12 w-12 shrink-0 opacity-90 transition-transform duration-300 group-hover:scale-105 sm:mb-3 sm:h-16 sm:w-16">
+                {entry.id === 'gestion-dechets' ? (
+                  <div className="flex h-full w-full items-center justify-center rounded-xl border border-green-100 bg-green-50 text-green-600">
+                    <WasteRecycleIcon size={32} />
+                  </div>
+                ) : entry.id === 'custom-product' ? (
+                  <div className="flex h-full w-full items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-500">
+                    <CustomProductIcon size={32} />
+                  </div>
+                ) : entry.id === 'text-only' ? (
+                  <div className="flex h-full w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500">
+                    <TextOnlyIcon size={32} />
+                  </div>
+                ) : entry.previewImageSrc ? (
+                  <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <Image
+                      src={entry.previewImageSrc}
+                      alt={entry.label}
+                      fill
+                      sizes="64px"
+                      className="object-contain p-1"
                     />
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <MenuiserieVisual
+                    sheetName={entry.sheet}
+                    width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
+                    height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
+                    options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
+                    className="h-full w-full"
+                  />
+                )}
+              </div>
               <span className="line-clamp-2 max-w-full break-words leading-tight">
                 {entry.shortLabel}
               </span>
@@ -1649,6 +1687,8 @@ export default function ProductSelector({
                 openingDirection: simpleConfig.openingDirection,
                 productId: product.id,
                 svgColor: simpleMarketing.svgColor,
+                voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
+                voletMonoblocManoeuvre: simpleConfig.voletMonoblocManoeuvre,
               }}
               className="h-48 sm:h-72 md:h-80"
             />
@@ -2199,6 +2239,61 @@ export default function ProductSelector({
                   </div>
                 </div>
 
+                {workingSupportsMonobloc && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.voletMonobloc}
+                        onChange={(event) =>
+                          updateSimpleOptions({ voletMonobloc: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Volet roulant monobloc (intégré)
+                    </label>
+
+                    {simpleConfig.voletMonobloc && (
+                      <div className="mt-4">
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Manœuvre / motorisation
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            { id: 'manuel', label: 'Manuel' },
+                            { id: 'filaire', label: 'Filaire' },
+                            { id: 'radio', label: 'Radio' },
+                            { id: 'solaire', label: 'Solaire' },
+                          ].map((option) => {
+                            const isActive =
+                              simpleConfig.voletMonoblocManoeuvre === option.id;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  updateSimpleOptions({ voletMonoblocManoeuvre: option.id })
+                                }
+                                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                                  isActive
+                                    ? 'border-orange-500 bg-orange-50 text-orange-700'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">
+                          La pose de l&apos;ensemble menuiserie + volet reste facturée une
+                          seule fois (pas de pose en double).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {workingSashCount > 0 && !workingIsPorte && (
                   <div className="space-y-4">
                     <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
@@ -2437,9 +2532,61 @@ export default function ProductSelector({
           options={{
             isComposite: true,
             composition: compositePreviewComposition,
+            voletMonobloc: compositeVoletMonobloc,
+            voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
           }}
           className="h-80"
         />
+      </div>
+
+      <div className="border-b border-slate-100 px-4 pb-4 pt-4 md:px-6">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={compositeVoletMonobloc}
+              onChange={(event) => setCompositeVoletMonobloc(event.target.checked)}
+              className="h-4 w-4 accent-orange-500"
+            />
+            Volet roulant monobloc (intégré) sur tout le châssis
+          </label>
+
+          {compositeVoletMonobloc && (
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Manœuvre / motorisation
+              </label>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { id: 'manuel', label: 'Manuel' },
+                  { id: 'filaire', label: 'Filaire' },
+                  { id: 'radio', label: 'Radio' },
+                  { id: 'solaire', label: 'Solaire' },
+                ].map((option) => {
+                  const isActive = compositeVoletMonoblocManoeuvre === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setCompositeVoletMonoblocManoeuvre(option.id)}
+                      className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                        isActive
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-slate-400">
+                Un seul coffre couvre toute la largeur du châssis, tarifé sur les dimensions
+                totales. La pose de l&apos;ensemble reste facturée une seule fois.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="border-b border-slate-100 px-4 pb-4 pt-4 md:px-6">

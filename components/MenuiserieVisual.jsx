@@ -59,6 +59,8 @@ export default function MenuiserieVisual({
       <CompositeSVG
         composition={options.composition}
         frameColor={options.svgColor}
+        voletMonobloc={options.voletMonobloc}
+        voletMonoblocManoeuvre={options.voletMonoblocManoeuvre}
         className={className}
       />
     );

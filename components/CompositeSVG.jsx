@@ -844,6 +844,8 @@ const CompositeModule = ({ module, frameColor }) => {
 export default function CompositeSVG({
   composition = [],
   frameColor = '#FFFFFF',
+  voletMonobloc = false,
+  voletMonoblocManoeuvre = null,
   className = '',
 }) {
   const layout = useMemo(() => {
@@ -917,29 +919,117 @@ export default function CompositeSVG({
     return null;
   }
 
+  // Volet roulant monobloc : un seul coffre couvre toute la largeur du châssis.
+  // On réserve une bande en haut, on décale le châssis vers le bas, et on
+  // affiche les premières lames du tablier sur le haut de l'ensemble.
+  const monoMetrics = getMetrics(layout.totalWidth, layout.totalHeight);
+  const coffreHeight = voletMonobloc ? monoMetrics.shutterBoxHeight : 0;
+  const apronHeight = voletMonobloc
+    ? Math.min(layout.totalHeight * 0.22, monoMetrics.shutterBoxHeight * 1.4)
+    : 0;
+  const monoStroke = Math.max(1, monoMetrics.scaleFactor);
+  const slatStroke = Math.max(0.5, 0.8 * monoMetrics.scaleFactor);
+  const solarWidth = Math.min(layout.totalWidth * 0.18, 60 * monoMetrics.scaleFactor);
+  const apronLines = [];
+  for (
+    let lineY = coffreHeight + monoMetrics.slatHeight;
+    lineY < coffreHeight + apronHeight;
+    lineY += monoMetrics.slatHeight
+  ) {
+    apronLines.push(lineY);
+  }
+
   return (
     <div
       className={`flex items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50/50 p-4 ${className}`}
     >
       <svg
-        viewBox={`0 0 ${layout.totalWidth} ${layout.totalHeight}`}
+        viewBox={`0 0 ${layout.totalWidth} ${layout.totalHeight + coffreHeight}`}
         className="h-full w-full max-h-full max-w-full object-contain drop-shadow-md"
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="Apercu du chassis compose"
       >
-        {layout.rows.map((row) =>
-          row.modules.map((moduleLayout) => (
-            <g
-              key={moduleLayout.module.id}
-              transform={`translate(${moduleLayout.x}, ${moduleLayout.y})`}
-            >
-              <CompositeModule
-                module={moduleLayout.module}
-                frameColor={moduleLayout.module?.svgColor || frameColor}
+        {voletMonobloc && (
+          <g>
+            <rect
+              x={0}
+              y={0}
+              width={layout.totalWidth}
+              height={coffreHeight}
+              fill={frameColor}
+              stroke={COLORS.frameBorder}
+              strokeWidth={monoStroke}
+            />
+            <line
+              x1={0}
+              y1={coffreHeight * 0.6}
+              x2={layout.totalWidth}
+              y2={coffreHeight * 0.6}
+              stroke={COLORS.frameBorder}
+              strokeWidth={slatStroke}
+            />
+            {voletMonoblocManoeuvre === 'solaire' && (
+              <rect
+                x={layout.totalWidth - solarWidth - 12 * monoMetrics.scaleFactor}
+                y={coffreHeight * 0.3}
+                width={solarWidth}
+                height={coffreHeight * 0.4}
+                fill="#1f2937"
+                stroke="#0f172a"
+                strokeWidth={monoStroke}
               />
-            </g>
-          ))
+            )}
+          </g>
+        )}
+
+        <g transform={`translate(0, ${coffreHeight})`}>
+          {layout.rows.map((row) =>
+            row.modules.map((moduleLayout) => (
+              <g
+                key={moduleLayout.module.id}
+                transform={`translate(${moduleLayout.x}, ${moduleLayout.y})`}
+              >
+                <CompositeModule
+                  module={moduleLayout.module}
+                  frameColor={moduleLayout.module?.svgColor || frameColor}
+                />
+              </g>
+            ))
+          )}
+        </g>
+
+        {voletMonobloc && apronHeight > 0 && (
+          <g>
+            <rect
+              x={0}
+              y={coffreHeight}
+              width={layout.totalWidth}
+              height={apronHeight}
+              fill={frameColor}
+              stroke={COLORS.frameBorder}
+              strokeWidth={monoStroke}
+            />
+            {apronLines.map((lineY) => (
+              <line
+                key={lineY}
+                x1={0}
+                y1={lineY}
+                x2={layout.totalWidth}
+                y2={lineY}
+                stroke="#A8A8A8"
+                strokeWidth={slatStroke}
+              />
+            ))}
+            <line
+              x1={0}
+              y1={coffreHeight + apronHeight}
+              x2={layout.totalWidth}
+              y2={coffreHeight + apronHeight}
+              stroke={COLORS.frameBorder}
+              strokeWidth={Math.max(1, 1.2 * monoMetrics.scaleFactor)}
+            />
+          </g>
         )}
       </svg>
     </div>

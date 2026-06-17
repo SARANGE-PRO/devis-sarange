@@ -6,6 +6,7 @@ import {
   formatCompositeModules,
   getCompositeModuleCount,
   getItemPricingSummary,
+  getPoseLabel,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getPaymentScheduleValidation } from '@/lib/quote-settings.mjs';
@@ -194,6 +195,8 @@ export default function QuoteSummary({
 }) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
+  const [editingPoseId, setEditingPoseId] = useState(null);
+  const [tempPoseLabel, setTempPoseLabel] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
@@ -235,6 +238,16 @@ export default function QuoteSummary({
       customDescriptionManual: true,
     });
     setEditingDesignationId(null);
+  };
+
+  const handleStartEditPose = (item) => {
+    setTempPoseLabel(getPoseLabel(item));
+    setEditingPoseId(item.id);
+  };
+
+  const handleSavePose = (item) => {
+    onUpdateItem({ ...item, poseLabel: tempPoseLabel.trim() });
+    setEditingPoseId(null);
   };
 
   const runPdfAction = async (action) => {
@@ -395,6 +408,8 @@ export default function QuoteSummary({
                             productId: item.productId,
                             openingDirection: item.openingDirection,
                             svgColor: item.svgColor,
+                            voletMonobloc: item.voletMonobloc,
+                            voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
                           }}
                           className="w-12 h-12 shrink-0 bg-white border-slate-100 p-0.5"
                         />
@@ -502,11 +517,34 @@ export default function QuoteSummary({
                     </div>
                   )}
 
-                  {/* Pose sub-row */}
+                  {/* Pose sub-row (libellé renommable) */}
                   {item.includePose && (
-                    <div className="flex justify-between items-center border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
-                      <span className="font-semibold text-slate-600">Pose × {item.quantity}</span>
-                      <span className="font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
+                    <div className="flex justify-between items-center gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                      {editingPoseId === item.id ? (
+                        <div className="flex flex-1 items-center gap-1.5">
+                          <input
+                            value={tempPoseLabel}
+                            onChange={(e) => setTempPoseLabel(e.target.value)}
+                            autoFocus
+                            className="min-w-0 flex-1 rounded border border-orange-500 px-2 py-1 text-xs outline-none"
+                          />
+                          <button
+                            onClick={() => handleSavePose(item)}
+                            className="shrink-0 rounded p-1 text-orange-600 hover:bg-orange-50"
+                            title="Valider"
+                          ><Check size={12} /></button>
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                          {getPoseLabel(item)} × {item.quantity}
+                          <button
+                            onClick={() => handleStartEditPose(item)}
+                            className="rounded p-0.5 text-slate-400 hover:text-orange-500"
+                            title="Renommer la pose"
+                          ><Pencil size={11} /></button>
+                        </span>
+                      )}
+                      <span className="shrink-0 font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
                     </div>
                   )}
 
@@ -612,6 +650,8 @@ export default function QuoteSummary({
                                   productId: item.productId,
                                   openingDirection: item.openingDirection,
                                   svgColor: item.svgColor,
+                                  voletMonobloc: item.voletMonobloc,
+                                  voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
                                 }}
                                 className="w-14 h-14 shrink-0 bg-white border-slate-100 p-1"
                               />
@@ -758,9 +798,42 @@ export default function QuoteSummary({
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-14 shrink-0"></div>
-                              <p className="font-semibold text-slate-800 text-sm">
-                                Pose {item.productLabel || item.sheetName}
-                              </p>
+                              {editingPoseId === item.id ? (
+                                <div className="flex flex-1 items-center gap-2">
+                                  <input
+                                    value={tempPoseLabel}
+                                    onChange={(e) => setTempPoseLabel(e.target.value)}
+                                    autoFocus
+                                    className="min-w-0 flex-1 rounded-lg border border-orange-500 px-2.5 py-1.5 text-sm outline-none shadow-sm"
+                                  />
+                                  <button
+                                    onClick={() => handleSavePose(item)}
+                                    className="shrink-0 flex items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-orange-600"
+                                  >
+                                    <Check size={12} /> Valider
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingPoseId(null)}
+                                    className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                  >
+                                    Annuler
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="group flex flex-1 items-center justify-between gap-2">
+                                  <p className="font-semibold text-slate-800 text-sm">
+                                    {getPoseLabel(item)}
+                                  </p>
+                                  <button
+                                    onClick={() => handleStartEditPose(item)}
+                                    className="flex shrink-0 items-center gap-1.5 rounded border border-transparent p-1 px-2 text-slate-400 opacity-0 transition-all hover:border-orange-200 hover:bg-orange-50 hover:text-orange-500 group-hover:opacity-100"
+                                    title="Renommer la pose"
+                                  >
+                                    <Pencil size={12} />
+                                    <span className="text-[10px] font-bold">Renommer</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-4 text-center text-slate-400 text-xs">

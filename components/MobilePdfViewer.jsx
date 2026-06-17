@@ -40,14 +40,17 @@ export default function MobilePdfViewer({ url, title = 'Document PDF' }) {
       try {
         const pdfjsLib = await import('pdfjs-dist');
 
-        // Configure worker
+        // Configure worker — pin to the EXACT installed pdfjs-dist version via
+        // unpkg, which mirrors the npm tarball (path `build/pdf.worker.min.mjs`).
+        // This guarantees the worker version always matches the library and
+        // avoids the cdnjs 404 (wrong path + missing version).
         if (typeof window !== 'undefined') {
-          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
         }
 
         const loadingTask = pdfjsLib.getDocument({
           url,
-          cMapUrl: `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`,
+          cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/cmaps/`,
           cMapPacked: true,
         });
 
