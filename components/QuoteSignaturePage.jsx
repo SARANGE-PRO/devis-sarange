@@ -960,7 +960,7 @@ function ContactModal({ onClose, waLink, telLink, emailLink }) {
 /*  Document recap header (premium, inspired by the official PDF)             */
 /* -------------------------------------------------------------------------- */
 
-function RecapHeader({ session, displayQuoteNumber }) {
+function RecapHeader({ session, displayQuoteNumber, totalTTC }) {
   const recipient = session.recipient || {};
   const chantierAddress = recipient.chantierAddress || recipient.address || '';
   const chantierName = recipient.chantierFullName || recipient.fullName || '';
@@ -1016,9 +1016,13 @@ function RecapHeader({ session, displayQuoteNumber }) {
           <p className="text-xs font-bold uppercase tracking-wider text-orange-700">
             Montant total TTC
           </p>
-          <p className="text-xl font-black text-slate-900">
-            {currencyFormatter.format(session.quote?.totalTTC || 0)}
-          </p>
+          {totalTTC != null ? (
+            <p className="text-xl font-black text-slate-900">
+              {currencyFormatter.format(totalTTC)}
+            </p>
+          ) : (
+            <p className="text-sm font-bold text-slate-500">Selon la configuration</p>
+          )}
         </div>
       </div>
     </div>
@@ -1251,6 +1255,14 @@ export default function QuoteSignaturePage({ token }) {
   const requiresReducedVat = isVariantQuote
     ? Boolean(selectedVariant?.requiresReducedVatAck)
     : session?.requiresReducedVatAck === true;
+  // Montant TTC affiché : variante choisie en cours de signature ; une fois signé,
+  // session.quote.totalTTC reflète déjà la variante retenue (recalé côté serveur).
+  const displayTotalTTC =
+    isVariantQuote && !isSigned
+      ? selectedVariant
+        ? selectedVariant.totalTTC
+        : null
+      : session.quote.totalTTC;
 
   // Liens de contact dynamiques pré-remplis avec le numéro du devis
   const waMessage = `Bonjour l'équipe SARANGE, j'ai une question concernant mon devis N° ${displayQuoteNumber}.`;
@@ -1333,7 +1345,11 @@ export default function QuoteSignaturePage({ token }) {
         <div className="mt-5 flex flex-col gap-5 xl:grid xl:grid-cols-[1.45fr_0.9fr] xl:items-start">
           {/* ---- Document column ---- */}
           <section className="space-y-4">
-            <RecapHeader session={session} displayQuoteNumber={displayQuoteNumber} />
+            <RecapHeader
+              session={session}
+              displayQuoteNumber={displayQuoteNumber}
+              totalTTC={displayTotalTTC}
+            />
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -1389,7 +1405,9 @@ export default function QuoteSignaturePage({ token }) {
                     Montant TTC
                   </p>
                   <p className="mt-1 font-semibold text-white">
-                    {currencyFormatter.format(session.quote.totalTTC || 0)}
+                    {displayTotalTTC != null
+                      ? currencyFormatter.format(displayTotalTTC)
+                      : 'Selon la configuration'}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3">
@@ -1559,6 +1577,14 @@ export default function QuoteSignaturePage({ token }) {
                         ? 'Votre signature a été prise en compte et un email de confirmation vous a été envoyé.'
                         : 'La signature de ce devis a déjà été enregistrée. Vous pouvez rouvrir le document signé à tout moment.'}
                     </p>
+                    {session.selectedVariantName && (
+                      <p className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-50">
+                        Configuration retenue : {session.selectedVariantName}
+                        {session.quote?.totalTTC
+                          ? ` — ${currencyFormatter.format(session.quote.totalTTC)} TTC`
+                          : ''}
+                      </p>
+                    )}
                   </div>
                 </div>
                 {session.signedDocumentUrl && (

@@ -1116,15 +1116,28 @@ export default function HomePageClient() {
           materializedVariants,
           getQuotePdfOptions(savedQuote)
         );
-        variantsPayload = (pdfDocument.variantDocuments || []).map((variant) => ({
-          id: variant.id,
-          name: variant.name,
-          totalHT: variant.totalHT,
-          totalTTC: variant.totalTTC,
-          filename: variant.filename,
-          signatureAnchors: variant.signatureAnchors,
-          pdfBase64: arrayBufferToBase64(variant.arrayBuffer),
-        }));
+        variantsPayload = (pdfDocument.variantDocuments || [])
+          .map((variant) => {
+            // On joint les réglages/TVA/pose de la variante (état local) pour que le
+            // serveur recalcule l'acompte EXACT de la configuration choisie à la signature.
+            const source = materializedVariants.find((entry) => entry.id === variant.id);
+            if (!source) return null;
+            return {
+              id: variant.id,
+              name: variant.name,
+              totalHT: variant.totalHT,
+              totalTTC: variant.totalTTC,
+              tvaRate: source.tvaRate,
+              quoteSettings: source.quoteSettings,
+              hasMeasurementVisit:
+                Array.isArray(source.cartItems) &&
+                source.cartItems.some((item) => item?.includePose === true),
+              filename: variant.filename,
+              signatureAnchors: variant.signatureAnchors,
+              pdfBase64: arrayBufferToBase64(variant.arrayBuffer),
+            };
+          })
+          .filter(Boolean);
       } else {
         // Mono : on réinjecte les images locales (le cloud strippe les data-URLs trop lourdes).
         const savedCartItems = savedQuote.payload?.cartItems || cartItems || [];
