@@ -20,11 +20,28 @@ const FirebaseContext = createContext({
   user: null,
   initializing: true,
   isConfigured: false,
+  accessError: '',
   signIn: async () => {},
   signInWithGoogle: async () => {},
   signUp: async () => {},
   signOut: async () => {},
 });
+
+// Liste blanche d'accès (étape 5). Emails autorisés, séparés par des virgules,
+// dans NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS. Si la liste est VIDE, l'accès reste ouvert
+// (comportement historique) — aucun risque de verrouillage involontaire.
+const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS || '')
+  .split(',')
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
+
+const isEmailAllowed = (email) => {
+  if (ALLOWED_EMAILS.length === 0) return true; // liste non configurée → accès ouvert
+  return ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
+};
+
+const ACCESS_DENIED_MESSAGE =
+  "Accès non autorisé. Contactez l'administrateur pour obtenir l'accès à cette application.";
 
 const formatFirebaseError = (error) => {
   switch (error?.code) {
@@ -55,6 +72,7 @@ const formatFirebaseError = (error) => {
 export function FirebaseProvider({ children }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(isFirebaseConfigured);
+  const [accessError, setAccessError] = useState('');
 
   useEffect(() => {
     if (!isFirebaseConfigured) {
@@ -67,6 +85,17 @@ export function FirebaseProvider({ children }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      // Filtre d'accès (étape 5) : un compte hors liste blanche est déconnecté
+      // immédiatement. Ses données restent de toute façon cloisonnées par UID.
+      if (nextUser && !isEmailAllowed(nextUser.email)) {
+        setAccessError(ACCESS_DENIED_MESSAGE);
+        setUser(null);
+        setInitializing(false);
+        void signOut(auth).catch(() => {});
+        return;
+      }
+
+      setAccessError('');
       setUser(nextUser);
       setInitializing(false);
     });
@@ -98,6 +127,7 @@ export function FirebaseProvider({ children }) {
       user,
       initializing,
       isConfigured: isFirebaseConfigured,
+      accessError,
       signIn: async ({ email, password }) => {
         const auth = getFirebaseAuth();
         if (!auth) {
@@ -152,7 +182,7 @@ export function FirebaseProvider({ children }) {
         }
       },
     }),
-    [initializing, user]
+    [initializing, user, accessError]
   );
 
   return <FirebaseContext.Provider value={value}>{children}</FirebaseContext.Provider>;

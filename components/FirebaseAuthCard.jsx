@@ -8,7 +8,7 @@ export default function FirebaseAuthCard({
   title = 'Connexion cloud',
   subtitle = 'Connectez-vous pour retrouver et modifier vos devis de partout.',
 }) {
-  const { signIn, signInWithGoogle, isConfigured } = useFirebaseAuth();
+  const { signIn, signInWithGoogle, isConfigured, accessError } = useFirebaseAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -87,6 +87,12 @@ export default function FirebaseAuthCard({
           Utilisez cette option si votre email existe deja via votre autre application Firebase.
         </p>
       </div>
+
+      {accessError && (
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {accessError}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
 

@@ -9,6 +9,7 @@ import {
   Save,
   SlidersHorizontal,
   Trash2,
+  UsersRound,
   Wrench,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
@@ -133,6 +134,44 @@ export default function CataloguePage() {
   const [syncError, setSyncError] = useState('');
   const [newCustomGlazing, setNewCustomGlazing] = useState(createEmptyCustomGlazingDraft());
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
+
+  // Le bouton « Pousser vers l'équipe » n'est visible que pour le compte
+  // administrateur (UID exposé via NEXT_PUBLIC_CATALOGUE_SYNC_OWNER_UID).
+  // La route serveur revérifie de toute façon ce droit.
+  const syncOwnerUid = (process.env.NEXT_PUBLIC_CATALOGUE_SYNC_OWNER_UID || '').trim();
+  const canPushToTeam = Boolean(syncOwnerUid && user?.uid === syncOwnerUid);
+
+  const handlePushToTeam = async () => {
+    if (!user?.uid) return;
+    setPushMessage('');
+    setSyncError('');
+    setIsPushing(true);
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/catalogue/sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'La synchronisation vers l’équipe a échoué.');
+      }
+
+      setPushMessage(
+        data.failed > 0
+          ? `Catalogue poussé vers ${data.synced}/${data.total} compte(s). ${data.failed} échec(s).`
+          : `Catalogue poussé vers ${data.synced} compte(s) de l’équipe.`
+      );
+    } catch (error) {
+      setSyncError(error?.message || 'La synchronisation vers l’équipe a échoué.');
+    } finally {
+      setIsPushing(false);
+    }
+  };
 
   const buildPersistenceMessage = (baseMessage) => {
     if (!isConfigured) {
@@ -398,6 +437,30 @@ export default function CataloguePage() {
               )}
             </div>
           </div>
+
+          {canPushToTeam && (
+            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-400">
+                Vos coefficients, prix et vitrages sont déjà enregistrés sur votre compte.
+                Utilisez ce bouton pour les répercuter sur les comptes de l’équipe.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handlePushToTeam()}
+                disabled={isPushing || isSyncing}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition-all hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isPushing ? <Loader2 size={14} className="animate-spin" /> : <UsersRound size={14} />}
+                Pousser vers l’équipe
+              </button>
+            </div>
+          )}
+
+          {pushMessage && (
+            <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+              {pushMessage}
+            </div>
+          )}
 
           {syncError && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
