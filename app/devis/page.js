@@ -346,6 +346,11 @@ function QuoteCard({
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}>
                 {statusMeta.label}
               </span>
+              {Number(quote.variantCount) > 1 && (
+                <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">
+                  {quote.variantCount} variantes
+                </span>
+              )}
             </div>
             {quote.referenceDevis && (
               <span className="mt-0.5 inline-block text-[11px] font-semibold text-orange-600">
@@ -367,10 +372,14 @@ function QuoteCard({
             )}
           </div>
 
-          {/* Total TTC — prominent */}
+          {/* Total TTC — prominent (variante retenue si le devis est signé) */}
           <div className="shrink-0 text-right">
             <p className="text-base font-black text-slate-900">
-              {currencyFormatter.format(quote.totalTTC || 0)}
+              {currencyFormatter.format(
+                (workflow?.selectedVariantTotalTTC != null
+                  ? workflow.selectedVariantTotalTTC
+                  : quote.totalTTC) || 0
+              )}
             </p>
             <p className="text-[11px] text-slate-400">
               HT {currencyFormatter.format(quote.totalHT || 0)}

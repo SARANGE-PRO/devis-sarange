@@ -17,6 +17,7 @@ export async function POST(request) {
       deliveryMode: body?.deliveryMode,
       pdfBase64: body?.pdfBase64,
       pdfInfo: body?.pdfInfo,
+      variants: body?.variants,
     });
 
     return NextResponse.json(result);

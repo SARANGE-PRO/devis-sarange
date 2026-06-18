@@ -6,6 +6,7 @@ import ClientForm from '@/components/ClientForm';
 import ProductSelector from '@/components/ProductSelector';
 import Cart from '@/components/Cart';
 import QuoteSummary from '@/components/QuoteSummary';
+import VariantBar from '@/components/VariantBar';
 import AppShell from '@/components/AppShell';
 
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
@@ -18,9 +19,15 @@ import {
   getItemPricingSummary,
   getProductById,
 } from '@/lib/products';
-import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
+import {
+  buildMultiVariantQuotePdfDocument,
+  buildQuotePdfDocument,
+  generateMultiVariantQuotePDF,
+  generateQuotePDF,
+} from '@/lib/pdf-generator';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
+import { MAX_VARIANTS } from '@/lib/quote-cloud';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
 import {
   ArrowLeft,
@@ -59,6 +66,11 @@ const clearLocalDraft = () => {
 
 const createCartItemId = (prefix = 'item') =>
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+
+const createVariantId = () =>
+  `var-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 6)}`;
+
+const variantLetter = (index) => String.fromCharCode(65 + index);
 
 const createWasteManagementCartItem = (cartItems = []) => {
   const product = getProductById(WASTE_MANAGEMENT_PRODUCT_ID);
@@ -307,6 +319,12 @@ export default function HomePageClient() {
   const [quoteSettings, setQuoteSettings] = useState(() => getDefaultQuoteSettings());
   const [quoteReference, setQuoteReference] = useState('');
   const [draftRestored, setDraftRestored] = useState(false);
+  // Variantes de configuration. La variante ACTIVE est éditée via le tampon vif
+  // (cartItems / tvaRate / quoteSettings) ; `variants` mémorise toutes les variantes.
+  const [variantsMode, setVariantsMode] = useState(false);
+  const [variants, setVariants] = useState([]);
+  const [activeVariantId, setActiveVariantId] = useState('');
+  const [variantNotice, setVariantNotice] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [isSavingQuote, setIsSavingQuote] = useState(false);
@@ -334,6 +352,17 @@ export default function HomePageClient() {
     const totalTTC = Math.round(totalHT * (1 + tvaRate / 100) * 100) / 100;
     return { totalHT: Math.round(totalHT * 100) / 100, totalTTC };
   }, [cartItems, tvaRate]);
+
+  // Variantes « matérialisées » : la variante active reflète le tampon vif en cours
+  // d'édition (cartItems/tvaRate/quoteSettings), les autres leur snapshot mémorisé.
+  const materializedVariants = useMemo(() => {
+    if (!variantsMode) return [];
+    return variants.map((variant) =>
+      variant.id === activeVariantId
+        ? { ...variant, cartItems, tvaRate, quoteSettings }
+        : variant
+    );
+  }, [variantsMode, variants, activeVariantId, cartItems, tvaRate, quoteSettings]);
 
   const poseSafety = useMemo(() => {
     const hasPose = cartItems.some((item) => Boolean(item.includePose));
@@ -429,6 +458,19 @@ export default function HomePageClient() {
       if (Number.isFinite(Number(draft.tvaRate))) setTvaRate(Number(draft.tvaRate));
       if (draft.quoteSettings) setQuoteSettings(normalizeQuoteSettings(draft.quoteSettings));
       if (typeof draft.quoteReference === 'string') setQuoteReference(draft.quoteReference);
+      if (
+        draft.variantsMode === true &&
+        Array.isArray(draft.variants) &&
+        draft.variants.length > 0
+      ) {
+        setVariantsMode(true);
+        setVariants(draft.variants);
+        setActiveVariantId(
+          draft.variants.some((variant) => variant.id === draft.activeVariantId)
+            ? draft.activeVariantId
+            : draft.variants[0].id
+        );
+      }
       if (Number.isFinite(Number(draft.currentStep))) {
         setCurrentStep(Math.min(3, Math.max(1, Number(draft.currentStep))));
       }
@@ -456,6 +498,9 @@ export default function HomePageClient() {
             quoteSettings,
             quoteReference,
             currentStep,
+            variantsMode,
+            variants: materializedVariants,
+            activeVariantId,
             savedAt: Date.now(),
           })
         );
@@ -473,6 +518,9 @@ export default function HomePageClient() {
     quoteSettings,
     quoteReference,
     currentStep,
+    variantsMode,
+    materializedVariants,
+    activeVariantId,
   ]);
 
   const handleDiscardDraft = () => {
@@ -505,6 +553,10 @@ export default function HomePageClient() {
     setTvaRate(DEFAULT_TVA_RATE);
     setQuoteSettings(getDefaultQuoteSettings());
     setQuoteReference('');
+    setVariantsMode(false);
+    setVariants([]);
+    setActiveVariantId('');
+    setVariantNotice('');
     setEditingItem(null);
     setActiveQuoteId(null);
     setSaveMessage('');
@@ -540,13 +592,32 @@ export default function HomePageClient() {
         payload.clientData?.referenceDevis ||
         ''
     );
-    setCartItems(
-      normalizeCartItemsForQuote(Array.isArray(payload.cartItems) ? payload.cartItems : [])
-    );
-    setTvaRate(
-      Number.isFinite(Number(payload.tvaRate)) ? Number(payload.tvaRate) : DEFAULT_TVA_RATE
-    );
-    setQuoteSettings(normalizeQuoteSettings(payload.quoteSettings));
+
+    const hasVariants =
+      payload.variantsMode === true &&
+      Array.isArray(payload.variants) &&
+      payload.variants.length > 0;
+
+    if (hasVariants) {
+      const active =
+        payload.variants.find((variant) => variant.id === payload.activeVariantId) ||
+        payload.variants[0];
+      setVariantsMode(true);
+      setVariants(payload.variants);
+      setActiveVariantId(active.id);
+      loadVariantIntoBuffer(active);
+    } else {
+      setVariantsMode(false);
+      setVariants([]);
+      setActiveVariantId('');
+      setCartItems(
+        normalizeCartItemsForQuote(Array.isArray(payload.cartItems) ? payload.cartItems : [])
+      );
+      setTvaRate(
+        Number.isFinite(Number(payload.tvaRate)) ? Number(payload.tvaRate) : DEFAULT_TVA_RATE
+      );
+      setQuoteSettings(normalizeQuoteSettings(payload.quoteSettings));
+    }
     const nextStep = Number.isFinite(Number(payload.currentStep))
       ? Number(payload.currentStep)
       : 2;
@@ -772,6 +843,109 @@ export default function HomePageClient() {
     resetGenerationState();
   };
 
+  // ── Variantes de configuration ────────────────────────────────────────────
+  // Charge le snapshot d'une variante dans le tampon vif (édition).
+  const loadVariantIntoBuffer = (variant) => {
+    setCartItems(normalizeCartItemsForQuote(Array.isArray(variant?.cartItems) ? variant.cartItems : []));
+    setTvaRate(Number.isFinite(Number(variant?.tvaRate)) ? Number(variant.tvaRate) : DEFAULT_TVA_RATE);
+    setQuoteSettings(normalizeQuoteSettings(variant?.quoteSettings));
+    setEditingItem(null);
+  };
+
+  const handleEnableVariants = () => {
+    if (variantsMode) return;
+    const id = createVariantId();
+    setVariants([{ id, name: 'Variante A', summary: '', cartItems, tvaRate, quoteSettings }]);
+    setActiveVariantId(id);
+    setVariantsMode(true);
+    setVariantNotice('');
+    setSaveMessage('');
+    resetGenerationState();
+  };
+
+  const handleSelectVariant = (id) => {
+    if (!variantsMode || id === activeVariantId) return;
+    const committed = materializedVariants;
+    const target = committed.find((variant) => variant.id === id);
+    if (!target) return;
+    setVariants(committed); // fige l'édition courante avant de changer de variante
+    setActiveVariantId(id);
+    loadVariantIntoBuffer(target);
+    setVariantNotice('');
+  };
+
+  const handleAddVariant = () => {
+    const committed = materializedVariants;
+    if (committed.length >= MAX_VARIANTS) {
+      setVariantNotice(`Limite de ${MAX_VARIANTS} variantes atteinte.`);
+      return;
+    }
+    const source =
+      committed.find((variant) => variant.id === activeVariantId) || committed[0];
+    const id = createVariantId();
+    const newVariant = {
+      id,
+      name: `Variante ${variantLetter(committed.length)}`,
+      summary: '',
+      // Duplication : on clone la config courante pour n'ajuster que l'option qui change.
+      cartItems: (source?.cartItems || []).map((item) => ({ ...item })),
+      tvaRate: source?.tvaRate ?? tvaRate,
+      quoteSettings: source?.quoteSettings ?? quoteSettings,
+    };
+    setVariants([...committed, newVariant]);
+    setActiveVariantId(id);
+    loadVariantIntoBuffer(newVariant);
+    setVariantNotice('');
+    setSaveMessage('');
+    resetGenerationState();
+  };
+
+  const handleRenameVariant = (id, name) => {
+    setVariants((previous) =>
+      previous.map((variant) => (variant.id === id ? { ...variant, name } : variant))
+    );
+  };
+
+  const handleReorderVariant = (id, direction) => {
+    const committed = materializedVariants;
+    const index = committed.findIndex((variant) => variant.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= committed.length) return;
+    const next = [...committed];
+    [next[index], next[target]] = [next[target], next[index]];
+    setVariants(next);
+  };
+
+  const handleDeleteVariant = (id) => {
+    const committed = materializedVariants;
+    if (committed.length <= 1) return; // interdit de supprimer la dernière
+    if (!window.confirm('Supprimer cette variante ?')) return;
+
+    const remaining = committed.filter((variant) => variant.id !== id);
+
+    if (remaining.length === 1) {
+      // Repasse en mono-option : la variante restante redevient le devis classique.
+      const only = remaining[0];
+      setVariantsMode(false);
+      setVariants([]);
+      setActiveVariantId('');
+      loadVariantIntoBuffer(only);
+      setSaveMessage('');
+      resetGenerationState();
+      return;
+    }
+
+    let nextActiveId = activeVariantId;
+    if (id === activeVariantId) {
+      nextActiveId = remaining[0].id;
+      loadVariantIntoBuffer(remaining[0]);
+    }
+    setVariants(remaining);
+    setActiveVariantId(nextActiveId);
+    setSaveMessage('');
+    resetGenerationState();
+  };
+
   const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
     if (!firebaseConfigured) {
       if (origin === 'manual') {
@@ -818,6 +992,9 @@ export default function HomePageClient() {
         tvaRate,
         quoteSettings,
         reference: quoteReference,
+        variantsMode,
+        variants: materializedVariants,
+        activeVariantId,
         currentStep: ['pdf', 'delivery'].includes(origin) ? 3 : currentStep,
       });
 
@@ -873,9 +1050,15 @@ export default function HomePageClient() {
         savedQuote = await persistQuoteToCloud({ origin: 'pdf' });
       }
 
-      await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, {
-        reference: quoteReference,
-      });
+      if (variantsMode && materializedVariants.length > 1) {
+        await generateMultiVariantQuotePDF(clientData, materializedVariants, {
+          reference: quoteReference,
+        });
+      } else {
+        await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, {
+          reference: quoteReference,
+        });
+      }
       setPdfGenerated(true);
       setGenerationSuccess({
         clientName:
@@ -922,25 +1105,45 @@ export default function HomePageClient() {
         throw new Error("Impossible d'enregistrer le devis avant l'envoi.");
       }
 
-      // Merge local customImage values back into saved cart items.
-      // Cloud save strips images exceeding the Firestore size limit,
-      // but the in-memory cartItems still hold the full data-URLs.
-      const savedCartItems = savedQuote.payload?.cartItems || cartItems || [];
-      const mergedCartItems = savedCartItems.map((savedItem) => {
-        const localItem = cartItems.find((ci) => ci.id === savedItem.id);
-        if (localItem?.customImage && !savedItem.customImage) {
-          return { ...savedItem, customImage: localItem.customImage };
-        }
-        return savedItem;
-      });
+      let pdfDocument;
+      let variantsPayload = null;
 
-      const pdfDocument = await buildQuotePdfDocument(
-        savedQuote.payload?.clientData || clientData || null,
-        mergedCartItems,
-        savedQuote.payload?.tvaRate || tvaRate || DEFAULT_TVA_RATE,
-        savedQuote.payload?.quoteSettings || quoteSettings || null,
-        getQuotePdfOptions(savedQuote)
-      );
+      if (variantsMode && materializedVariants.length > 1) {
+        // Multi-variantes : PDF comparatif (vue client) + PDF mono signable par variante,
+        // générés depuis l'état LOCAL complet (images incluses).
+        pdfDocument = await buildMultiVariantQuotePdfDocument(
+          savedQuote.payload?.clientData || clientData || null,
+          materializedVariants,
+          getQuotePdfOptions(savedQuote)
+        );
+        variantsPayload = (pdfDocument.variantDocuments || []).map((variant) => ({
+          id: variant.id,
+          name: variant.name,
+          totalHT: variant.totalHT,
+          totalTTC: variant.totalTTC,
+          filename: variant.filename,
+          signatureAnchors: variant.signatureAnchors,
+          pdfBase64: arrayBufferToBase64(variant.arrayBuffer),
+        }));
+      } else {
+        // Mono : on réinjecte les images locales (le cloud strippe les data-URLs trop lourdes).
+        const savedCartItems = savedQuote.payload?.cartItems || cartItems || [];
+        const mergedCartItems = savedCartItems.map((savedItem) => {
+          const localItem = cartItems.find((ci) => ci.id === savedItem.id);
+          if (localItem?.customImage && !savedItem.customImage) {
+            return { ...savedItem, customImage: localItem.customImage };
+          }
+          return savedItem;
+        });
+
+        pdfDocument = await buildQuotePdfDocument(
+          savedQuote.payload?.clientData || clientData || null,
+          mergedCartItems,
+          savedQuote.payload?.tvaRate || tvaRate || DEFAULT_TVA_RATE,
+          savedQuote.payload?.quoteSettings || quoteSettings || null,
+          getQuotePdfOptions(savedQuote)
+        );
+      }
 
       const idToken = await user.getIdToken();
       const response = await fetch('/api/quote-signatures/send', {
@@ -963,6 +1166,7 @@ export default function HomePageClient() {
             tvaRate: pdfDocument.tvaRate,
             signatureAnchors: pdfDocument.signatureAnchors,
           },
+          ...(variantsPayload ? { variants: variantsPayload } : {}),
         }),
       });
       const data = await response.json();
@@ -1010,6 +1214,26 @@ export default function HomePageClient() {
           <ArrowLeft size={16} />
           <span className="hidden sm:inline">Retour</span>
         </button>
+      )}
+    </div>
+  );
+
+  const variantBar = (
+    <div className="mx-auto w-full max-w-6xl">
+      <VariantBar
+        variantsMode={variantsMode}
+        variants={materializedVariants}
+        activeVariantId={activeVariantId}
+        maxVariants={MAX_VARIANTS}
+        onEnable={handleEnableVariants}
+        onSelect={handleSelectVariant}
+        onAdd={handleAddVariant}
+        onRename={handleRenameVariant}
+        onDelete={handleDeleteVariant}
+        onReorder={handleReorderVariant}
+      />
+      {variantNotice && (
+        <p className="mb-3 -mt-2 px-1 text-xs font-semibold text-amber-600">{variantNotice}</p>
       )}
     </div>
   );
@@ -1110,6 +1334,7 @@ export default function HomePageClient() {
 
       {currentStep === 2 && (
         <>
+          {variantBar}
           <div className="mx-auto grid w-full max-w-6xl min-w-0 gap-6 sm:gap-8 lg:grid-cols-5">
             {editingItem && (
               <div className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-sm lg:hidden" />
@@ -1231,7 +1456,9 @@ export default function HomePageClient() {
       )}
 
       {currentStep === 3 && !generationSuccess && (
-        <QuoteSummary
+        <>
+          {variantBar}
+          <QuoteSummary
           clientData={clientData}
           cartItems={cartItems}
           tvaRate={tvaRate}
@@ -1255,6 +1482,7 @@ export default function HomePageClient() {
           onAddMissingPoseServices={handleAddMissingPoseServices}
           onDismissPoseSafety={handleDismissPoseSafety}
         />
+        </>
       )}
     </AppShell>
   );

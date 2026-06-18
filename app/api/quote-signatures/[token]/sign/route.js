@@ -20,6 +20,7 @@ export async function POST(request, { params }) {
       signatureDataUrl: body?.signatureDataUrl,
       signerName: body?.signerName,
       acceptReducedVat: body?.acceptReducedVat === true,
+      selectedVariantId: body?.selectedVariantId,
       signerIp: getClientIp(request),
       userAgent: request.headers.get('user-agent') || '',
     });

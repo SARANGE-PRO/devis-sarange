@@ -591,6 +591,7 @@ const SignaturePad = forwardRef(function SignaturePad(
 function SignatureModal({
   session,
   displayQuoteNumber,
+  requiresReducedVat,
   onClose,
   onSubmit,
   isSubmitting,
@@ -603,7 +604,8 @@ function SignatureModal({
   const [acceptReducedVat, setAcceptReducedVat] = useState(false);
   const [consent, setConsent] = useState(false);
 
-  const requiresVat = session?.requiresReducedVatAck === true;
+  const requiresVat =
+    requiresReducedVat != null ? requiresReducedVat === true : session?.requiresReducedVatAck === true;
 
   const canSubmit =
     !isSubmitting &&
@@ -1081,6 +1083,8 @@ export default function QuoteSignaturePage({ token }) {
   const [signModalOpen, setSignModalOpen] = useState(false);
   const [refuseModalOpen, setRefuseModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
+  // Choix de configuration (devis multi-variantes) — obligatoire avant signature.
+  const [selectedVariantId, setSelectedVariantId] = useState('');
 
   // ---- Data fetching (timeout + abort + retry) ----
   useEffect(() => {
@@ -1171,7 +1175,12 @@ export default function QuoteSignaturePage({ token }) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ signerName, acceptReducedVat, signatureDataUrl }),
+          body: JSON.stringify({
+            signerName,
+            acceptReducedVat,
+            signatureDataUrl,
+            selectedVariantId: selectedVariantId || undefined,
+          }),
         }
       );
       const data = await response.json().catch(() => null);
@@ -1232,6 +1241,16 @@ export default function QuoteSignaturePage({ token }) {
     ['signed', 'refused', 'expired'].includes(session.status || '');
   const sessionMessage = getStatusMessage(session);
   const canAct = Boolean(session) && !isReadOnly;
+
+  // Devis multi-variantes : le client doit choisir une configuration avant de signer.
+  const variantOptions = Array.isArray(session?.variants) ? session.variants : [];
+  const isVariantQuote = session?.variantsMode === true && variantOptions.length > 1;
+  const selectedVariant = variantOptions.find((variant) => variant.id === selectedVariantId) || null;
+  const variantChoiceMissing = isVariantQuote && !selectedVariant;
+  // Mention TVA réduite : pour la variante choisie si dispo, sinon exigence globale.
+  const requiresReducedVat = isVariantQuote
+    ? Boolean(selectedVariant?.requiresReducedVatAck)
+    : session?.requiresReducedVatAck === true;
 
   // Liens de contact dynamiques pré-remplis avec le numéro du devis
   const waMessage = `Bonjour l'équipe SARANGE, j'ai une question concernant mon devis N° ${displayQuoteNumber}.`;
@@ -1392,6 +1411,58 @@ export default function QuoteSignaturePage({ token }) {
               {/* Badge de validité dynamique : visible tant que le devis peut être signé */}
               {canAct && <ValidityBadge issueDate={session.quote?.issueDate} />}
 
+              {/* Choix de configuration (obligatoire) pour un devis multi-variantes */}
+              {canAct && isVariantQuote && (
+                <div className="mt-4 rounded-2xl border border-orange-300/20 bg-orange-400/5 p-4">
+                  <p className="text-sm font-bold text-white">
+                    Quelle configuration retenez-vous ?
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Choisissez la configuration à signer ; elle seule deviendra la commande
+                    engageante.
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {variantOptions.map((variant, index) => {
+                      const active = variant.id === selectedVariantId;
+                      const letter = String.fromCharCode(65 + index);
+                      return (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => setSelectedVariantId(variant.id)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${
+                            active
+                              ? 'border-orange-400 bg-orange-500/15'
+                              : 'border-white/10 bg-white/5 hover:border-white/25'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <span
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                active ? 'border-orange-300' : 'border-slate-400'
+                              }`}
+                            >
+                              {active && <span className="h-2 w-2 rounded-full bg-orange-300" />}
+                            </span>
+                            <span className="text-sm font-semibold text-white">
+                              {letter} · {variant.name || `Variante ${letter}`}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-sm font-bold text-white">
+                            {currencyFormatter.format(variant.totalTTC || 0)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {variantChoiceMissing && (
+                    <p className="mt-2 text-xs font-semibold text-orange-200">
+                      Sélectionnez une configuration pour pouvoir signer.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {sessionMessage && !isSigned && !isRefused && (
                 <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                   {sessionMessage}
@@ -1416,11 +1487,12 @@ export default function QuoteSignaturePage({ token }) {
                 <div className="mt-5 hidden gap-2 xl:flex xl:flex-col">
                   <button
                     type="button"
+                    disabled={variantChoiceMissing}
                     onClick={() => {
                       setSubmitError('');
                       setSignModalOpen(true);
                     }}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600"
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none"
                   >
                     <PenLine size={16} />
                     Accepter et signer
@@ -1537,7 +1609,9 @@ export default function QuoteSignaturePage({ token }) {
                 Total TTC
               </p>
               <p className="text-base font-black text-white">
-                {currencyFormatter.format(session.quote.totalTTC || 0)}
+                {currencyFormatter.format(
+                  (selectedVariant?.totalTTC ?? session.quote.totalTTC) || 0
+                )}
               </p>
             </div>
             <div className="flex flex-1 gap-2">
@@ -1553,14 +1627,15 @@ export default function QuoteSignaturePage({ token }) {
               </button>
               <button
                 type="button"
+                disabled={variantChoiceMissing}
                 onClick={() => {
                   setSubmitError('');
                   setSignModalOpen(true);
                 }}
-                className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600"
+                className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none"
               >
                 <PenLine size={16} />
-                Signer
+                {variantChoiceMissing ? 'Choisir' : 'Signer'}
               </button>
             </div>
           </div>
@@ -1572,6 +1647,7 @@ export default function QuoteSignaturePage({ token }) {
         <SignatureModal
           session={session}
           displayQuoteNumber={displayQuoteNumber}
+          requiresReducedVat={requiresReducedVat}
           onClose={() => {
             if (isSubmitting) return;
             setSignModalOpen(false);
