@@ -21,7 +21,12 @@ import {
 } from '@/lib/client-cloud';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 
-export default function ClientForm({ onNext, initialData = null }) {
+export default function ClientForm({
+  onNext,
+  initialData = null,
+  reference = '',
+  onReferenceChange,
+}) {
   const { user, initializing: authInitializing, isConfigured: firebaseConfigured } =
     useFirebaseAuth();
 
@@ -349,10 +354,13 @@ export default function ClientForm({ onNext, initialData = null }) {
               name="referenceDevis"
               type="text"
               placeholder="Ex : PROJET-2026-A"
-              value={formData.referenceDevis}
-              onChange={handleChange}
+              value={reference}
+              onChange={(event) => onReferenceChange?.(event.target.value)}
               className={inputClasses}
             />
+            <p className="mt-1.5 text-xs text-slate-400">
+              Liée à ce devis (et non à la fiche client).
+            </p>
           </div>
 
           <div className="my-4 h-px w-full bg-slate-100" />

@@ -46,6 +46,16 @@ const STEPS = [
 const DEFAULT_TVA_RATE = 10;
 const WASTE_MANAGEMENT_PRODUCT_ID = 'gestion-dechets';
 const TECHNICAL_MEASUREMENT_PRODUCT_ID = 'metrage-technique-validation';
+const DRAFT_STORAGE_KEY = 'sarange:quote-draft:v1';
+
+// Supprime le brouillon local (anti-perte) du localStorage.
+const clearLocalDraft = () => {
+  try {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    // localStorage indisponible (mode privé, quota) — sans gravité.
+  }
+};
 
 const createCartItemId = (prefix = 'item') =>
   `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -295,6 +305,8 @@ export default function HomePageClient() {
   const [cartItems, setCartItems] = useState([]);
   const [tvaRate, setTvaRate] = useState(DEFAULT_TVA_RATE);
   const [quoteSettings, setQuoteSettings] = useState(() => getDefaultQuoteSettings());
+  const [quoteReference, setQuoteReference] = useState('');
+  const [draftRestored, setDraftRestored] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [isSavingQuote, setIsSavingQuote] = useState(false);
@@ -389,6 +401,85 @@ export default function HomePageClient() {
 
   const requestedQuoteId = searchParams.get('quote');
   const requestedClientId = searchParams.get('client');
+
+  // ── Anti-perte : restauration d'un brouillon local au montage ──────────────
+  // Uniquement pour un nouveau devis (pas de devis/fiche cloud demandé dans l'URL).
+  const draftRestoreAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (draftRestoreAttemptedRef.current) return;
+    draftRestoreAttemptedRef.current = true;
+    if (requestedQuoteId || requestedClientId) return;
+
+    try {
+      const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      const restoredItems = Array.isArray(draft?.cartItems) ? draft.cartItems : [];
+      const hasContent =
+        restoredItems.length > 0 || hasMeaningfulClientData(draft?.clientData);
+      if (!hasContent) {
+        clearLocalDraft();
+        return;
+      }
+
+      if (draft.clientData) setClientData(draft.clientData);
+      if (restoredItems.length > 0) {
+        setCartItems(normalizeCartItemsForQuote(restoredItems));
+      }
+      if (Number.isFinite(Number(draft.tvaRate))) setTvaRate(Number(draft.tvaRate));
+      if (draft.quoteSettings) setQuoteSettings(normalizeQuoteSettings(draft.quoteSettings));
+      if (typeof draft.quoteReference === 'string') setQuoteReference(draft.quoteReference);
+      if (Number.isFinite(Number(draft.currentStep))) {
+        setCurrentStep(Math.min(3, Math.max(1, Number(draft.currentStep))));
+      }
+      setDraftRestored(true);
+    } catch {
+      clearLocalDraft();
+    }
+  }, [requestedQuoteId, requestedClientId]);
+
+  // ── Anti-perte : sauvegarde automatique (debounce 1 s) ─────────────────────
+  // On ne sauvegarde qu'un nouveau devis non encore enregistré en base (activeQuoteId nul).
+  useEffect(() => {
+    if (activeQuoteId) return undefined;
+    const hasContent = cartItems.length > 0 || hasMeaningfulClientData(clientData);
+    if (!hasContent) return undefined;
+
+    const handle = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          DRAFT_STORAGE_KEY,
+          JSON.stringify({
+            clientData,
+            cartItems,
+            tvaRate,
+            quoteSettings,
+            quoteReference,
+            currentStep,
+            savedAt: Date.now(),
+          })
+        );
+      } catch {
+        // localStorage indisponible / quota dépassé — on ignore silencieusement.
+      }
+    }, 1000);
+
+    return () => clearTimeout(handle);
+  }, [
+    activeQuoteId,
+    clientData,
+    cartItems,
+    tvaRate,
+    quoteSettings,
+    quoteReference,
+    currentStep,
+  ]);
+
+  const handleDiscardDraft = () => {
+    clearLocalDraft();
+    setDraftRestored(false);
+    resetQuoteState();
+  };
   const canSaveCloudQuote = Boolean(hasMeaningfulClientData(clientData) && cartItems.length > 0);
   const canSendQuoteDirectly = Boolean(firebaseConfigured && user && canSaveCloudQuote && clientData?.email);
   const directSendHint = !clientData?.email
@@ -413,11 +504,14 @@ export default function HomePageClient() {
     setCartItems([]);
     setTvaRate(DEFAULT_TVA_RATE);
     setQuoteSettings(getDefaultQuoteSettings());
+    setQuoteReference('');
     setEditingItem(null);
     setActiveQuoteId(null);
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
+    setDraftRestored(false);
+    clearLocalDraft();
     resetGenerationState();
     router.replace('/');
   };
@@ -428,6 +522,11 @@ export default function HomePageClient() {
     return {
       quoteNumber: workflow.quoteNumber || quote?.quoteNumber || undefined,
       issueDate: workflow.issueDate || quote?.quoteIssuedAt || undefined,
+      reference:
+        quote?.referenceDevis ||
+        quote?.payload?.reference ||
+        quoteReference ||
+        undefined,
     };
   };
 
@@ -435,6 +534,12 @@ export default function HomePageClient() {
     const payload = quote?.payload || {};
 
     setClientData(payload.clientData || null);
+    setQuoteReference(
+      quote?.referenceDevis ||
+        payload.reference ||
+        payload.clientData?.referenceDevis ||
+        ''
+    );
     setCartItems(
       normalizeCartItemsForQuote(Array.isArray(payload.cartItems) ? payload.cartItems : [])
     );
@@ -712,10 +817,14 @@ export default function HomePageClient() {
         cartItems,
         tvaRate,
         quoteSettings,
+        reference: quoteReference,
         currentStep: ['pdf', 'delivery'].includes(origin) ? 3 : currentStep,
       });
 
       setActiveQuoteId(savedQuote.id);
+      // Le devis est désormais persisté en base : le brouillon local n'a plus lieu d'être.
+      clearLocalDraft();
+      setDraftRestored(false);
 
       if (origin === 'pdf') {
         setSaveMessage(
@@ -764,7 +873,9 @@ export default function HomePageClient() {
         savedQuote = await persistQuoteToCloud({ origin: 'pdf' });
       }
 
-      await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings);
+      await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, {
+        reference: quoteReference,
+      });
       setPdfGenerated(true);
       setGenerationSuccess({
         clientName:
@@ -929,6 +1040,34 @@ export default function HomePageClient() {
         </div>
       )}
 
+      {draftRestored && !activeQuoteId && (
+        <div className="mx-auto mb-4 max-w-3xl px-4 sm:px-0">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2.5">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-orange-700">
+              <RotateCcw size={15} className="shrink-0" />
+              <span className="truncate">Brouillon récupéré.</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="rounded-lg px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-100"
+              >
+                Effacer et recommencer
+              </button>
+              <button
+                type="button"
+                onClick={() => setDraftRestored(false)}
+                className="rounded-lg p-1.5 text-orange-400 transition hover:bg-orange-100 hover:text-orange-600"
+                aria-label="Masquer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto mb-5 flex max-w-3xl items-center justify-center gap-1 sm:mb-8 sm:gap-2">
         {STEPS.map((step, index) => {
           const Icon = step.icon;
@@ -960,7 +1099,14 @@ export default function HomePageClient() {
         })}
       </div>
 
-      {currentStep === 1 && <ClientForm onNext={handleClientNext} initialData={clientData} />}
+      {currentStep === 1 && (
+        <ClientForm
+          onNext={handleClientNext}
+          initialData={clientData}
+          reference={quoteReference}
+          onReferenceChange={setQuoteReference}
+        />
+      )}
 
       {currentStep === 2 && (
         <>

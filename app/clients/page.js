@@ -114,10 +114,6 @@ function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, ed
               <input name="telephone" value={editingClientData.telephone} onChange={onChange} className={inputClasses} placeholder="06 12 34 56 78" type="tel" inputMode="tel" />
             </label>
             <label className="block sm:col-span-2">
-              <span className="mb-1.5 block text-sm font-semibold text-slate-700">Référence</span>
-              <input name="referenceDevis" value={editingClientData.referenceDevis} onChange={onChange} className={inputClasses} placeholder="PROJET-2026-A" />
-            </label>
-            <label className="block sm:col-span-2">
               <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <MapPin size={14} className="text-slate-400" /> Adresse
               </span>
@@ -178,11 +174,6 @@ function ClientCard({ client, isWorking, onEdit, onDelete }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-base font-bold text-slate-900 sm:text-lg">{clientLabel}</h3>
-            {client.referenceHint && (
-              <span className="mt-1 inline-block rounded-full bg-orange-50 px-2.5 py-0.5 text-[11px] font-semibold text-orange-700">
-                Ref {client.referenceHint}
-              </span>
-            )}
           </div>
           {/* Use button — icon on mobile, full on sm+ */}
           <Link

@@ -581,6 +581,7 @@ export default function SavedQuotesPage() {
         tvaRate: quote.payload?.tvaRate,
         quoteSettings: quote.payload?.quoteSettings,
         currentStep: quote.payload?.currentStep,
+        reference: quote.payload?.reference || quote.referenceDevis,
       });
       setActionMessage('Copie créée.');
     } catch (e) {
