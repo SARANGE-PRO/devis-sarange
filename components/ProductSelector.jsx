@@ -37,6 +37,7 @@ import {
   getProductById,
   getProductCategory,
   getMaterialVariantId,
+  compositeIncludesPorte,
   getProductVariant,
   getProductType,
   getPosePriceForType,
@@ -3378,7 +3379,11 @@ export default function ProductSelector({
                     className="h-4 w-4 accent-orange-500"
                   />
                   <Wrench size={14} className="text-slate-400" />
-                  Inclure la pose ({getPosePriceForType('composite')} EUR)
+                  Inclure la pose (
+                  {getPosePriceForType(
+                    compositeIncludesPorte({ composition }) ? 'porte' : 'menuiserie'
+                  )}{' '}
+                  EUR)
                 </label>
                 <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
                   <input

@@ -589,11 +589,6 @@ export default function CataloguePage() {
                     label: 'Volets roulants',
                     value: currentPricing.posePrices?.volet,
                   },
-                  {
-                    id: 'composite',
-                    label: 'Châssis composé',
-                    value: currentPricing.posePrices?.composite,
-                  },
                 ].map((entry) => {
                   const key = `pose:${entry.id}`;
                   const inputValue = pricingDrafts[key] ?? formatPriceInput(entry.value);
