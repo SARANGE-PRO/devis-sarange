@@ -36,6 +36,7 @@ import {
   getPriceForMm,
   getProductById,
   getProductCategory,
+  getMaterialVariantId,
   getProductVariant,
   getProductType,
   getPosePriceForType,
@@ -56,8 +57,10 @@ import {
   calculateGlassAreas,
   calculateGlazingExtra,
   subscribeToGlazingOptions,
+  getDefaultGlazingId,
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
+import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import CustomProductIcon from '@/components/icons/CustomProductIcon';
 import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
@@ -87,7 +90,7 @@ const buildPetitsBoisState = (source = {}) => ({
   ),
 });
 
-const createSimpleConfig = (overrides = {}) => ({
+const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   productVariantId: '',
   widthMm: '',
   heightMm: '',
@@ -100,8 +103,10 @@ const createSimpleConfig = (overrides = {}) => ({
   sousBassementHeight: 400,
   sashOptions: {},
   openingDirection: 'standard',
-  glazingId: 'dv_4_20_4_argon_we',
+  glazingId: getDefaultGlazingId(material),
   hasLockingHandle: false,
+  handleHeightMm: '',
+  allegeHeightMm: '',
   voletMonobloc: false,
   voletMonoblocManoeuvre: 'manuel',
   ...overrides,
@@ -291,17 +296,24 @@ const getMarketingDetails = ({
 
   const isVolet = product.sheet.startsWith('Volet');
   const isPorte = product.sheet.startsWith('Porte Entr');
+  const isAlu = product.material === 'alu' || /\bALU\b/i.test(product.sheet);
+  const isCoulissant = product.sheet.includes('Coulissant');
   let marketingBase = '';
 
   if (!isVolet) {
-    marketingBase = product.sheet.includes('Coulissant')
-      ? "Profiles PVC Schuco\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite"
-      : "Profiles PVC Schuco 70 mm\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite";
+    if (isAlu) {
+      marketingBase = 'Profiles aluminium Schuco\nRupture de pont thermique';
+    } else {
+      marketingBase = isCoulissant
+        ? "Profiles PVC Schuco\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite"
+        : "Profiles PVC Schuco 70 mm\n5 chambres d'isolation avec renforts acier galvanise\nSysteme a double joint d'etancheite";
+    }
 
     if (!isPorte) {
+      const handleLabel = isAlu ? 'Poignee Schuco' : 'Poignee Schuco Euro';
       marketingBase += hasLockingHandle
-        ? "\nPoignee Schuco Euro verrouillable a cle"
-        : '\nPoignee Schuco Euro';
+        ? `\n${handleLabel} verrouillable a cle`
+        : `\n${handleLabel}`;
     }
   }
 
@@ -569,6 +581,89 @@ const buildColorOptionsFields = ({
   </div>
 );
 
+const HandleHeightField = ({ handleHeightMm, allegeHeightMm, heightMm, onChange }) => {
+  const totalHeight = parsePositiveInt(heightMm, 0);
+  const allege = parsePositiveInt(allegeHeightMm, 0);
+  const centeredMm = getEffectiveHandleHeightMm(null, totalHeight);
+  const handleValue = Number.parseInt(handleHeightMm, 10);
+  const hasHandle = handleValue > 0;
+  const placeholder = centeredMm ? `${centeredMm} (centrée)` : 'Centrée';
+
+  // Renseigner l'allège place automatiquement la poignée aux normes.
+  const handleAllegeChange = (raw) => {
+    const norm = getNormativeHandleHeightMm(raw, totalHeight);
+    if (norm != null) {
+      onChange({ allegeHeightMm: raw, handleHeightMm: String(norm) });
+    } else {
+      onChange({ allegeHeightMm: raw });
+    }
+  };
+
+  const fromFloor = hasHandle && allege > 0 ? handleValue + allege : null;
+
+  return (
+    <div className="space-y-3 md:col-span-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            Hauteur d&apos;allège
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              min={0}
+              {...NUMERIC_INPUT_PROPS}
+              value={allegeHeightMm ?? ''}
+              placeholder="Non renseignée"
+              onChange={(event) => handleAllegeChange(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-slate-400">
+              mm
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Du sol au bas de la menuiserie.</p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            Hauteur de poignée
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              min={0}
+              max={totalHeight > 0 ? totalHeight : undefined}
+              {...NUMERIC_INPUT_PROPS}
+              value={handleHeightMm ?? ''}
+              placeholder={placeholder}
+              onChange={(event) => onChange({ handleHeightMm: event.target.value })}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-20 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            />
+            <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-slate-400">
+              mm{' '}
+              {hasHandle && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ handleHeightMm: '' })}
+                  className="pointer-events-auto ml-2 rounded-md px-1.5 py-0.5 text-orange-600 hover:bg-orange-50"
+                >
+                  Centrer
+                </button>
+              )}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            {fromFloor != null
+              ? `Soit ${fromFloor} mm du sol.`
+              : 'Depuis le bas. Vide = centrée.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function ProductSelector({
   onAddToCart,
   cartItems = [],
@@ -581,6 +676,7 @@ export default function ProductSelector({
     getGlazingOptionsServerSnapshot
   );
   const [selectedCategory, setSelectedCategory] = useState(CATEGORIES[0].id);
+  const [selectedMaterial, setSelectedMaterial] = useState('pvc');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isCompositeMode, setIsCompositeMode] = useState(false);
   const [simpleConfig, setSimpleConfig] = useState(() => createSimpleConfig());
@@ -601,6 +697,8 @@ export default function ProductSelector({
   const [customHeightMm, setCustomHeightMm] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
   const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
+  // Matériau du châssis composé (PVC ou aluminium) : s'applique à tous les modules.
+  const [compositeMaterial, setCompositeMaterial] = useState('pvc');
   // Option « Volet roulant monobloc » au niveau global du châssis composé :
   // un seul coffre couvre toute la largeur de l'ensemble.
   const [compositeVoletMonobloc, setCompositeVoletMonobloc] = useState(false);
@@ -611,6 +709,15 @@ export default function ProductSelector({
   );
 
   const category = CATEGORIES.find((entry) => entry.id === selectedCategory);
+  // La catégorie propose une déclinaison aluminium si elle contient des produits alu.
+  const categorySupportsMaterial = (category?.products || []).some(
+    (entry) => entry.material === 'alu'
+  );
+  // Produits affichés : filtrés par matériau choisi (PVC/Alu) ; les produits
+  // sans matériau (volets, services) restent toujours visibles.
+  const categoryProducts = (category?.products || []).filter(
+    (entry) => !entry.material || entry.material === selectedMaterial
+  );
   const categoryProduct = selectedProduct
     ? category?.products.find((entry) => entry.id === selectedProduct) || null
     : null;
@@ -885,6 +992,7 @@ export default function ProductSelector({
     const simplePreviewItem = {
       productId: product.id,
       sheetName: product.sheet,
+      material: product.material ?? null,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
       heightMm: parsePositiveInt(simpleConfig.heightMm),
       unitPrice: simplePriceData.price,
@@ -909,6 +1017,8 @@ export default function ProductSelector({
       hasLockingHandle: !workingIsVolet && !workingIsPorte
         ? simpleConfig.hasLockingHandle
         : false,
+      handleHeightMm: !workingIsVolet ? simpleConfig.handleHeightMm : null,
+      allegeHeightMm: !workingIsVolet ? simpleConfig.allegeHeightMm : null,
       voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
       voletMonoblocManoeuvre: workingSupportsMonobloc
         ? simpleConfig.voletMonoblocManoeuvre
@@ -951,7 +1061,9 @@ export default function ProductSelector({
 
   const resetSimpleSelection = ({ preserveConfiguration = false } = {}) => {
     setSimpleConfig((previous) =>
-      preserveConfiguration ? createSimpleConfig(previous) : createSimpleConfig()
+      preserveConfiguration
+        ? createSimpleConfig(previous, selectedMaterial)
+        : createSimpleConfig({}, selectedMaterial)
     );
     setCustomLabel('');
     setCustomDescription('');
@@ -967,6 +1079,7 @@ export default function ProductSelector({
     const nextState = createCompositeBuilderState();
     setComposition(nextState.composition);
     setSelectedCompositeModuleId(nextState.selectedModuleId);
+    setCompositeMaterial('pvc');
     setCompositeVoletMonobloc(false);
     setCompositeVoletMonoblocManoeuvre('manuel');
   };
@@ -979,7 +1092,9 @@ export default function ProductSelector({
     setNetMarginWanted(0);
     setNetDiscountWanted(0);
     setRepere('');
-    setShowThermalData(true);
+    // L'aluminium repart avec les données thermiques décochées.
+    const activeMaterial = isCompositeMode ? compositeMaterial : selectedMaterial;
+    setShowThermalData(activeMaterial !== 'alu');
   };
 
   const handleCategoryChange = (categoryId) => {
@@ -991,6 +1106,19 @@ export default function ProductSelector({
   const handleProductChange = (productId) => {
     setSelectedProduct(productId);
     resetSimpleSelection({ preserveConfiguration: true });
+  };
+
+  const handleMaterialChange = (material) => {
+    if (material === selectedMaterial) return;
+    setSelectedMaterial(material);
+    setSelectedProduct(null);
+    // Données thermiques décochées par défaut en aluminium (intégrées si coché).
+    setShowThermalData(material !== 'alu');
+    // Repart sur le vitrage standard du matériau (PVC 4/20/4, Alu 4/16/4).
+    setSimpleConfig((previous) => ({
+      ...createSimpleConfig(previous, material),
+      glazingId: getDefaultGlazingId(material),
+    }));
   };
 
   const updateSimpleOptions = (patch) => {
@@ -1082,7 +1210,10 @@ export default function ProductSelector({
       1200;
 
     const nextModule = createCompositeModule(createUid('module'), {
-      productId: position === 'above' ? 'fenetre-soufflet' : 'fenetre-fixe',
+      productId: getMaterialVariantId(
+        position === 'above' ? 'fenetre-soufflet' : 'fenetre-fixe',
+        compositeMaterial
+      ),
       widthMm: referenceWidth,
       heightMm: 400,
     });
@@ -1104,7 +1235,10 @@ export default function ProductSelector({
   const addCompositeModuleBeside = () => {
     const referenceModule = compositeContext?.module;
     const nextModule = createCompositeModule(createUid('module'), {
-      productId: referenceModule?.productId || 'fenetre-fixe',
+      productId: getMaterialVariantId(
+        referenceModule?.productId || 'fenetre-fixe',
+        compositeMaterial
+      ),
       widthMm: referenceModule?.widthMm || 400,
       heightMm: referenceModule?.heightMm || 1250,
     });
@@ -1185,6 +1319,28 @@ export default function ProductSelector({
     });
   };
 
+  const handleCompositeMaterialChange = (material) => {
+    if (material === compositeMaterial) return;
+    setCompositeMaterial(material);
+    // Données thermiques décochées par défaut en aluminium (intégrées si coché).
+    setShowThermalData(material !== 'alu');
+    // Bascule tous les modules dans le matériau choisi (PVC/Alu) et repart
+    // sur le vitrage standard correspondant.
+    setComposition((previous) =>
+      previous.map((row) => ({
+        ...row,
+        modules: row.modules.map((module) => ({
+          ...module,
+          productId: getMaterialVariantId(module.productId, material),
+          options: {
+            ...module.options,
+            glazingId: getDefaultGlazingId(material),
+          },
+        })),
+      }))
+    );
+  };
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!isCompositeMode) return;
@@ -1221,6 +1377,10 @@ export default function ProductSelector({
       setIsCompositeMode(true);
       setComposition(nextComposition);
       setSelectedCompositeModuleId(nextComposition[0].modules[0].id);
+      const hasAluModule = nextComposition.some((row) =>
+        row.modules.some((module) => /-alu$/i.test(module.productId || ''))
+      );
+      setCompositeMaterial(hasAluModule ? 'alu' : 'pvc');
       setCompositeVoletMonobloc(Boolean(editingItem.voletMonobloc));
       setCompositeVoletMonoblocManoeuvre(editingItem.voletMonoblocManoeuvre || 'manuel');
       return;
@@ -1229,6 +1389,7 @@ export default function ProductSelector({
     setIsCompositeMode(false);
     const nextCategory = getProductCategory(editingItem.productId) || CATEGORIES[0].id;
     setSelectedCategory(nextCategory);
+    setSelectedMaterial(getProductById(editingItem.productId)?.material || 'pvc');
     setSelectedProduct(editingItem.productId);
 
     if (editingItem.productId === 'custom-product') {
@@ -1262,6 +1423,8 @@ export default function ProductSelector({
         openingDirection: editingItem.openingDirection || 'standard',
         glazingId: editingItem.glazingOption?.id || 'dv_4_20_4_argon_we',
         hasLockingHandle: editingItem.hasLockingHandle || false,
+        handleHeightMm: editingItem.handleHeightMm ?? '',
+        allegeHeightMm: editingItem.allegeHeightMm ?? '',
         voletMonobloc: editingItem.voletMonobloc || false,
         voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
       })
@@ -1302,6 +1465,8 @@ export default function ProductSelector({
             sashOptions: module.options.sashOptions,
             openingDirection: module.options.openingDirection,
             hasLockingHandle: module.options.hasLockingHandle,
+            handleHeightMm: module.options.handleHeightMm,
+            allegeHeightMm: module.options.allegeHeightMm,
             marketingBase: marketing.marketingBase,
             marketingFinition: marketing.marketingFinition,
             svgColor: marketing.svgColor,
@@ -1316,6 +1481,7 @@ export default function ProductSelector({
         productId: 'composite-builder',
         productLabel: 'Châssis composé',
         sheetName: 'Châssis composé',
+        material: compositeMaterial,
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         quantity,
@@ -1476,6 +1642,7 @@ export default function ProductSelector({
       productId: product.id,
       productLabel: product.label,
       sheetName: product.sheet,
+      material: product.material ?? null,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
       heightMm: parsePositiveInt(simpleConfig.heightMm),
       billedHeightCm: simplePriceData.billedHeight,
@@ -1506,6 +1673,8 @@ export default function ProductSelector({
       hasLockingHandle: !workingIsVolet && !workingIsPorte
         ? simpleConfig.hasLockingHandle
         : false,
+      handleHeightMm: !workingIsVolet ? simpleConfig.handleHeightMm : null,
+      allegeHeightMm: !workingIsVolet ? simpleConfig.allegeHeightMm : null,
       voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
       voletMonoblocManoeuvre: workingSupportsMonobloc
         ? simpleConfig.voletMonoblocManoeuvre
@@ -1553,8 +1722,30 @@ export default function ProductSelector({
           })}
         </div>
 
+        {categorySupportsMaterial && (
+          <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm sm:mb-5">
+            {[
+              { id: 'pvc', label: 'PVC' },
+              { id: 'alu', label: 'Aluminium' },
+            ].map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => handleMaterialChange(option.id)}
+                className={`rounded-lg px-5 py-2 text-sm font-bold transition-all ${
+                  selectedMaterial === option.id
+                    ? 'bg-slate-900 text-white shadow'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {category?.products.map((entry) => (
+          {categoryProducts.map((entry) => (
             <button
               key={entry.id}
               onClick={() => handleProductChange(entry.id)}
@@ -1685,6 +1876,7 @@ export default function ProductSelector({
                 sousBassementHeight: simpleConfig.sousBassementHeight,
                 sashOptions: simpleConfig.sashOptions,
                 openingDirection: simpleConfig.openingDirection,
+                handleHeightMm: simpleConfig.handleHeightMm,
                 productId: product.id,
                 svgColor: simpleMarketing.svgColor,
                 voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
@@ -2169,6 +2361,13 @@ export default function ProductSelector({
                     </label>
                   )}
 
+                  <HandleHeightField
+                    handleHeightMm={simpleConfig.handleHeightMm}
+                    allegeHeightMm={simpleConfig.allegeHeightMm}
+                    heightMm={simpleConfig.heightMm}
+                    onChange={(changes) => updateSimpleOptions(changes)}
+                  />
+
                   <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
                     <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
                       <input
@@ -2496,6 +2695,26 @@ export default function ProductSelector({
             <p className="mt-1 text-sm text-slate-500">
               Cliquez sur un module pour ouvrir son formulaire complet.
             </p>
+
+            <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              {[
+                { id: 'pvc', label: 'PVC' },
+                { id: 'alu', label: 'Aluminium' },
+              ].map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => handleCompositeMaterialChange(option.id)}
+                  className={`rounded-lg px-5 py-2 text-sm font-bold transition-all ${
+                    compositeMaterial === option.id
+                      ? 'bg-slate-900 text-white shadow'
+                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -2663,11 +2882,16 @@ export default function ProductSelector({
                 >
                   {COMPOSITE_MODULE_TYPES.map((entry) => (
                     <optgroup key={entry.id} label={entry.label}>
-                      {entry.products.map((productOption) => (
-                        <option key={productOption.id} value={productOption.id}>
-                          {productOption.label}
-                        </option>
-                      ))}
+                      {entry.products
+                        .filter(
+                          (productOption) =>
+                            (productOption.material || 'pvc') === compositeMaterial
+                        )
+                        .map((productOption) => (
+                          <option key={productOption.id} value={productOption.id}>
+                            {productOption.label}
+                          </option>
+                        ))}
                     </optgroup>
                   ))}
                 </select>
@@ -2900,6 +3124,15 @@ export default function ProductSelector({
                           Poignee verrouillable a cle
                         </label>
                       )}
+                    </div>
+
+                    <div className="min-w-0 md:col-span-2">
+                      <HandleHeightField
+                        handleHeightMm={workingConfig.handleHeightMm}
+                        allegeHeightMm={workingConfig.allegeHeightMm}
+                        heightMm={activeCompositeModule?.heightMm}
+                        onChange={(changes) => updateSelectedModuleOptions(changes)}
+                      />
                     </div>
 
                     <div className="min-w-0">
@@ -3145,7 +3378,7 @@ export default function ProductSelector({
                     className="h-4 w-4 accent-orange-500"
                   />
                   <Wrench size={14} className="text-slate-400" />
-                  Inclure la pose ({getPosePriceForType('menuiserie')} EUR)
+                  Inclure la pose ({getPosePriceForType('composite')} EUR)
                 </label>
                 <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
                   <input

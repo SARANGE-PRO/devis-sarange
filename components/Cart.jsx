@@ -243,6 +243,7 @@ function SortableCartItem({
               sashOptions: item.sashOptions,
               productId: item.productId,
               openingDirection: item.openingDirection,
+              handleHeightMm: item.handleHeightMm,
               svgColor: item.svgColor,
               voletMonobloc: item.voletMonobloc,
               voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,

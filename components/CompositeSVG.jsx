@@ -100,10 +100,12 @@ const DecoCutouts = ({ x, y, width, height, scaleFactor }) => {
   );
 };
 
-const SymbolLayer = ({ symbol, x, y, width, height, scaleFactor }) => {
+const SymbolLayer = ({ symbol, x, y, width, height, scaleFactor, fraction = 0.5 }) => {
   const strokeWidth = Math.max(2, 2.5 * scaleFactor);
   const midX = x + width / 2;
   const midY = y + height / 2;
+  // Pointe du chevron d'ouverture alignée sur la hauteur de la poignée.
+  const apexY = y + height * Math.min(1, Math.max(0, fraction));
 
   if (symbol === 'cross') {
     return (
@@ -117,7 +119,7 @@ const SymbolLayer = ({ symbol, x, y, width, height, scaleFactor }) => {
   if (symbol === 'triangle-left') {
     return (
       <polyline
-        points={`${x + width},${y} ${x},${midY} ${x + width},${y + height}`}
+        points={`${x + width},${y} ${x},${apexY} ${x + width},${y + height}`}
         fill="none"
         stroke={COLORS.symbol}
         strokeWidth={strokeWidth}
@@ -130,7 +132,7 @@ const SymbolLayer = ({ symbol, x, y, width, height, scaleFactor }) => {
   if (symbol === 'triangle-right') {
     return (
       <polyline
-        points={`${x},${y} ${x + width},${midY} ${x},${y + height}`}
+        points={`${x},${y} ${x + width},${apexY} ${x},${y + height}`}
         fill="none"
         stroke={COLORS.symbol}
         strokeWidth={strokeWidth}
@@ -189,7 +191,7 @@ const SymbolLayer = ({ symbol, x, y, width, height, scaleFactor }) => {
   return null;
 };
 
-const Handle = ({ position, x, y, width, height, scaleFactor, isSliding = false }) => {
+const Handle = ({ position, x, y, width, height, scaleFactor, isSliding = false, fraction = 0.5 }) => {
   if (!position) return null;
 
   const bodyWidth = (isSliding ? 6 : 8) * scaleFactor;
@@ -216,7 +218,9 @@ const Handle = ({ position, x, y, width, height, scaleFactor, isSliding = false 
 
   const handleX =
     position === 'left' ? x + offset : x + width - bodyWidth - offset;
-  const handleY = y + height / 2 - bodyHeight / 2;
+  const minY = y + offset;
+  const maxY = y + height - bodyHeight - offset;
+  const handleY = Math.max(minY, Math.min(maxY, y + height * fraction - bodyHeight / 2));
 
   return (
     <rect
@@ -468,6 +472,7 @@ const CasementSash = ({
   panelType,
   sousBassement,
   metrics,
+  handleFraction = 0.5,
 }) => {
   if (width <= 0 || height <= 0) return null;
 
@@ -524,6 +529,7 @@ const CasementSash = ({
           width={width}
           height={height}
           scaleFactor={metrics.scaleFactor}
+          fraction={handleFraction}
         />
       ))}
       {sash.hasVentilation && panelType !== 'deco' && panelType !== 'sandwich' && (
@@ -541,6 +547,7 @@ const CasementSash = ({
         width={width}
         height={height}
         scaleFactor={metrics.scaleFactor}
+        fraction={handleFraction}
       />
     </g>
   );
@@ -558,6 +565,7 @@ const SlidingSash = ({
   metrics,
   index,
   totalSashes,
+  handleFraction = 0.5,
 }) => {
   if (width <= 0 || height <= 0) return null;
 
@@ -610,6 +618,7 @@ const SlidingSash = ({
           width={glassWidth}
           height={glassHeight}
           scaleFactor={metrics.scaleFactor}
+          fraction={handleFraction}
         />
       ))}
       <Handle
@@ -620,6 +629,7 @@ const SlidingSash = ({
         height={height}
         scaleFactor={metrics.scaleFactor}
         isSliding
+        fraction={handleFraction}
       />
     </g>
   );
@@ -816,6 +826,7 @@ const CompositeModule = ({ module, frameColor }) => {
               metrics={metrics}
               index={segment.index}
               totalSashes={sashSegments.length}
+              handleFraction={config.handleHeightFraction}
             />
           ) : (
             <CasementSash
@@ -833,6 +844,7 @@ const CompositeModule = ({ module, frameColor }) => {
               panelType={config.panelType}
               sousBassement={config.sousBassement}
               metrics={metrics}
+              handleFraction={config.handleHeightFraction}
             />
           )
         )

@@ -89,7 +89,14 @@ const CUSTOM_GLAZING_FIELDS = [
 
 export default function CataloguePage() {
   const configurableCategories = useMemo(
-    () => CATEGORIES.filter((category) => CONFIGURABLE_CATEGORY_IDS.includes(category.id)),
+    () =>
+      CATEGORIES.filter((category) =>
+        CONFIGURABLE_CATEGORY_IDS.includes(category.id)
+      ).map((category) => ({
+        ...category,
+        // Les coefficients aluminium seront ajoutés avec les tarifs alu.
+        products: category.products.filter((product) => product.material !== 'alu'),
+      })),
     []
   );
   const { user, initializing, isConfigured } = useFirebaseAuth();
@@ -581,6 +588,11 @@ export default function CataloguePage() {
                     id: 'volet',
                     label: 'Volets roulants',
                     value: currentPricing.posePrices?.volet,
+                  },
+                  {
+                    id: 'composite',
+                    label: 'Châssis composé',
+                    value: currentPricing.posePrices?.composite,
                   },
                 ].map((entry) => {
                   const key = `pose:${entry.id}`;
