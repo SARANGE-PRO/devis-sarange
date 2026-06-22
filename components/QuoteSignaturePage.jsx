@@ -961,7 +961,7 @@ function ContactModal({ onClose, waLink, telLink, emailLink }) {
 /* -------------------------------------------------------------------------- */
 
 function RecapHeader({ session, displayQuoteNumber, totalTTC }) {
-  const recipient = session.recipient || {};
+  const recipient = session?.recipient || {};
   const chantierAddress = recipient.chantierAddress || recipient.address || '';
   const chantierName = recipient.chantierFullName || recipient.fullName || '';
 
@@ -1241,8 +1241,8 @@ export default function QuoteSignaturePage({ token }) {
   const isRefused = session?.status === 'refused';
   const isReadOnly =
     !session ||
-    session.active === false ||
-    ['signed', 'refused', 'expired'].includes(session.status || '');
+    session?.active === false ||
+    ['signed', 'refused', 'expired'].includes(session?.status || '');
   const sessionMessage = getStatusMessage(session);
   const canAct = Boolean(session) && !isReadOnly;
 
@@ -1262,7 +1262,7 @@ export default function QuoteSignaturePage({ token }) {
       ? selectedVariant
         ? selectedVariant.totalTTC
         : null
-      : session.quote.totalTTC;
+      : session?.quote?.totalTTC;
 
   // Liens de contact dynamiques pré-remplis avec le numéro du devis
   const waMessage = `Bonjour l'équipe SARANGE, j'ai une question concernant mon devis N° ${displayQuoteNumber}.`;
@@ -1398,7 +1398,7 @@ export default function QuoteSignaturePage({ token }) {
                   <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
                     Client
                   </p>
-                  <p className="mt-1 font-semibold text-white">{session.recipient.fullName}</p>
+                  <p className="mt-1 font-semibold text-white">{session?.recipient?.fullName}</p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3">
                   <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
@@ -1415,7 +1415,7 @@ export default function QuoteSignaturePage({ token }) {
                     Date du devis
                   </p>
                   <p className="mt-1 font-semibold text-white">
-                    {formatDate(session.quote.issueDate)}
+                    {formatDate(session?.quote?.issueDate)}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-white/5 p-3">
@@ -1580,8 +1580,8 @@ export default function QuoteSignaturePage({ token }) {
                     {session.selectedVariantName && (
                       <p className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-50">
                         Configuration retenue : {session.selectedVariantName}
-                        {session.quote?.totalTTC
-                          ? ` — ${currencyFormatter.format(session.quote.totalTTC)} TTC`
+                        {session?.quote?.totalTTC
+                          ? ` — ${currencyFormatter.format(session?.quote?.totalTTC)} TTC`
                           : ''}
                       </p>
                     )}
@@ -1636,7 +1636,7 @@ export default function QuoteSignaturePage({ token }) {
               </p>
               <p className="text-base font-black text-white">
                 {currencyFormatter.format(
-                  (selectedVariant?.totalTTC ?? session.quote.totalTTC) || 0
+                  (selectedVariant?.totalTTC ?? session?.quote?.totalTTC) || 0
                 )}
               </p>
             </div>

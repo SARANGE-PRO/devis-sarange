@@ -34,6 +34,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   CloudUpload,
+  FilePlus2,
   FileText,
   FolderOpen,
   Loader2,
@@ -190,13 +191,36 @@ const shouldKeepManualDesignation = (previousItem, nextItem) => {
   return Boolean(previousSignature && previousSignature === nextSignature);
 };
 
+const QUOTE_SUCCESS_COPY = {
+  pdf: {
+    eyebrow: 'Devis genere',
+    title: 'Votre PDF a bien ete telecharge.',
+    describe: (name) =>
+      `Le devis ${name ? `de ${name} ` : ''}est pret. Vous pouvez repartir sur un nouveau dossier ou revenir a votre espace devis.`,
+  },
+  email: {
+    eyebrow: 'Devis envoye',
+    title: 'Le devis a bien ete envoye par email.',
+    describe: (name) =>
+      `Le devis ${name ? `de ${name} ` : ''}a ete transmis au client par email. Vous pouvez enchainer sur un nouveau devis.`,
+  },
+  signature: {
+    eyebrow: 'Devis envoye pour signature',
+    title: 'Le devis a bien ete envoye pour signature.',
+    describe: (name) =>
+      `${name || 'Le client'} a recu son lien de signature. Vous pouvez enchainer sur un nouveau devis.`,
+  },
+};
+
 function QuoteGenerationSuccess({
   clientName,
+  mode = 'pdf',
   isCloudAvailable,
   onCreateNewQuote,
   onOpenSavedQuotes,
   onReturnToSummary,
 }) {
+  const copy = QUOTE_SUCCESS_COPY[mode] || QUOTE_SUCCESS_COPY.pdf;
   return (
     <div className="mx-auto max-w-4xl overflow-hidden rounded-[2rem] border border-emerald-200 bg-white shadow-2xl shadow-emerald-950/10">
       <div className="relative overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(16,185,129,0.22),_transparent_55%),linear-gradient(135deg,#f0fdf4_0%,#ffffff_60%)] px-6 py-10 sm:px-10">
@@ -206,15 +230,13 @@ function QuoteGenerationSuccess({
             <CheckCircle2 size={30} />
           </div>
           <p className="mt-6 text-xs font-black uppercase tracking-[0.28em] text-emerald-600">
-            Devis genere
+            {copy.eyebrow}
           </p>
           <h2 className="mt-3 text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-            Votre PDF a bien ete telecharge.
+            {copy.title}
           </h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 sm:text-base">
-            {clientName
-              ? `Le devis de ${clientName} est pret. Vous pouvez maintenant repartir sur un nouveau dossier ou revenir a votre espace devis.`
-              : 'Le devis est pret. Vous pouvez maintenant repartir sur un nouveau dossier ou revenir a votre espace devis.'}
+            {copy.describe(clientName)}
           </p>
         </div>
       </div>
@@ -566,6 +588,25 @@ export default function HomePageClient() {
     clearLocalDraft();
     resetGenerationState();
     router.replace('/');
+  };
+
+  // Ferme le devis courant et repart à zéro. Confirme si du travail risque
+  // d'être perdu (panier non vidé). Après un envoi/enregistrement, on enchaîne
+  // directement.
+  const handleStartNewQuote = () => {
+    // On confirme seulement si du travail non enregistré risque d'être perdu :
+    // un devis déjà enregistré (activeQuoteId) ou tout juste envoyé/généré
+    // (generationSuccess) peut être fermé directement.
+    const hasUnsavedWork = cartItems.length > 0 && !activeQuoteId && !generationSuccess;
+    if (hasUnsavedWork) {
+      const confirmed =
+        typeof window === 'undefined' ||
+        window.confirm(
+          'Fermer ce devis et démarrer un nouveau devis ? Les modifications non enregistrées seront perdues.'
+        );
+      if (!confirmed) return;
+    }
+    resetQuoteState();
   };
 
   const getQuotePdfOptions = (quote) => {
@@ -1193,6 +1234,14 @@ export default function HomePageClient() {
           ? 'Le devis a été envoyé au client avec son lien de signature.'
           : 'Le devis a été envoyé au client par email.'
       );
+      // Écran de fin : permet de fermer ce devis et d'enchaîner sur le suivant.
+      setGenerationSuccess({
+        mode: deliveryMode === 'signature' ? 'signature' : 'email',
+        clientName:
+          savedQuote?.clientName ||
+          [clientData?.prenom, clientData?.nom].filter(Boolean).join(' ').trim() ||
+          'votre client',
+      });
     } catch (error) {
       setDeliveryError(error?.message || "Impossible d'envoyer le devis.");
     } finally {
@@ -1200,8 +1249,22 @@ export default function HomePageClient() {
     }
   };
 
+  const hasQuoteInProgress = Boolean(
+    clientData || cartItems.length > 0 || activeQuoteId
+  );
+
   const headerActions = (
     <div className="flex items-center gap-2">
+      {hasQuoteInProgress && (
+        <button
+          onClick={handleStartNewQuote}
+          className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-900"
+          title="Fermer ce devis et en démarrer un nouveau"
+        >
+          <FilePlus2 size={16} />
+          <span className="hidden sm:inline">Nouveau devis</span>
+        </button>
+      )}
       {firebaseConfigured && user && canSaveCloudQuote && (
         <button
           onClick={() => void handleSaveQuote()}
@@ -1461,6 +1524,7 @@ export default function HomePageClient() {
       {currentStep === 3 && generationSuccess && (
         <QuoteGenerationSuccess
           clientName={generationSuccess.clientName}
+          mode={generationSuccess.mode}
           isCloudAvailable={Boolean(firebaseConfigured && user)}
           onCreateNewQuote={resetQuoteState}
           onOpenSavedQuotes={() => router.push('/devis')}

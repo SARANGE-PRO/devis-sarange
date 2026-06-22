@@ -11,6 +11,15 @@ export async function POST(request) {
     const user = await verifyFirebaseUserFromRequest(request);
     const body = await request.json();
 
+    console.info('[POST /api/quote-signatures/send]', {
+      userId: user.uid,
+      quoteId: body?.quoteId,
+      deliveryMode: body?.deliveryMode,
+      hasPdfBase64: !!body?.pdfBase64,
+      pdfInfoKeys: body?.pdfInfo ? Object.keys(body.pdfInfo) : null,
+      variantsCount: Array.isArray(body?.variants) ? body.variants.length : null,
+    });
+
     const result = await createAndSendQuoteDelivery({
       userId: user.uid,
       quoteId: body?.quoteId,
@@ -22,7 +31,11 @@ export async function POST(request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Erreur API /quote-signatures/send:', error);
+    console.error('[POST /api/quote-signatures/send] Error:', {
+      error: error?.message,
+      stack: error?.stack,
+      statusCode: error?.statusCode,
+    });
     return toRouteErrorResponse(error, 'Impossible d envoyer le devis.');
   }
 }
