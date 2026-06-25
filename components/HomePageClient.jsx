@@ -27,6 +27,7 @@ import {
 } from '@/lib/pdf-generator';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
+import { buildPanelSelections } from '@/lib/panel-selections.mjs';
 import { MAX_VARIANTS } from '@/lib/quote-cloud';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
 import {
@@ -1173,6 +1174,8 @@ export default function HomePageClient() {
               hasMeasurementVisit:
                 Array.isArray(source.cartItems) &&
                 source.cartItems.some((item) => item?.includePose === true),
+              // Portes à panneau décoratif PROPRES à cette variante (couleurs spécifiques).
+              panelSelections: buildPanelSelections(source.cartItems),
               filename: variant.filename,
               signatureAnchors: variant.signatureAnchors,
               pdfBase64: arrayBufferToBase64(variant.arrayBuffer),

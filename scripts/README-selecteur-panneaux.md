@@ -64,7 +64,15 @@ relancer `build-selecteur-css.mjs` si de nouvelles classes Tailwind sont ajouté
 
 ## Livré — Phase 2a (intégration à la signature)
 
-- **Détection au moment de l'envoi** : `buildPanelSelections` ([lib/quote-signature-service.js](../lib/quote-signature-service.js)) dérive les portes à panneau décoratif des `payload.cartItems` (`panneauDecoratif === true`) et les stocke dans la session (`panelSelections`), exposées au client via `toPublicSessionResponse`.
+- **Détection au moment de l'envoi** : `buildPanelSelections(cartItems)` (module pur partagé
+  [lib/panel-selections.mjs](../lib/panel-selections.mjs)) dérive les portes à panneau décoratif
+  des `cartItems` (`panneauDecoratif === true`). La **couleur imposée** vient de
+  `marketingFinition` (ex. « Bicoloration : Blanc interieur / Gris 7016 exterieur ») et non du
+  libellé générique d'option — le sélecteur affiche donc les **vraies couleurs** du devis.
+- **Multi-variantes** : les `panelSelections` sont calculées **par variante** (chaque variante a
+  ses propres couleurs). Le client envoie les sélections de chaque variante ; à la signature, la
+  page utilise celles de la **variante choisie** (et réinitialise les choix au changement de
+  variante), et le tampon/gate serveur s'appuie sur la variante retenue.
 - **Page de signature** ([components/QuoteSignaturePage.jsx](../components/QuoteSignaturePage.jsx)) : une iframe du sélecteur par porte (couleur imposée via `?couleur=`), capture de `PANEL_SELECTED` (origine vérifiée + corrélation `contentWindow`/porte), **signature bloquée** tant qu'un panneau n'est pas choisi pour chaque porte.
 - **Persistance + double sécurité** : à la signature, `panelChoices` est validé côté serveur (chaque porte doit avoir un choix) puis enregistré dans `signature.panelChoices`.
 

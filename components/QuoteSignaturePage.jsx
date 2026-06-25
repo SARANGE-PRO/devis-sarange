@@ -1102,6 +1102,9 @@ export default function QuoteSignaturePage({ token }) {
   // Choix de panneau décoratif par porte (lineId -> détail) — obligatoire avant signature.
   const [panelChoices, setPanelChoices] = useState({});
   const panelIframeRefs = useRef({});
+  const panelSectionRef = useRef(null);
+  // Raison d'un blocage de signature ('panel' | 'variant' | null) pour un message explicite.
+  const [signBlockedReason, setSignBlockedReason] = useState(null);
   // Porte dont le sélecteur est affiché en plein écran (null = aucun).
   const [fullscreenPanelId, setFullscreenPanelId] = useState(null);
 
@@ -1114,6 +1117,12 @@ export default function QuoteSignaturePage({ token }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [fullscreenPanelId]);
+
+  // Changement de variante : les portes/couleurs changent -> on réinitialise les choix
+  // de panneaux (le client re-sélectionne avec la couleur de la variante retenue).
+  useEffect(() => {
+    setPanelChoices({});
+  }, [selectedVariantId]);
 
   // Capture des choix remontés par les iframes du sélecteur de panneaux. L'outil est
   // servi en same-origin : on vérifie quand même l'origine et on retrouve la porte
@@ -1311,9 +1320,42 @@ export default function QuoteSignaturePage({ token }) {
   const selectedVariant = variantOptions.find((variant) => variant.id === selectedVariantId) || null;
   const variantChoiceMissing = isVariantQuote && !selectedVariant;
   // Portes à panneau décoratif : un panneau doit être choisi pour chacune avant signature.
-  const panelSelections = Array.isArray(session?.panelSelections) ? session.panelSelections : [];
+  // En multi-variantes, on prend les portes/couleurs de la variante CHOISIE (chaque
+  // variante peut avoir des coloris différents) ; sinon la liste globale du devis.
+  const panelSelections = isVariantQuote
+    ? (selectedVariant && Array.isArray(selectedVariant.panelSelections)
+        ? selectedVariant.panelSelections
+        : [])
+    : Array.isArray(session?.panelSelections)
+      ? session.panelSelections
+      : [];
   const panelChoiceMissing =
     canAct && panelSelections.some((selection) => !panelChoices[selection.lineId]);
+
+  // Lève le blocage dès que la condition manquante est satisfaite.
+  useEffect(() => {
+    if (signBlockedReason === 'panel' && !panelChoiceMissing) setSignBlockedReason(null);
+    if (signBlockedReason === 'variant' && !variantChoiceMissing) setSignBlockedReason(null);
+  }, [signBlockedReason, panelChoiceMissing, variantChoiceMissing]);
+
+  // Tentative de signature : si un choix manque, on l'explique clairement et on amène le
+  // client à la section concernée (plutôt qu'un bouton grisé sans aucun retour au clic).
+  const requestSign = () => {
+    setSubmitError('');
+    if (variantChoiceMissing) {
+      setSignBlockedReason('variant');
+      return;
+    }
+    if (panelChoiceMissing) {
+      setSignBlockedReason('panel');
+      if (panelSectionRef.current?.scrollIntoView) {
+        panelSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
+    setSignBlockedReason(null);
+    setSignModalOpen(true);
+  };
   // Mention TVA réduite : pour la variante choisie si dispo, sinon exigence globale.
   const requiresReducedVat = isVariantQuote
     ? Boolean(selectedVariant?.requiresReducedVatAck)
@@ -1440,7 +1482,20 @@ export default function QuoteSignaturePage({ token }) {
 
             {/* Personnalisation des portes à panneau décoratif (obligatoire avant signature) */}
             {canAct && panelSelections.length > 0 && (
-              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div
+                ref={panelSectionRef}
+                className={`overflow-hidden rounded-2xl border bg-white transition ${
+                  signBlockedReason === 'panel'
+                    ? 'border-orange-400 ring-2 ring-orange-400 ring-offset-2'
+                    : 'border-slate-200'
+                }`}
+              >
+                {signBlockedReason === 'panel' && (
+                  <div className="flex items-start gap-2 border-b border-orange-200 bg-orange-50 px-5 py-3 text-sm font-bold text-orange-700">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                    Pour signer, choisissez d&apos;abord un panneau pour chaque porte ci-dessous.
+                  </div>
+                )}
                 <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
                   <div className="flex items-center gap-3">
                     <DoorOpen size={18} className="text-orange-500" />
@@ -1675,15 +1730,13 @@ export default function QuoteSignaturePage({ token }) {
                 <div className="mt-5 hidden gap-2 xl:flex xl:flex-col">
                   <button
                     type="button"
-                    disabled={variantChoiceMissing || panelChoiceMissing}
-                    onClick={() => {
-                      setSubmitError('');
-                      setSignModalOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none"
+                    onClick={requestSign}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600"
                   >
                     <PenLine size={16} />
-                    Accepter et signer
+                    {variantChoiceMissing || panelChoiceMissing
+                      ? 'À compléter avant de signer'
+                      : 'Accepter et signer'}
                   </button>
                   <button
                     type="button"
@@ -1823,15 +1876,13 @@ export default function QuoteSignaturePage({ token }) {
               </button>
               <button
                 type="button"
-                disabled={variantChoiceMissing || panelChoiceMissing}
-                onClick={() => {
-                  setSubmitError('');
-                  setSignModalOpen(true);
-                }}
-                className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none"
+                onClick={requestSign}
+                className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600"
               >
                 <PenLine size={16} />
-                {variantChoiceMissing || panelChoiceMissing ? 'À compléter' : 'Signer'}
+                {variantChoiceMissing || panelChoiceMissing
+                  ? 'À compléter avant de signer'
+                  : 'Signer'}
               </button>
             </div>
           </div>
