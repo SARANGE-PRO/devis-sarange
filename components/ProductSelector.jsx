@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
   LayoutGrid,
   ArrowLeftRight,
@@ -25,7 +25,6 @@ import {
   COMPOSITE_MODULE_TYPES,
   COLOR_OPTIONS,
   VOLET_COLOR_OPTIONS,
-  createCompositeComposition,
   createCompositeModule,
   createDefaultColorState,
   getCompositeDimensions,
@@ -61,6 +60,9 @@ import {
   getDefaultGlazingId,
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
+import CompositeFrameEditor from '@/components/CompositeFrameEditor';
+import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
+import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import CustomProductIcon from '@/components/icons/CustomProductIcon';
@@ -114,14 +116,6 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   ...buildPetitsBoisState(overrides),
   rawColorState: createDefaultColorState(overrides.rawColorState),
 });
-
-const createCompositeBuilderState = () => {
-  const initialComposition = createCompositeComposition();
-  return {
-    composition: initialComposition,
-    selectedModuleId: initialComposition[0].modules[0].id,
-  };
-};
 
 const isColorConfigOption = (value) =>
   value === 'bicoloration' || value === 'coloration-2f';
@@ -697,17 +691,13 @@ export default function ProductSelector({
   const [customWidthMm, setCustomWidthMm] = useState('');
   const [customHeightMm, setCustomHeightMm] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
-  const [composition, setComposition] = useState(() => createCompositeBuilderState().composition);
+  // Modèle « ossature » v2 : source de vérité du nouveau constructeur.
+  const [compositeFrame, setCompositeFrame] = useState(() => createDefaultFrame(1080, 2150, 0, 0));
+  // Ouverture sélectionnée dans l'éditeur composé : pilote le formulaire de config réutilisé.
+  const [selectedCompositeOpeningId, setSelectedCompositeOpeningId] = useState(null);
+  const compositeSyncRef = useRef({ openingId: null, productId: null });
   // Matériau du châssis composé (PVC ou aluminium) : s'applique à tous les modules.
   const [compositeMaterial, setCompositeMaterial] = useState('pvc');
-  // Option « Volet roulant monobloc » au niveau global du châssis composé :
-  // un seul coffre couvre toute la largeur de l'ensemble.
-  const [compositeVoletMonobloc, setCompositeVoletMonobloc] = useState(false);
-  const [compositeVoletMonoblocManoeuvre, setCompositeVoletMonoblocManoeuvre] =
-    useState('manuel');
-  const [selectedCompositeModuleId, setSelectedCompositeModuleId] = useState(
-    () => createCompositeBuilderState().selectedModuleId
-  );
 
   const category = CATEGORIES.find((entry) => entry.id === selectedCategory);
   // La catégorie propose une déclinaison aluminium si elle contient des produits alu.
@@ -744,42 +734,93 @@ export default function ProductSelector({
       ? 'Remise nette souhaitée'
       : 'Marge nette souhaitée';
 
-  const normalizedComposition = useMemo(
-    () => normalizeCompositeComposition(composition),
-    [composition]
+  const compositePricing = useMemo(
+    () => getCompositeFramePricing(compositeFrame),
+    [compositeFrame]
   );
-  const compositeContext = useMemo(() => {
-    const normalized = normalizedComposition;
-    let fallback = null;
-    for (let rowIndex = 0; rowIndex < normalized.length; rowIndex += 1) {
-      const row = normalized[rowIndex];
-      for (let moduleIndex = 0; moduleIndex < row.modules.length; moduleIndex += 1) {
-        const moduleEntry = row.modules[moduleIndex];
-        const context = { row, rowIndex, module: moduleEntry, moduleIndex };
-        if (!fallback) fallback = context;
-        if (moduleEntry.id === selectedCompositeModuleId) return context;
-      }
+  const compositeDimensions = {
+    width: compositePricing.totalWidth,
+    height: compositePricing.totalHeight,
+  };
+  const compositeModuleCount = compositePricing.modules.length;
+
+  // SYNCHRO « formulaire simple ↔ châssis sélectionné ».
+  /* eslint-disable react-hooks/set-state-in-effect */
+  // 1) Sélection (ou changement de type) -> CHARGE la config du châssis dans le formulaire.
+  useEffect(() => {
+    if (!isCompositeMode) return;
+    const openingId = selectedCompositeOpeningId;
+    const placement = openingId ? compositeFrame.placements[openingId] : null;
+    const productId = placement?.productId || null;
+    const previous = compositeSyncRef.current;
+    if (previous.openingId === openingId && previous.productId === productId) return;
+    compositeSyncRef.current = { openingId, productId };
+    if (placement && productId) {
+      const opening = compositePricing.openings.find((entry) => entry.id === openingId);
+      setSelectedProduct(productId);
+      setSimpleConfig(
+        createSimpleConfig(
+          {
+            ...(placement.options || {}),
+            widthMm: opening?.wMm ?? placement.computedWidthMm,
+            heightMm: opening?.hMm ?? placement.computedHeightMm,
+          },
+          /-alu$/i.test(productId) ? 'alu' : 'pvc'
+        )
+      );
     }
-    return fallback;
-  }, [normalizedComposition, selectedCompositeModuleId]);
+  }, [selectedCompositeOpeningId, compositeFrame, isCompositeMode, compositePricing.openings]);
 
-  const compositePricing = useMemo(() => getCompositePricing(composition), [composition]);
-  const compositeDimensions = getCompositeDimensions(composition);
-  const compositeModuleCount = getCompositeModuleCount(composition);
+  // 2) Édition du formulaire -> RÉÉCRIT les options dans le châssis sélectionné.
+  useEffect(() => {
+    if (!isCompositeMode || !selectedCompositeOpeningId) return;
+    setCompositeFrame((previous) => {
+      const placement = previous.placements[selectedCompositeOpeningId];
+      if (!placement) return previous;
+      return {
+        ...previous,
+        placements: {
+          ...previous.placements,
+          [selectedCompositeOpeningId]: { ...placement, options: simpleConfig },
+        },
+      };
+    });
+  }, [simpleConfig, selectedCompositeOpeningId, isCompositeMode]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  const activeCompositeModule = compositeContext?.module || null;
-  const activeCompositePricing =
-    compositePricing.modulePricing.find(
-      (moduleEntry) => moduleEntry.id === selectedCompositeModuleId
-    ) || null;
-  const activeModuleProduct = activeCompositeModule
-    ? getProductById(activeCompositeModule.productId)
-    : null;
+  // Vrai quand on configure un châssis placé dans l'ouverture sélectionnée du composé.
+  const isChassisConfig =
+    isCompositeMode &&
+    Boolean(selectedCompositeOpeningId) &&
+    Boolean(compositeFrame.placements[selectedCompositeOpeningId]);
+  // Catalogue de châssis proposé dans l'éditeur, GROUPÉ par type de menuiserie
+  // (Fenêtres, Portes, Portes d'entrée…) et filtré par matériau PVC/Alu.
+  const compositeChassisCatalog = useMemo(() => {
+    const seen = new Set();
+    return COMPOSITE_MODULE_TYPES.map((category) => ({
+      category: category.label || category.id,
+      items: category.products
+        .map((entry) => ({
+          id: getMaterialVariantId(entry.id, compositeMaterial),
+          label: entry.shortLabel || entry.label,
+        }))
+        .filter((entry) => {
+          if (seen.has(entry.id)) return false;
+          seen.add(entry.id);
+          return true;
+        }),
+    })).filter((group) => group.items.length > 0);
+  }, [compositeMaterial]);
+  const resolveCompositeChassisLabel = (id) => {
+    const definition = getProductById(id);
+    return definition?.shortLabel || definition?.label || id || 'Châssis';
+  };
 
-  const formProduct = isCompositeMode ? activeModuleProduct : product;
-  const workingConfig = isCompositeMode
-    ? activeCompositeModule?.options || createSimpleConfig()
-    : simpleConfig;
+  // En composé, `product`/`simpleConfig` sont synchronisés sur le châssis sélectionné
+  // (voir effets de synchro plus bas), donc le formulaire simple pilote directement
+  // le châssis : réutilisation totale, sans formulaire parallèle.
+  const formProduct = product;
+  const workingConfig = simpleConfig;
   const workingColorState =
     workingConfig?.rawColorState || createDefaultColorState();
   const workingColorOptions =
@@ -863,21 +904,6 @@ export default function ProductSelector({
   const simpleSelectedGlazing = simpleFillingMeta.selectedGlazing;
   const simpleGlazingExtra = simpleFillingMeta.selectedPricing.totalExtra;
 
-  const activeModuleFillingMeta = buildFillingSelectionMeta({
-    product: activeModuleProduct,
-    glazingOptions,
-    isEligible:
-      isGlazedProduct(activeModuleProduct) ||
-      (Boolean(activeModuleProduct?.sheet?.startsWith('Porte Entr')) &&
-        !workingConfig.panneauDecoratif),
-    widthMm: activeCompositeModule?.widthMm,
-    heightMm: activeCompositeModule?.heightMm,
-    glazingId: workingConfig.glazingId,
-    hasSousBassement: workingConfig.hasSousBassement,
-    sousBassementHeight: workingConfig.sousBassementHeight,
-    colorOptionId: workingConfig.colorOptionId,
-  });
-
   const wasteCalculation = useMemo(
     () => calculateWasteManagementForItems(cartItems),
     [cartItems]
@@ -890,24 +916,6 @@ export default function ProductSelector({
     hasLockingHandle: simpleConfig.hasLockingHandle,
     panneauDecoratif: simpleConfig.panneauDecoratif,
   });
-
-  const compositePreviewComposition = useMemo(
-    () =>
-      compositePricing.composition.map((row) => ({
-        ...row,
-        modules: row.modules.map((module) => ({
-          ...module,
-          svgColor: getMarketingDetails({
-            product: getProductById(module.productId),
-            colorOptionId: module.options.colorOptionId,
-            colorState: module.options.rawColorState,
-            hasLockingHandle: module.options.hasLockingHandle,
-            panneauDecoratif: module.options.panneauDecoratif,
-          }).svgColor,
-        })),
-      })),
-    [compositePricing.composition]
-  );
 
   const previewItem = (() => {
     if (isWasteManagement) {
@@ -951,9 +959,10 @@ export default function ProductSelector({
         netMarginWanted,
         netDiscountWanted,
         isComposite: true,
-        composition: compositePricing.composition,
-        voletMonobloc: compositeVoletMonobloc,
-        voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
+        compositeFrame,
+        voletMonobloc: Boolean(compositeFrame.voletMonobloc),
+        voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
+        modules: compositePricing.modules,
       };
       const thermalMetrics = getItemThermalMetrics(compositePreviewItem);
       return {
@@ -1077,12 +1086,8 @@ export default function ProductSelector({
   };
 
   const resetCompositeSelection = () => {
-    const nextState = createCompositeBuilderState();
-    setComposition(nextState.composition);
-    setSelectedCompositeModuleId(nextState.selectedModuleId);
+    setCompositeFrame(createDefaultFrame(1080, 2150, 0, 0));
     setCompositeMaterial('pvc');
-    setCompositeVoletMonobloc(false);
-    setCompositeVoletMonoblocManoeuvre('manuel');
   };
 
   const resetGlobalCommercialFields = () => {
@@ -1132,63 +1137,7 @@ export default function ProductSelector({
     }));
   };
 
-  const updateCompositeModule = (moduleId, updater) => {
-    setComposition((previous) =>
-      previous.map((row) => ({
-        ...row,
-        modules: row.modules.map((module) => {
-          if (module.id !== moduleId) return module;
-          const nextModule =
-            typeof updater === 'function' ? updater(module) : updater;
-          return {
-            ...module,
-            ...nextModule,
-            options: {
-              ...module.options,
-              ...nextModule.options,
-              rawColorState: nextModule.options?.rawColorState
-                ? createDefaultColorState(nextModule.options.rawColorState)
-                : module.options.rawColorState,
-            },
-          };
-        }),
-      }))
-    );
-  };
-
-  const updateSelectedModuleOptions = (patch) => {
-    if (!selectedCompositeModuleId) return;
-    updateCompositeModule(selectedCompositeModuleId, (module) => ({
-      ...module,
-      options: {
-        ...module.options,
-        ...patch,
-        rawColorState: patch.rawColorState
-          ? createDefaultColorState({
-              ...module.options.rawColorState,
-              ...patch.rawColorState,
-            })
-          : module.options.rawColorState,
-      },
-    }));
-  };
-
   const updateWorkingSashOption = (index, optionKey) => {
-    if (isCompositeMode) {
-      if (!activeCompositeModule) return;
-      const current = activeCompositeModule.options.sashOptions[index] || {};
-      updateSelectedModuleOptions({
-        sashOptions: {
-          ...activeCompositeModule.options.sashOptions,
-          [index]: {
-            ...current,
-            [optionKey]: !current[optionKey],
-          },
-        },
-      });
-      return;
-    }
-
     const current = simpleConfig.sashOptions[index] || {};
     updateSimpleOptions({
       sashOptions: {
@@ -1201,156 +1150,14 @@ export default function ProductSelector({
     });
   };
 
-  const addCompositeRow = (position) => {
-    const referenceWidth =
-      compositeContext?.row.modules.reduce(
-        (total, module) => total + parsePositiveInt(module.widthMm, 0),
-        0
-      ) ||
-      compositeDimensions.width ||
-      1200;
-
-    const nextModule = createCompositeModule(createUid('module'), {
-      productId: getMaterialVariantId(
-        position === 'above' ? 'fenetre-soufflet' : 'fenetre-fixe',
-        compositeMaterial
-      ),
-      widthMm: referenceWidth,
-      heightMm: 400,
-    });
-
-    const nextRow = { id: createUid('row'), modules: [nextModule] };
-    const insertIndex =
-      position === 'above'
-        ? compositeContext?.rowIndex ?? 0
-        : (compositeContext?.rowIndex ?? composition.length - 1) + 1;
-
-    setComposition((previous) => {
-      const next = [...previous];
-      next.splice(insertIndex, 0, nextRow);
-      return next;
-    });
-    setSelectedCompositeModuleId(nextModule.id);
-  };
-
-  const addCompositeModuleBeside = () => {
-    const referenceModule = compositeContext?.module;
-    const nextModule = createCompositeModule(createUid('module'), {
-      productId: getMaterialVariantId(
-        referenceModule?.productId || 'fenetre-fixe',
-        compositeMaterial
-      ),
-      widthMm: referenceModule?.widthMm || 400,
-      heightMm: referenceModule?.heightMm || 1250,
-    });
-
-    setComposition((previous) =>
-      previous.map((row, rowIndex) => {
-        if (rowIndex !== compositeContext?.rowIndex) return row;
-        const nextModules = [...row.modules];
-        nextModules.splice(
-          (compositeContext?.moduleIndex ?? row.modules.length - 1) + 1,
-          0,
-          nextModule
-        );
-        return { ...row, modules: nextModules };
-      })
-    );
-    setSelectedCompositeModuleId(nextModule.id);
-  };
-
-  const removeCompositeModule = (moduleId) => {
-    const normalized = normalizeCompositeComposition(composition);
-    const contextToRemove =
-      normalized
-        .flatMap((row, rowIndex) =>
-          row.modules.map((module, moduleIndex) => ({
-            row,
-            rowIndex,
-            module,
-            moduleIndex,
-          }))
-        )
-        .find((entry) => entry.module.id === moduleId) || compositeContext;
-
-    if (!contextToRemove) return;
-
-    if (normalized.length === 1 && normalized[0].modules.length === 1) {
-      resetCompositeSelection();
-      return;
-    }
-
-    setComposition((previous) =>
-      previous
-        .map((row, rowIndex) => {
-          if (rowIndex !== contextToRemove.rowIndex) return row;
-          return {
-            ...row,
-            modules: row.modules.filter((module) => module.id !== moduleId),
-          };
-        })
-        .filter((row) => row.modules.length > 0)
-    );
-
-    const sameRow = contextToRemove.row.modules.filter((module) => module.id !== moduleId);
-    const fallbackId =
-      sameRow[contextToRemove.moduleIndex]?.id ||
-      sameRow[contextToRemove.moduleIndex - 1]?.id ||
-      normalized[contextToRemove.rowIndex + 1]?.modules[0]?.id ||
-      normalized[contextToRemove.rowIndex - 1]?.modules[0]?.id;
-
-    if (fallbackId) {
-      setSelectedCompositeModuleId(fallbackId);
-    }
-  };
-
-  const replaceSelectedModuleProduct = (productId) => {
-    if (!selectedCompositeModuleId) return;
-    const currentModule = compositeContext?.module;
-    const nextTemplate = createCompositeModule(selectedCompositeModuleId, {
-      productId,
-      widthMm: currentModule?.widthMm,
-      heightMm: currentModule?.heightMm,
-      options: currentModule?.options,
-    });
-
-    updateCompositeModule(selectedCompositeModuleId, {
-      ...nextTemplate,
-      id: selectedCompositeModuleId,
-    });
-  };
-
   const handleCompositeMaterialChange = (material) => {
     if (material === compositeMaterial) return;
     setCompositeMaterial(material);
     // Données thermiques décochées par défaut en aluminium (intégrées si coché).
     setShowThermalData(material !== 'alu');
-    // Bascule tous les modules dans le matériau choisi (PVC/Alu) et repart
-    // sur le vitrage standard correspondant.
-    setComposition((previous) =>
-      previous.map((row) => ({
-        ...row,
-        modules: row.modules.map((module) => ({
-          ...module,
-          productId: getMaterialVariantId(module.productId, material),
-          options: {
-            ...module.options,
-            glazingId: getDefaultGlazingId(material),
-          },
-        })),
-      }))
-    );
   };
 
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (!isCompositeMode) return;
-    if (!compositeContext?.module?.id) return;
-    if (selectedCompositeModuleId !== compositeContext.module.id) {
-      setSelectedCompositeModuleId(compositeContext.module.id);
-    }
-  }, [compositeContext, isCompositeMode, selectedCompositeModuleId]);
-
   useEffect(() => {
     if (!editingItem) return;
 
@@ -1371,19 +1178,18 @@ export default function ProductSelector({
     );
 
     if (editingItem.isComposite) {
-      const nextComposition = normalizeCompositeComposition(
-        editingItem.composition,
-        editingItem.modules
+      const frame = normalizeCompositeFrame(
+        editingItem.compositeFrame ??
+          editingItem.composition ??
+          editingItem.compositionTree ??
+          editingItem.modules
       );
       setIsCompositeMode(true);
-      setComposition(nextComposition);
-      setSelectedCompositeModuleId(nextComposition[0].modules[0].id);
-      const hasAluModule = nextComposition.some((row) =>
-        row.modules.some((module) => /-alu$/i.test(module.productId || ''))
+      setCompositeFrame(frame);
+      const hasAlu = Object.values(frame.placements || {}).some((placement) =>
+        /-alu$/i.test(placement.productId || '')
       );
-      setCompositeMaterial(hasAluModule ? 'alu' : 'pvc');
-      setCompositeVoletMonobloc(Boolean(editingItem.voletMonobloc));
-      setCompositeVoletMonoblocManoeuvre(editingItem.voletMonoblocManoeuvre || 'manuel');
+      setCompositeMaterial(hasAlu ? 'alu' : 'pvc');
       return;
     }
 
@@ -1441,41 +1247,33 @@ export default function ProductSelector({
     if (isCompositeMode) {
       if (compositePricing.hasInvalidModule || !compositePricing.totalPrice) return;
 
-      const pricedComposition = compositePricing.composition.map((row) => ({
-        ...row,
-        modules: row.modules.map((module) => {
-          const productDefinition = getProductById(module.productId);
-          const marketing = getMarketingDetails({
-            product: productDefinition,
-            colorOptionId: module.options.colorOptionId,
-            colorState: module.options.rawColorState,
-            hasLockingHandle: module.options.hasLockingHandle,
-            panneauDecoratif: module.options.panneauDecoratif,
-          });
-
-          return {
-            ...module,
-            productLabel: productDefinition?.label || module.productId,
-            colorOption: module.colorOption,
-            glazingOption: module.glazingOption,
-            rawColorState: module.options.rawColorState,
-            ...buildPetitsBoisState(module.options),
-            panneauDecoratif: module.options.panneauDecoratif,
-            hasSousBassement: module.options.hasSousBassement,
-            sousBassementHeight: module.options.sousBassementHeight,
-            sashOptions: module.options.sashOptions,
-            openingDirection: module.options.openingDirection,
-            hasLockingHandle: module.options.hasLockingHandle,
-            handleHeightMm: module.options.handleHeightMm,
-            allegeHeightMm: module.options.allegeHeightMm,
-            marketingBase: marketing.marketingBase,
-            marketingFinition: marketing.marketingFinition,
-            svgColor: marketing.svgColor,
-          };
-        }),
-      }));
-
-      const flatModules = pricedComposition.flatMap((row) => row.modules);
+      const frameModules = getCompositeFrameModules(compositeFrame).map((frameModule) => {
+        const productDefinition = getProductById(frameModule.productId);
+        const marketing = getMarketingDetails({
+          product: productDefinition,
+          colorOptionId: frameModule.options.colorOptionId,
+          colorState: frameModule.options.rawColorState,
+          hasLockingHandle: frameModule.options.hasLockingHandle,
+          panneauDecoratif: frameModule.options.panneauDecoratif,
+        });
+        return {
+          ...frameModule,
+          productLabel: productDefinition?.label || frameModule.productId,
+          rawColorState: frameModule.options.rawColorState,
+          ...buildPetitsBoisState(frameModule.options),
+          panneauDecoratif: frameModule.options.panneauDecoratif,
+          hasSousBassement: frameModule.options.hasSousBassement,
+          sousBassementHeight: frameModule.options.sousBassementHeight,
+          sashOptions: frameModule.options.sashOptions,
+          openingDirection: frameModule.options.openingDirection,
+          hasLockingHandle: frameModule.options.hasLockingHandle,
+          handleHeightMm: frameModule.options.handleHeightMm,
+          allegeHeightMm: frameModule.options.allegeHeightMm,
+          marketingBase: marketing.marketingBase,
+          marketingFinition: marketing.marketingFinition,
+          svgColor: marketing.svgColor,
+        };
+      });
 
       const nextCompositeItem = {
         id: editingItem ? editingItem.id : createCartItemId(),
@@ -1495,11 +1293,11 @@ export default function ProductSelector({
         repere,
         showThermalData,
         isComposite: true,
-        composition: pricedComposition,
-        modules: flatModules,
-        modulePricing: flatModules,
-        voletMonobloc: compositeVoletMonobloc,
-        voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
+        compositeFrame,
+        voletMonobloc: Boolean(compositeFrame.voletMonobloc),
+        voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
+        modules: frameModules,
+        modulePricing: frameModules,
       };
       const thermalMetrics = getItemThermalMetrics(nextCompositeItem);
 
@@ -1696,6 +1494,495 @@ export default function ProductSelector({
     resetGlobalCommercialFields();
   };
 
+  // Champs de configuration menuiserie (réutilisés tels quels par le composé).
+  const menuiserieConfigFields = (
+    <>
+          {!isFixedPriceProduct && (
+          <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+              Coloration
+              <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="mt-4">
+              {buildColorOptionsFields({
+                value: simpleConfig.colorOptionId,
+                colorState: simpleConfig.rawColorState,
+                onColorChange: (value) => updateSimpleOptions({ colorOptionId: value }),
+                onColorStateChange: (patch) =>
+                  updateSimpleOptions({
+                    rawColorState: {
+                      ...simpleConfig.rawColorState,
+                      ...patch,
+                    },
+                  }),
+                availableOptions: workingColorOptions,
+              })}
+            </div>
+          </details>
+          )}
+
+          {!isFixedPriceProduct && workingIsGlazed && (
+            <details className="group rounded-2xl border border-slate-200 bg-white p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                Vitrage / remplissage
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4">
+                <select
+                  value={simpleConfig.glazingId}
+                  onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                >
+                  {simpleFillingMeta.options.map(({ glazing, pricing }) => (
+                    <option key={glazing.id} value={glazing.id}>
+                      {formatFillingOptionLabel(glazing, pricing)}
+                    </option>
+                  ))}
+                </select>
+                {simpleSelectedGlazing && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-bold text-slate-800">
+                      {simpleSelectedGlazing.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {getFillingOptionDetails(
+                        simpleSelectedGlazing,
+                        simpleFillingMeta.selectedPricing
+                      )}
+                    </p>
+                    {simpleConfig.hasSousBassement &&
+                      getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                          {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                        </p>
+                      )}
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+
+          {!isFixedPriceProduct && !workingIsVolet && (
+            <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+                Options & Accessoires
+                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="mt-4 space-y-6">
+                <div>
+                  <p className="text-sm text-slate-500">
+                    Regroupez ici les accessoires, le soubassement et le sens d&apos;ouverture.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Grid3X3 size={14} className="text-slate-400" />
+                      Petits bois
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres horizontales
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={simpleConfig.petitsBoisH}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              petitsBoisH: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Barres verticales
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          {...NUMERIC_INPUT_PROPS}
+                          value={simpleConfig.petitsBoisV}
+                          onChange={(event) =>
+                            updateSimpleOptions({
+                              petitsBoisV: normalizePetitsBoisValue(event.target.value),
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                      Sens d&apos;ouverture
+                    </label>
+                    <select
+                      value={simpleConfig.openingDirection}
+                      onChange={(event) =>
+                        updateSimpleOptions({ openingDirection: event.target.value })
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    >
+                      <option value="standard">Standard</option>
+                      <option value="inverse">Inverse</option>
+                    </select>
+                  </div>
+
+                  {workingIsPorte ? (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.panneauDecoratif}
+                        onChange={(event) =>
+                          updateSimpleOptions({ panneauDecoratif: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Panneau decoratif
+                    </label>
+                  ) : (
+                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.hasLockingHandle}
+                        onChange={(event) =>
+                          updateSimpleOptions({ hasLockingHandle: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Poignee Schuco verrouillable a cle
+                    </label>
+                  )}
+
+                  <HandleHeightField
+                    handleHeightMm={simpleConfig.handleHeightMm}
+                    allegeHeightMm={simpleConfig.allegeHeightMm}
+                    heightMm={simpleConfig.heightMm}
+                    onChange={(changes) => updateSimpleOptions(changes)}
+                  />
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.hasSousBassement}
+                        onChange={(event) =>
+                          updateSimpleOptions({ hasSousBassement: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Sous-bassement
+                    </label>
+
+                    {simpleConfig.hasSousBassement && (
+                      <div className="mt-4 space-y-3">
+                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                          <span>Hauteur visible</span>
+                          <span>{simpleConfig.sousBassementHeight} mm</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
+                          <input
+                            type="range"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            value={simpleConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSimpleOptions({
+                                sousBassementHeight: Number.parseInt(
+                                  event.target.value,
+                                  10
+                                ),
+                              })
+                            }
+                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
+                          />
+                          <input
+                            type="number"
+                            min={100}
+                            max={Math.max(
+                              100,
+                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+                            )}
+                            step={10}
+                            {...NUMERIC_INPUT_PROPS}
+                            value={simpleConfig.sousBassementHeight}
+                            onChange={(event) =>
+                              updateSimpleOptions({
+                                sousBassementHeight: Math.max(
+                                  100,
+                                  Number.parseInt(event.target.value, 10) || 100
+                                ),
+                              })
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                          />
+                        </div>
+                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
+                          <p className="text-xs font-semibold text-slate-500">
+                            {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {workingSupportsMonobloc && !isCompositeMode && (
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.voletMonobloc}
+                        onChange={(event) =>
+                          updateSimpleOptions({ voletMonobloc: event.target.checked })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Volet roulant monobloc (intégré)
+                    </label>
+
+                    {simpleConfig.voletMonobloc && (
+                      <div className="mt-4">
+                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Manœuvre / motorisation
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {[
+                            { id: 'manuel', label: 'Manuel' },
+                            { id: 'filaire', label: 'Filaire' },
+                            { id: 'radio', label: 'Radio' },
+                            { id: 'solaire', label: 'Solaire' },
+                          ].map((option) => {
+                            const isActive =
+                              simpleConfig.voletMonoblocManoeuvre === option.id;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                onClick={() =>
+                                  updateSimpleOptions({ voletMonoblocManoeuvre: option.id })
+                                }
+                                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                                  isActive
+                                    ? 'border-orange-500 bg-orange-50 text-orange-700'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="mt-2 text-xs text-slate-400">
+                          La pose de l&apos;ensemble menuiserie + volet reste facturée une
+                          seule fois (pas de pose en double).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {workingSashCount > 0 && !workingIsPorte && (
+                  <div className="space-y-4">
+                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Options par vantail
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {Array.from({ length: workingSashCount }).map((_, index) => (
+                        <div
+                          key={index}
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                        >
+                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Vantail {index + 1}
+                          </p>
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(simpleConfig.sashOptions[index]?.ob)}
+                                onChange={() => updateWorkingSashOption(index, 'ob')}
+                                className="accent-orange-500"
+                              />
+                              Oscillo-battant
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(simpleConfig.sashOptions[index]?.vent)}
+                                onChange={() => updateWorkingSashOption(index, 'vent')}
+                                className="accent-orange-500"
+                              />
+                              Grille de ventilation
+                            </label>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+
+
+
+
+
+
+          {false && workingIsGlazed && (
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-slate-700">Vitrage</label>
+              <div className="grid gap-3">
+                {glazingOptions.map((glazing) => {
+                  const extra =
+                    simpleGlassAreas && !glazing.isBaseIncluded
+                      ? calculateGlazingExtra({
+                          selectedGlassPricePerM2: glazing.purchasePricePerM2,
+                          Ag: simpleGlassAreas.Ag,
+                        })
+                      : 0;
+                  return (
+                    <label
+                      key={glazing.id}
+                      className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
+                        simpleConfig.glazingId === glazing.id
+                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
+                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        checked={simpleConfig.glazingId === glazing.id}
+                        onChange={() => updateSimpleOptions({ glazingId: glazing.id })}
+                        className="h-5 w-5 accent-orange-500"
+                      />
+                      <div className="flex-1">
+                        <span className="block text-sm font-bold text-slate-800">
+                          {glazing.shortLabel}
+                        </span>
+                        <span className="text-sm text-slate-500">
+                          Ug={glazing.ug} · g={glazing.g}
+                          {!glazing.isBaseIncluded && simpleGlassAreas
+                            ? ` · +${extra.toFixed(2)} EUR`
+                            : ''}
+                        </span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+    </>
+  );
+  // Contrôles commerciaux (quantité, ajustement net, remise, pose) réutilisés par le composé.
+  const commercialControls = (
+    <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Quantité
+              </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={quantity}
+                onChange={(event) =>
+                  setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
+                }
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Ajustement net
+              </label>
+              <select
+                value={netAdjustmentMode}
+                onChange={(event) => handleNetAdjustmentModeChange(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              >
+                <option value="margin">Marge nette souhaitée</option>
+                <option value="discount">Remise nette souhaitée</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                {netAdjustmentLabel}
+              </label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                {...DECIMAL_INPUT_PROPS}
+                value={netAdjustmentValue}
+                onChange={(event) => handleNetAdjustmentValueChange(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="block text-sm font-semibold text-slate-700">Remise</label>
+              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
+                -{remise}%
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              step={1}
+              value={remise}
+              onChange={(event) =>
+                setRemise(Number.parseInt(event.target.value, 10) || 0)
+              }
+              className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
+            />
+          </div>
+
+          {!isFixedPriceProduct && (
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={includePose}
+              onChange={(event) => setIncludePose(event.target.checked)}
+              className="h-4 w-4 accent-orange-500"
+            />
+            <Wrench size={14} className="text-slate-400" />
+            Inclure la pose (
+            {getPosePriceForType(getProductType(product?.sheet))} EUR
+            )
+          </label>
+          )}
+
+          {!isFixedPriceProduct && (
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              checked={showThermalData}
+              onChange={(event) => setShowThermalData(event.target.checked)}
+              className="h-4 w-4 accent-orange-500"
+            />
+            Afficher les données thermiques sur le devis
+          </label>
+          )}
+    </>
+  );
   const simpleModeContent = (
     <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/70 p-4 md:p-6">
@@ -2198,486 +2485,9 @@ export default function ProductSelector({
           </details>
           )}
 
-          {!isFixedPriceProduct && (
-          <details className="group rounded-2xl border border-slate-200 bg-white p-4">
-            <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-              Coloration
-              <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="mt-4">
-              {buildColorOptionsFields({
-                value: simpleConfig.colorOptionId,
-                colorState: simpleConfig.rawColorState,
-                onColorChange: (value) => updateSimpleOptions({ colorOptionId: value }),
-                onColorStateChange: (patch) =>
-                  updateSimpleOptions({
-                    rawColorState: {
-                      ...simpleConfig.rawColorState,
-                      ...patch,
-                    },
-                  }),
-                availableOptions: workingColorOptions,
-              })}
-            </div>
-          </details>
-          )}
+          {menuiserieConfigFields}
 
-          {!isFixedPriceProduct && workingIsGlazed && (
-            <details className="group rounded-2xl border border-slate-200 bg-white p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                Vitrage / remplissage
-                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="mt-4">
-                <select
-                  value={simpleConfig.glazingId}
-                  onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                >
-                  {simpleFillingMeta.options.map(({ glazing, pricing }) => (
-                    <option key={glazing.id} value={glazing.id}>
-                      {formatFillingOptionLabel(glazing, pricing)}
-                    </option>
-                  ))}
-                </select>
-                {simpleSelectedGlazing && (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-bold text-slate-800">
-                      {simpleSelectedGlazing.label}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {getFillingOptionDetails(
-                        simpleSelectedGlazing,
-                        simpleFillingMeta.selectedPricing
-                      )}
-                    </p>
-                    {simpleConfig.hasSousBassement &&
-                      getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
-                        <p className="mt-2 text-xs font-semibold text-slate-500">
-                          {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
-                        </p>
-                      )}
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
-
-          {!isFixedPriceProduct && !workingIsVolet && (
-            <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                Options & Accessoires
-                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="mt-4 space-y-6">
-                <div>
-                  <p className="text-sm text-slate-500">
-                    Regroupez ici les accessoires, le soubassement et le sens d&apos;ouverture.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <Grid3X3 size={14} className="text-slate-400" />
-                      Petits bois
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Barres horizontales
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          {...NUMERIC_INPUT_PROPS}
-                          value={simpleConfig.petitsBoisH}
-                          onChange={(event) =>
-                            updateSimpleOptions({
-                              petitsBoisH: normalizePetitsBoisValue(event.target.value),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Barres verticales
-                        </label>
-                        <input
-                          type="number"
-                          min={0}
-                          {...NUMERIC_INPUT_PROPS}
-                          value={simpleConfig.petitsBoisV}
-                          onChange={(event) =>
-                            updateSimpleOptions({
-                              petitsBoisV: normalizePetitsBoisValue(event.target.value),
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Sens d&apos;ouverture
-                    </label>
-                    <select
-                      value={simpleConfig.openingDirection}
-                      onChange={(event) =>
-                        updateSimpleOptions({ openingDirection: event.target.value })
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    >
-                      <option value="standard">Standard</option>
-                      <option value="inverse">Inverse</option>
-                    </select>
-                  </div>
-
-                  {workingIsPorte ? (
-                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={simpleConfig.panneauDecoratif}
-                        onChange={(event) =>
-                          updateSimpleOptions({ panneauDecoratif: event.target.checked })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Panneau decoratif
-                    </label>
-                  ) : (
-                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={simpleConfig.hasLockingHandle}
-                        onChange={(event) =>
-                          updateSimpleOptions({ hasLockingHandle: event.target.checked })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Poignee Schuco verrouillable a cle
-                    </label>
-                  )}
-
-                  <HandleHeightField
-                    handleHeightMm={simpleConfig.handleHeightMm}
-                    allegeHeightMm={simpleConfig.allegeHeightMm}
-                    heightMm={simpleConfig.heightMm}
-                    onChange={(changes) => updateSimpleOptions(changes)}
-                  />
-
-                  <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
-                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={simpleConfig.hasSousBassement}
-                        onChange={(event) =>
-                          updateSimpleOptions({ hasSousBassement: event.target.checked })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Sous-bassement
-                    </label>
-
-                    {simpleConfig.hasSousBassement && (
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          <span>Hauteur visible</span>
-                          <span>{simpleConfig.sousBassementHeight} mm</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
-                          <input
-                            type="range"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            value={simpleConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSimpleOptions({
-                                sousBassementHeight: Number.parseInt(
-                                  event.target.value,
-                                  10
-                                ),
-                              })
-                            }
-                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
-                          />
-                          <input
-                            type="number"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            {...NUMERIC_INPUT_PROPS}
-                            value={simpleConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSimpleOptions({
-                                sousBassementHeight: Math.max(
-                                  100,
-                                  Number.parseInt(event.target.value, 10) || 100
-                                ),
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </div>
-                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
-                          <p className="text-xs font-semibold text-slate-500">
-                            {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {workingSupportsMonobloc && (
-                  <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={simpleConfig.voletMonobloc}
-                        onChange={(event) =>
-                          updateSimpleOptions({ voletMonobloc: event.target.checked })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Volet roulant monobloc (intégré)
-                    </label>
-
-                    {simpleConfig.voletMonobloc && (
-                      <div className="mt-4">
-                        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Manœuvre / motorisation
-                        </label>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          {[
-                            { id: 'manuel', label: 'Manuel' },
-                            { id: 'filaire', label: 'Filaire' },
-                            { id: 'radio', label: 'Radio' },
-                            { id: 'solaire', label: 'Solaire' },
-                          ].map((option) => {
-                            const isActive =
-                              simpleConfig.voletMonoblocManoeuvre === option.id;
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                onClick={() =>
-                                  updateSimpleOptions({ voletMonoblocManoeuvre: option.id })
-                                }
-                                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
-                                  isActive
-                                    ? 'border-orange-500 bg-orange-50 text-orange-700'
-                                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                                }`}
-                              >
-                                {option.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-2 text-xs text-slate-400">
-                          La pose de l&apos;ensemble menuiserie + volet reste facturée une
-                          seule fois (pas de pose en double).
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {workingSashCount > 0 && !workingIsPorte && (
-                  <div className="space-y-4">
-                    <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                      Options par vantail
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {Array.from({ length: workingSashCount }).map((_, index) => (
-                        <div
-                          key={index}
-                          className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                        >
-                          <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                            Vantail {index + 1}
-                          </p>
-                          <div className="space-y-2">
-                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(simpleConfig.sashOptions[index]?.ob)}
-                                onChange={() => updateWorkingSashOption(index, 'ob')}
-                                className="accent-orange-500"
-                              />
-                              Oscillo-battant
-                            </label>
-                            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={Boolean(simpleConfig.sashOptions[index]?.vent)}
-                                onChange={() => updateWorkingSashOption(index, 'vent')}
-                                className="accent-orange-500"
-                              />
-                              Grille de ventilation
-                            </label>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </details>
-          )}
-
-
-
-
-
-
-          {false && workingIsGlazed && (
-            <div className="space-y-3">
-              <label className="block text-sm font-semibold text-slate-700">Vitrage</label>
-              <div className="grid gap-3">
-                {glazingOptions.map((glazing) => {
-                  const extra =
-                    simpleGlassAreas && !glazing.isBaseIncluded
-                      ? calculateGlazingExtra({
-                          selectedGlassPricePerM2: glazing.purchasePricePerM2,
-                          Ag: simpleGlassAreas.Ag,
-                        })
-                      : 0;
-                  return (
-                    <label
-                      key={glazing.id}
-                      className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
-                        simpleConfig.glazingId === glazing.id
-                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        checked={simpleConfig.glazingId === glazing.id}
-                        onChange={() => updateSimpleOptions({ glazingId: glazing.id })}
-                        className="h-5 w-5 accent-orange-500"
-                      />
-                      <div className="flex-1">
-                        <span className="block text-sm font-bold text-slate-800">
-                          {glazing.shortLabel}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          Ug={glazing.ug} · g={glazing.g}
-                          {!glazing.isBaseIncluded && simpleGlassAreas
-                            ? ` · +${extra.toFixed(2)} EUR`
-                            : ''}
-                        </span>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Quantité
-              </label>
-              <input
-                type="number"
-                min={1}
-                {...NUMERIC_INPUT_PROPS}
-                value={quantity}
-                onChange={(event) =>
-                  setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
-                }
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                Ajustement net
-              </label>
-              <select
-                value={netAdjustmentMode}
-                onChange={(event) => handleNetAdjustmentModeChange(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              >
-                <option value="margin">Marge nette souhaitée</option>
-                <option value="discount">Remise nette souhaitée</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                {netAdjustmentLabel}
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={0.01}
-                {...DECIMAL_INPUT_PROPS}
-                value={netAdjustmentValue}
-                onChange={(event) => handleNetAdjustmentValueChange(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-700">Remise</label>
-              <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
-                -{remise}%
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={20}
-              step={1}
-              value={remise}
-              onChange={(event) =>
-                setRemise(Number.parseInt(event.target.value, 10) || 0)
-              }
-              className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
-            />
-          </div>
-
-          {!isFixedPriceProduct && (
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={includePose}
-              onChange={(event) => setIncludePose(event.target.checked)}
-              className="h-4 w-4 accent-orange-500"
-            />
-            <Wrench size={14} className="text-slate-400" />
-            Inclure la pose (
-            {getPosePriceForType(getProductType(product.sheet))} EUR
-            )
-          </label>
-          )}
-
-          {!isFixedPriceProduct && (
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={showThermalData}
-              onChange={(event) => setShowThermalData(event.target.checked)}
-              className="h-4 w-4 accent-orange-500"
-            />
-            Afficher les données thermiques sur le devis
-          </label>
-          )}
+          {commercialControls}
         </div>
       )}
     </div>
@@ -2685,749 +2495,110 @@ export default function ProductSelector({
   const compositeModeContent = (
     <div className="w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-100 bg-slate-50/70 p-4 md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-              Builder
-            </label>
-            <h3 className="text-lg font-black text-slate-900">
-              Constructeur de châssis composés
-            </h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Cliquez sur un module pour ouvrir son formulaire complet.
-            </p>
-
-            <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
-              {[
-                { id: 'pvc', label: 'PVC' },
-                { id: 'alu', label: 'Aluminium' },
-              ].map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => handleCompositeMaterialChange(option.id)}
-                  className={`rounded-lg px-5 py-2 text-sm font-bold transition-all ${
-                    compositeMaterial === option.id
-                      ? 'bg-slate-900 text-white shadow'
-                      : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+        <h3 className="text-lg font-black text-slate-900">Constructeur de châssis composés</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Onglet <strong>1 · Structure</strong> : réglez les dimensions, ajoutez des
+          colonnes / lignes et cliquez un tronçon pour le supprimer. Onglet
+          <strong> 2 · Châssis</strong> : placez un châssis dans chaque ouverture.
+        </p>
+        <div className="mt-3 inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+          {[
+            { id: 'pvc', label: 'PVC' },
+            { id: 'alu', label: 'Aluminium' },
+          ].map((option) => (
             <button
-              onClick={() => addCompositeRow('above')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
+              key={option.id}
+              type="button"
+              onClick={() => handleCompositeMaterialChange(option.id)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
+                compositeMaterial === option.id
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              <Plus size={16} />
-              Ajouter une rangée au-dessus
+              {option.label}
             </button>
-            <button
-              onClick={addCompositeModuleBeside}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
-            >
-              <Plus size={16} />
-              Ajouter un module à côté
-            </button>
-            <button
-              onClick={() => addCompositeRow('below')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all hover:border-orange-300 hover:text-orange-600"
-            >
-              <Plus size={16} />
-              Ajouter une rangée en dessous
-            </button>
-          </div>
+          ))}
         </div>
       </div>
 
-      <div className="border-b border-slate-100 px-4 pt-4 md:px-6 md:pt-6">
-        <MenuiserieVisual
-          sheetName="Châssis composé"
-          width={compositeDimensions.width || 1200}
-          height={compositeDimensions.height || 1250}
-          options={{
-            isComposite: true,
-            composition: compositePreviewComposition,
-            voletMonobloc: compositeVoletMonobloc,
-            voletMonoblocManoeuvre: compositeVoletMonoblocManoeuvre,
-          }}
-          className="h-80"
+      <div className="p-4 md:p-6">
+        <CompositeFrameEditor
+          frame={compositeFrame}
+          onChange={setCompositeFrame}
+          chassisCatalog={compositeChassisCatalog}
+          resolveChassisLabel={resolveCompositeChassisLabel}
+          onSelectedOpeningChange={setSelectedCompositeOpeningId}
         />
       </div>
 
-      <div className="border-b border-slate-100 px-4 pb-4 pt-4 md:px-6">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={compositeVoletMonobloc}
-              onChange={(event) => setCompositeVoletMonobloc(event.target.checked)}
-              className="h-4 w-4 accent-orange-500"
-            />
-            Volet roulant monobloc (intégré) sur tout le châssis
-          </label>
-
-          {compositeVoletMonobloc && (
-            <div className="mt-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Manœuvre / motorisation
-              </label>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
-                  { id: 'manuel', label: 'Manuel' },
-                  { id: 'filaire', label: 'Filaire' },
-                  { id: 'radio', label: 'Radio' },
-                  { id: 'solaire', label: 'Solaire' },
-                ].map((option) => {
-                  const isActive = compositeVoletMonoblocManoeuvre === option.id;
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => setCompositeVoletMonoblocManoeuvre(option.id)}
-                      className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
-                        isActive
-                          ? 'border-orange-500 bg-orange-50 text-orange-700'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-xs text-slate-400">
-                Un seul coffre couvre toute la largeur du châssis, tarifé sur les dimensions
-                totales. La pose de l&apos;ensemble reste facturée une seule fois.
-              </p>
-            </div>
-          )}
+      {isChassisConfig && (
+        <div className="border-t border-slate-100 p-4 md:p-6">
+          <p className="mb-4 text-xs font-black uppercase tracking-widest text-slate-400">
+            Configuration du châssis sélectionné
+          </p>
+          <div className="space-y-4">{menuiserieConfigFields}</div>
         </div>
+      )}
+
+      <div className="border-t border-slate-100 p-4 md:p-6">
+        <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+          <input
+            type="checkbox"
+            checked={Boolean(compositeFrame.voletMonobloc)}
+            onChange={(event) =>
+              setCompositeFrame((previous) => ({ ...previous, voletMonobloc: event.target.checked }))
+            }
+            className="h-4 w-4 accent-orange-500"
+          />
+          Volet roulant monobloc intégré (un seul coffre sur tout le châssis)
+        </label>
+        {compositeFrame.voletMonobloc && (
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[
+              { id: 'manuel', label: 'Manuel' },
+              { id: 'filaire', label: 'Filaire' },
+              { id: 'radio', label: 'Radio' },
+              { id: 'solaire', label: 'Solaire' },
+            ].map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() =>
+                  setCompositeFrame((previous) => ({
+                    ...previous,
+                    voletMonoblocManoeuvre: option.id,
+                  }))
+                }
+                className={`rounded-xl border-2 px-3 py-2 text-sm font-semibold transition-all ${
+                  (compositeFrame.voletMonoblocManoeuvre || 'manuel') === option.id
+                    ? 'border-orange-500 bg-orange-50 text-orange-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="border-b border-slate-100 px-4 pb-4 pt-4 md:px-6">
-        <div className="flex w-full gap-3 overflow-x-auto pb-2">
-          {normalizedComposition.flatMap((row, rowIndex) =>
-            row.modules.map((module, moduleIndex) => {
-              const moduleProduct = getProductById(module.productId);
-              const isSelected = module.id === selectedCompositeModuleId;
-              return (
-                <div
-                  key={module.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => setSelectedCompositeModuleId(module.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      setSelectedCompositeModuleId(module.id);
-                    }
-                  }}
-                  className={`min-w-[220px] cursor-pointer rounded-2xl border p-4 text-left shadow-sm transition-all ${
-                    isSelected
-                      ? 'border-orange-500 bg-orange-50'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                        Rangee {rowIndex + 1} • Module {moduleIndex + 1}
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-slate-900">
-                        {moduleProduct?.shortLabel || moduleProduct?.label || 'Module'}
-                      </p>
-                    </div>
-                    {isSelected && (
-                      <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-600">
-                        Actif
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        removeCompositeModule(module.id);
-                      }}
-                      className="rounded-lg p-1.5 text-red-500 transition-colors hover:bg-red-50"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">
-                    L {module.widthMm} x H {module.heightMm} mm
-                  </p>
-                </div>
-              );
-            })
-          )}
-        </div>
+      <div className="space-y-4 border-t border-slate-100 p-4 md:p-6">
+        {commercialControls}
       </div>
 
-      <div className="space-y-6 p-4 md:p-6">
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-6">
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Famille / type
-                </label>
-                <select
-                  value={activeCompositeModule?.productId || ''}
-                  onChange={(event) => replaceSelectedModuleProduct(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                >
-                  {COMPOSITE_MODULE_TYPES.map((entry) => (
-                    <optgroup key={entry.id} label={entry.label}>
-                      {entry.products
-                        .filter(
-                          (productOption) =>
-                            (productOption.material || 'pvc') === compositeMaterial
-                        )
-                        .map((productOption) => (
-                          <option key={productOption.id} value={productOption.id}>
-                            {productOption.label}
-                          </option>
-                        ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Prix module
-                </p>
-                <p className="mt-2 text-lg font-black text-slate-900">
-                  {activeCompositePricing?.unitPrice !== null
-                    ? `${activeCompositePricing?.unitPrice?.toFixed(2)} EUR`
-                    : 'Hors grille'}
-                </p>
-              </div>
-            </div>
-
-            <details open className="group rounded-2xl border border-slate-200 bg-white p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                Dimensions du module
-                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Largeur module (mm)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    {...NUMERIC_INPUT_PROPS}
-                    value={activeCompositeModule?.widthMm || ''}
-                    onChange={(event) =>
-                      updateCompositeModule(selectedCompositeModuleId, {
-                        widthMm: event.target.value,
-                      })
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Hauteur module (mm)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    {...NUMERIC_INPUT_PROPS}
-                    value={activeCompositeModule?.heightMm || ''}
-                    onChange={(event) =>
-                      updateCompositeModule(selectedCompositeModuleId, {
-                        heightMm: event.target.value,
-                      })
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-              </div>
-            </details>
-
-            <details className="group rounded-2xl border border-slate-200 bg-white p-4">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                Coloration
-                <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-              </summary>
-              <div className="mt-4">
-                {buildColorOptionsFields({
-                  value: workingConfig.colorOptionId,
-                  colorState: workingColorState,
-                  onColorChange: (value) =>
-                    updateSelectedModuleOptions({ colorOptionId: value }),
-                  onColorStateChange: (patch) =>
-                    updateSelectedModuleOptions({
-                      rawColorState: {
-                        ...workingColorState,
-                        ...patch,
-                      },
-                    }),
-                  availableOptions: workingColorOptions,
-                })}
-              </div>
-            </details>
-
-            {workingIsGlazed && (
-              <details className="group rounded-2xl border border-slate-200 bg-white p-4">
-                <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                  Vitrage / remplissage du module
-                  <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="mt-4">
-                <select
-                  value={workingConfig.glazingId}
-                  onChange={(event) =>
-                    updateSelectedModuleOptions({ glazingId: event.target.value })
-                  }
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                >
-                  {activeModuleFillingMeta.options.map(({ glazing, pricing }) => (
-                    <option key={glazing.id} value={glazing.id}>
-                      {formatFillingOptionLabel(glazing, pricing)}
-                    </option>
-                  ))}
-                </select>
-                {activeModuleFillingMeta.selectedGlazing && (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-bold text-slate-800">
-                      {activeModuleFillingMeta.selectedGlazing.label}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {getFillingOptionDetails(
-                        activeModuleFillingMeta.selectedGlazing,
-                        activeModuleFillingMeta.selectedPricing
-                      )}
-                    </p>
-                    {workingConfig.hasSousBassement &&
-                      getSoubassementPricingDetails(
-                        activeModuleFillingMeta.selectedPricing
-                      ) && (
-                        <p className="mt-2 text-xs font-semibold text-slate-500">
-                          {getSoubassementPricingDetails(
-                            activeModuleFillingMeta.selectedPricing
-                          )}
-                        </p>
-                      )}
-                  </div>
-                )}
-                </div>
-              </details>
-            )}
-
-            {!workingIsVolet && (
-              <details className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
-                  Options & Accessoires
-                  <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="mt-4 space-y-5">
-                  <p className="text-sm text-slate-500">
-                    Chaque module garde ses accessoires et son remplissage bas.
-                  </p>
-
-                  <div className="grid min-w-0 grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3 min-w-0">
-                      <label className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
-                        <Grid3X3 size={14} className="text-slate-400" />
-                        Petits bois
-                      </label>
-                      <div className="grid grid-cols-1 gap-3">
-                        <div className="min-w-0">
-                          <label className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-500">
-                            Horizontales
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            {...NUMERIC_INPUT_PROPS}
-                            value={workingConfig.petitsBoisH}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                petitsBoisH: normalizePetitsBoisValue(event.target.value),
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <label className="mb-1.5 block text-xs font-semibold tracking-wide text-slate-500">
-                            Verticales
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            {...NUMERIC_INPUT_PROPS}
-                            value={workingConfig.petitsBoisV}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                petitsBoisV: normalizePetitsBoisValue(event.target.value),
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 min-w-0">
-                      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                        Sens d&apos;ouverture
-                      </label>
-                      <select
-                        value={workingConfig.openingDirection}
-                        onChange={(event) =>
-                          updateSelectedModuleOptions({
-                            openingDirection: event.target.value,
-                          })
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                      >
-                        <option value="standard">Standard</option>
-                        <option value="inverse">Inverse</option>
-                      </select>
-                    </div>
-
-                    <div className="min-w-0">
-                      {workingIsPorte ? (
-                        <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={workingConfig.panneauDecoratif}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                panneauDecoratif: event.target.checked,
-                              })
-                            }
-                            className="h-4 w-4 accent-orange-500"
-                          />
-                          Panneau decoratif
-                        </label>
-                      ) : (
-                        <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={workingConfig.hasLockingHandle}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                hasLockingHandle: event.target.checked,
-                              })
-                            }
-                            className="h-4 w-4 accent-orange-500"
-                          />
-                          Poignee verrouillable a cle
-                        </label>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 md:col-span-2">
-                      <HandleHeightField
-                        handleHeightMm={workingConfig.handleHeightMm}
-                        allegeHeightMm={workingConfig.allegeHeightMm}
-                        heightMm={activeCompositeModule?.heightMm}
-                        onChange={(changes) => updateSelectedModuleOptions(changes)}
-                      />
-                    </div>
-
-                    <div className="min-w-0">
-                      <label className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold leading-snug text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={workingConfig.hasSousBassement}
-                          onChange={(event) =>
-                            updateSelectedModuleOptions({
-                              hasSousBassement: event.target.checked,
-                            })
-                          }
-                          className="h-4 w-4 accent-orange-500"
-                        />
-                        Sous-bassement
-                      </label>
-                    </div>
-
-                    {workingConfig.hasSousBassement && (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 md:col-span-2">
-                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          <span>Hauteur visible</span>
-                          <span>{workingConfig.sousBassementHeight} mm</span>
-                        </div>
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
-                          <input
-                            type="range"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(activeCompositeModule?.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            value={workingConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                sousBassementHeight: Number.parseInt(
-                                  event.target.value,
-                                  10
-                                ),
-                              })
-                            }
-                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
-                          />
-                          <input
-                            type="number"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(activeCompositeModule?.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            {...NUMERIC_INPUT_PROPS}
-                            value={workingConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSelectedModuleOptions({
-                                sousBassementHeight: Math.max(
-                                  100,
-                                  Number.parseInt(event.target.value, 10) || 100
-                                ),
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </div>
-                        {getSoubassementPricingDetails(
-                          activeModuleFillingMeta.selectedPricing
-                        ) && (
-                          <p className="mt-3 text-xs font-semibold text-slate-500">
-                            {getSoubassementPricingDetails(
-                              activeModuleFillingMeta.selectedPricing
-                            )}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {!workingIsVolet && workingSashCount > 0 && !workingIsPorte && (
-                    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
-                      <label className="block text-xs font-bold uppercase tracking-widest text-slate-400">
-                        Options par vantail
-                      </label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {Array.from({ length: workingSashCount }).map((_, index) => (
-                          <div
-                            key={index}
-                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                          >
-                            <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                              Vantail {index + 1}
-                            </p>
-                            <div className="space-y-2">
-                              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(workingConfig.sashOptions[index]?.ob)}
-                                  onChange={() => updateWorkingSashOption(index, 'ob')}
-                                  className="accent-orange-500"
-                                />
-                                Oscillo-battant
-                              </label>
-                              <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(workingConfig.sashOptions[index]?.vent)}
-                                  onChange={() => updateWorkingSashOption(index, 'vent')}
-                                  className="accent-orange-500"
-                                />
-                                Grille de ventilation
-                              </label>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </details>
-            )}
-
-            {false && workingIsGlazed && (
-              <div className="space-y-3">
-                <label className="block text-sm font-semibold text-slate-700">
-                  Vitrage du module
-                </label>
-                <div className="grid gap-3">
-                  {glazingOptions.map((glazing) => (
-                    <label
-                      key={glazing.id}
-                      className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 p-4 transition-all ${
-                        workingConfig.glazingId === glazing.id
-                          ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-500/10'
-                          : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        checked={workingConfig.glazingId === glazing.id}
-                        onChange={() =>
-                          updateSelectedModuleOptions({ glazingId: glazing.id })
-                        }
-                        className="h-5 w-5 accent-orange-500"
-                      />
-                      <div className="flex-1">
-                        <span className="block text-sm font-bold text-slate-800">
-                          {glazing.shortLabel}
-                        </span>
-                        <span className="text-sm text-slate-500">
-                          Ug={glazing.ug} · g={glazing.g}
-                        </span>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 p-4 md:p-6">
-              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-                Réglages de l&apos;ensemble
-              </label>
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Repère
-                  </label>
-                  <input
-                    type="text"
-                    value={repere}
-                    onChange={(event) => setRepere(event.target.value)}
-                    placeholder="Ex : Façade nord"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Quantité
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    {...NUMERIC_INPUT_PROPS}
-                    value={quantity}
-                    onChange={(event) =>
-                      setQuantity(Math.max(1, Number.parseInt(event.target.value, 10) || 1))
-                    }
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    Ajustement net
-                  </label>
-                  <select
-                    value={netAdjustmentMode}
-                    onChange={(event) => handleNetAdjustmentModeChange(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  >
-                    <option value="margin">Marge nette souhaitée</option>
-                    <option value="discount">Remise nette souhaitée</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    {netAdjustmentLabel}
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    {...DECIMAL_INPUT_PROPS}
-                    value={netAdjustmentValue}
-                    onChange={(event) => handleNetAdjustmentValueChange(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                  />
-                </div>
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-sm font-semibold text-slate-700">Remise</label>
-                    <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
-                      -{remise}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={20}
-                    step={1}
-                    value={remise}
-                    onChange={(event) =>
-                      setRemise(Number.parseInt(event.target.value, 10) || 0)
-                    }
-                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
-                  />
-                </div>
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={includePose}
-                    onChange={(event) => setIncludePose(event.target.checked)}
-                    className="h-4 w-4 accent-orange-500"
-                  />
-                  <Wrench size={14} className="text-slate-400" />
-                  Inclure la pose (
-                  {getPosePriceForType(
-                    compositeIncludesPorte({ composition }) ? 'porte' : 'menuiserie'
-                  )}{' '}
-                  EUR)
-                </label>
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={showThermalData}
-                    onChange={(event) => setShowThermalData(event.target.checked)}
-                    className="h-4 w-4 accent-orange-500"
-                  />
-                  Afficher les données thermiques sur le devis
-                </label>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-6">
-              <label className="mb-2 block text-xs font-black uppercase tracking-widest text-slate-400">
-                Synthèse du composé
-              </label>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Dimensions globales</span>
-                  <span className="font-bold text-slate-900">
-                    L {compositeDimensions.width} x H {compositeDimensions.height} mm
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Modules</span>
-                  <span className="font-bold text-slate-900">{compositeModuleCount}</span>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                  {formatCompositeModules(composition)}
-                </div>
-                <div className="border-t border-slate-200 pt-3">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Prix composé HT
-                  </p>
-                  <p className="mt-2 text-2xl font-black text-slate-900">
-                    {compositePricing.totalPrice !== null
-                      ? `${compositePricing.totalPrice.toFixed(2)} EUR`
-                      : 'Dimensions hors grille'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 p-4 md:p-6">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            {compositeFrame.overallWidthMm} × {compositeFrame.overallHeightMm} mm · {compositeModuleCount} châssis
+          </p>
+          <p className="text-2xl font-black text-slate-900">
+            {compositePricing.totalPrice != null
+              ? `${compositePricing.totalPrice.toFixed(2)} €`
+              : compositePricing.hasInvalidModule
+                ? 'Hors grille tarifaire'
+                : 'À compléter — placez au moins un châssis'}
+          </p>
         </div>
       </div>
     </div>

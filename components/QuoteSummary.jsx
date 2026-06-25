@@ -396,7 +396,8 @@ export default function QuoteSummary({
                           height={item.heightMm}
                           options={{
                             isComposite: item.isComposite,
-                            composition: item.composition,
+                            compositeFrame: item.compositeFrame,
+                            composition: item.compositionTree ?? item.composition,
                             colorOption: item.colorOption,
                             glazingId: item.glazingOption?.id,
                             petitsBoisH: petitsBoisConfig.petitsBoisH,
@@ -639,7 +640,8 @@ export default function QuoteSummary({
                                 height={item.heightMm}
                                 options={{
                                   isComposite: item.isComposite,
-                                  composition: item.composition,
+                                  compositeFrame: item.compositeFrame,
+                            composition: item.compositionTree ?? item.composition,
                                   colorOption: item.colorOption,
                                   glazingId: item.glazingOption?.id,
                                   petitsBoisH: petitsBoisConfig.petitsBoisH,
@@ -724,9 +726,9 @@ export default function QuoteSummary({
                                       {/* Mini badges below for visual confirmation of options */}
                                       <div className="flex flex-wrap gap-2 mt-2">
                                         {item.isComposite &&
-                                          getCompositeModuleCount(item.composition, item.modules) > 0 && (
+                                          getCompositeModuleCount(item.compositionTree ?? item.composition, item.modules) > 0 && (
                                           <span className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold">
-                                            {formatCompositeModules(item.composition || item.modules)}
+                                            {formatCompositeModules(item.compositionTree ?? item.composition ?? item.modules)}
                                           </span>
                                         )}
                                         {item.colorOption?.id !== 'blanc' && (
@@ -756,9 +758,9 @@ export default function QuoteSummary({
                             </span>
                             
                             {item.isComposite &&
-                              getCompositeModuleCount(item.composition, item.modules) > 0 && (
+                              getCompositeModuleCount(item.compositionTree ?? item.composition, item.modules) > 0 && (
                               <p className="text-[10px] font-semibold text-slate-500">
-                                {getCompositeModuleCount(item.composition, item.modules)} modules
+                                {getCompositeModuleCount(item.compositionTree ?? item.composition, item.modules)} modules
                               </p>
                             )}
                           </div>
@@ -941,9 +943,9 @@ export default function QuoteSummary({
                     <CheckCircle className="absolute inset-0 m-auto text-white opacity-0 transition-opacity peer-checked:opacity-100" size={12} />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-bold leading-tight">Attestation simplifiée (TVA réduite)</p>
+                    <p className="text-sm font-bold leading-tight">CERTIFICATION POUR L&rsquo;APPLICATION DES TAUX RÉDUITS DE TVA</p>
                     <p className="text-[11px] mt-1 leading-relaxed opacity-90">
-                      Je certifie que les travaux réalisés concernent un local à usage d&apos;habitation achevé depuis plus de deux ans et qu&apos;ils remplissent les conditions d&apos;éligibilité au taux réduit de TVA. Je reconnais être informé que toute fausse déclaration m&apos;expose à un redressement fiscal.
+                      Le client certifie que les travaux prévus au présent devis concernent des locaux affectés à l&rsquo;habitation et achevés depuis plus de deux ans et que, sur une période de deux ans au plus, ils ne concourent pas à la production d&rsquo;un immeuble neuf ni à une augmentation de plus de 10&nbsp;% de la surface de plancher existante. Pour les prestations soumises à la TVA à 5,5&nbsp;%, il certifie également qu&rsquo;elles constituent des travaux de rénovation énergétique. La signature du présent devis vaut certification de ces déclarations.
                     </p>
                   </div>
                 </label>

@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="fr" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sélecteur de Panneaux de Porte | SARANGE</title>
+    
+    <!-- Tailwind CSS pour le style moderne -->
+    <link rel="stylesheet" href="tailwind.css">
+    
+    <!-- Configuration des couleurs Sarange -->
+    <script>
+        const _unusedTailwindConfig = {  // conservé pour référence ; les couleurs sarange sont compilées dans tailwind.css
+            theme: {
+                extend: {
+                    colors: {
+                        sarange: {
+                            dark: '#1e293b', 
+                            blue: '#2563eb', 
+                            light: '#f8fafc',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="stylesheet" href="inter.css">
+    
+    <!-- Lucide Icons -->
+    <script src="lucide.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9;
+        }
+        .door-card {
+            transition: all 0.3s ease;
+        }
+        .door-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .door-image-container img {
+            transition: transform 0.5s ease;
+        }
+        .door-card:hover .door-image-container img {
+            transform: scale(1.03);
+        }
+        /* Masquer la scrollbar pour les onglets et la modale */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Accordéons <details> : pas de marqueur natif, chevron animé */
+        summary { list-style: none; }
+        summary::-webkit-details-marker { display: none; }
+        .chev { transition: transform 0.2s ease; }
+        /* === Mode catalogue (Mode B) : masque prix et boutons de sélection === */
+        body.catalogue-mode .devis-only { display: none !important; }
+        /* En catalogue, le bloc « Bon à savoir » passe de 3 à 2 colonnes (point Tarif masqué) */
+        @media (min-width: 640px) { body.catalogue-mode .info-points { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+        /* === Branding & micro-animations SARANGE (sobres, respectent prefers-reduced-motion) === */
+        @keyframes riseIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .door-card.anim-rise { animation: riseIn .5s cubic-bezier(.22,1,.36,1) both; }
+        .door-card:hover { box-shadow: 0 22px 32px -14px rgba(249,115,22,.30), 0 8px 14px -8px rgba(15,23,42,.12); }
+        #tabsContainer button { transition: transform .15s ease, background-color .2s ease, color .2s ease, box-shadow .2s ease; }
+        #tabsContainer button:active { transform: scale(.96); }
+        .brand-dot { display: inline-block; transition: transform .35s cubic-bezier(.22,1,.36,1); }
+        .brand-bar:hover .brand-dot { transform: translateY(-3px); }
+        .btn-sheen { position: relative; overflow: hidden; }
+        .btn-sheen::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.22) 50%, transparent 65%); transform: translateX(-130%); transition: transform .7s ease; }
+        .btn-sheen:hover::after { transform: translateX(130%); }
+        @media (prefers-reduced-motion: reduce) { .door-card.anim-rise { animation: none; } .btn-sheen::after { display: none; } .brand-dot { transition: none; } }
+        details[open] > summary .chev { transform: rotate(180deg); }
+    </style>
+</head>
+<body class="text-slate-800 antialiased flex flex-col min-h-screen">
+
+    <!-- Barre de marque SARANGE -->
+    <header class="brand-bar bg-slate-900 text-white border-b-2 border-orange-500 shadow-lg shadow-slate-900/20 relative z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3 select-none">
+                <span class="text-2xl sm:text-[28px] font-black text-white leading-none" style="letter-spacing:-0.04em">SARANGE<span class="brand-dot text-orange-500">.</span></span>
+                <span class="hidden sm:block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 border-l border-slate-700 pl-3">Sélecteur de panneaux</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs font-medium text-slate-300">
+                <i data-lucide="shield-check" class="w-4 h-4 text-orange-400"></i>
+                <span class="hidden sm:inline">Fabrication française sur-mesure</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- En-tête / Avertissement Client -->
+    <div class="bg-white border-b border-slate-200 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-12">
+            <div class="text-center max-w-3xl mx-auto">
+                <h2 class="text-2xl md:text-4xl font-bold text-slate-900 mb-2 md:mb-4">Choisissez votre panneau de porte</h2>
+                <p class="text-base md:text-lg text-slate-600 mb-5 md:mb-8">Parcourez la collection et sélectionnez le design qui sublimera votre entrée.</p>
+
+                <!-- Bon à savoir (repliable, 3 points clés) -->
+                <details id="infoDetails" class="bg-white border border-slate-200 rounded-2xl shadow-sm text-left">
+                    <summary class="flex items-center gap-3 p-4 md:p-5 cursor-pointer select-none">
+                        <span class="flex items-center justify-center w-9 h-9 rounded-xl bg-orange-50 text-sarange-blue flex-shrink-0">
+                            <i data-lucide="info" class="w-5 h-5"></i>
+                        </span>
+                        <span class="flex-grow min-w-0">
+                            <span class="block font-semibold text-slate-900">Bon à savoir avant de choisir</span>
+                            <span id="infoSummary" class="block text-xs text-slate-500">Tarifs, couleurs et visuels — l'essentiel en 3 points</span>
+                        </span>
+                        <i data-lucide="chevron-down" class="chev w-5 h-5 text-slate-400 flex-shrink-0"></i>
+                    </summary>
+                    <div class="info-points border-t border-slate-100 p-4 md:p-5 grid gap-3 sm:grid-cols-3">
+                        <div class="devis-only flex gap-3 bg-slate-50 rounded-xl p-3">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex-shrink-0">
+                                <i data-lucide="badge-euro" class="w-4 h-4"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-sm text-slate-900">Tarif transparent</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mt-0.5">Les modèles « Inclus » n'ajoutent rien au devis. Les autres affichent leur plus-value exacte.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 bg-slate-50 rounded-xl p-3">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 text-sarange-blue flex-shrink-0">
+                                <i data-lucide="palette" class="w-4 h-4"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-sm text-slate-900">Toutes les couleurs</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mt-0.5">Chaque modèle est disponible dans l'ensemble de nos coloris RAL, sur-mesure.</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-3 bg-slate-50 rounded-xl p-3">
+                            <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex-shrink-0">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-sm text-slate-900">Visuels indicatifs</p>
+                                <p class="text-xs text-slate-500 leading-relaxed mt-0.5">Poignées, serrures et parcloses sont illustratives : votre devis fait foi.</p>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- Caractéristiques Techniques (repliable) -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <details class="group">
+            <summary class="flex items-center gap-2 cursor-pointer select-none text-lg font-bold text-slate-800 mb-4">
+                <i data-lucide="settings" class="w-5 h-5 text-sarange-blue flex-shrink-0"></i>
+                <span class="flex-grow">Caractéristiques techniques standards</span>
+                <i data-lucide="chevron-down" class="chev w-5 h-5 text-slate-400"></i>
+            </summary>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pb-2">
+                <div class="bg-white p-5 rounded-xl border border-slate-200 flex items-start gap-4">
+                    <div class="bg-slate-100 p-3 rounded-lg"><i data-lucide="layers" class="w-6 h-6 text-slate-600"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm text-slate-900">Composition Premium</h4>
+                        <p class="text-xs text-slate-500 mt-1">2 Tôles alu 1.3 mm<br>Mousse PU isolante (70 kg/m³)</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 flex items-start gap-4">
+                    <div class="bg-slate-100 p-3 rounded-lg"><i data-lucide="sun" class="w-6 h-6 text-slate-600"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm text-slate-900">Vitrage Sécurisé</h4>
+                        <p class="text-xs text-slate-500 mt-1">Double vitrage Satinato<br>Feuilleté 1 face ext. 33.2/4mm</p>
+                    </div>
+                </div>
+                <div class="bg-white p-5 rounded-xl border border-slate-200 flex items-start gap-4">
+                    <div class="bg-slate-100 p-3 rounded-lg"><i data-lucide="sparkles" class="w-6 h-6 text-slate-600"></i></div>
+                    <div>
+                        <h4 class="font-semibold text-sm text-slate-900">Finitions & Ornements</h4>
+                        <p class="text-xs text-slate-500 mt-1">Décor Alu-Nox brossé<br>Rainurage fraisé selon modèle</p>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <!-- Section Sélecteur Principale -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 w-full">
+        
+        <!-- Barre collante : onglets de gammes + recherche (restent accessibles au scroll) -->
+        <div class="sticky top-0 z-30 bg-slate-100/95 backdrop-blur-sm -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pt-3 pb-3 mb-6 border-b border-slate-200">
+            <!-- Onglets des Gammes -->
+            <div class="flex space-x-2 overflow-x-auto pb-3 mb-3 no-scrollbar" id="tabsContainer">
+                <!-- Onglets générés par JS -->
+            </div>
+
+            <!-- Filtres et Recherche -->
+            <div class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                <div class="w-full sm:w-1/2 md:w-1/3 relative">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+                    <input type="text" id="searchInput" aria-label="Rechercher un panneau par référence ou gamme" placeholder="Rechercher (ex: 12, REVA 62)..." class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sarange-blue focus:border-transparent transition-shadow">
+                </div>
+                <div class="text-sm font-medium text-slate-500 bg-slate-100 px-4 py-2 rounded-lg text-center whitespace-nowrap">
+                    <span id="doorCount" class="font-bold text-sarange-blue">0</span> modèles affichés
+                </div>
+            </div>
+        </div>
+
+        <!-- Bandeau contextuel (mise en avant ELA) -->
+        <div id="gammeBanner" class="hidden mb-6"></div>
+
+        <!-- Grille des Portes -->
+        <div id="doorsGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
+            <!-- Généré par JavaScript -->
+        </div>
+
+        <!-- Message aucun résultat -->
+        <div id="noResults" class="hidden text-center py-20">
+            <i data-lucide="search-x" class="w-16 h-16 text-slate-300 mx-auto mb-4"></i>
+            <h3 class="text-xl font-medium text-slate-600">Aucun modèle trouvé</h3>
+            <p class="text-slate-500 mt-2">Essayez un autre numéro ou changez de gamme.</p>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 text-slate-400 py-8 text-center mt-auto border-t border-slate-800">
+        <div class="max-w-7xl mx-auto px-4">
+            <p class="text-xl font-black text-white mb-1" style="letter-spacing:-0.03em">SARANGE<span class="text-orange-500">.</span></p>
+            <p class="text-sm">&copy; <script>document.write(new Date().getFullYear())</script> SARANGE — Outil d'aide à la vente. Visuels non contractuels.</p>
+        </div>
+    </footer>
+
+    <!-- Modale Aperçu Image (Double Étape) -->
+    <div id="imageModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" class="fixed inset-0 z-50 hidden bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 opacity-0 transition-opacity duration-300">
+        <div class="bg-white rounded-2xl max-w-4xl w-full flex flex-col md:flex-row max-h-[92vh] overflow-y-auto md:overflow-hidden shadow-2xl transform scale-95 transition-transform duration-300" id="modalContent">
+
+            <!-- Image en grand (Partie Gauche Fixe) -->
+            <div class="w-full md:w-1/2 bg-slate-100 flex items-center justify-center p-4 md:p-8 relative">
+                <button id="closeModalBtn" aria-label="Fermer" class="absolute top-4 right-4 bg-white/80 hover:bg-white text-slate-800 rounded-full p-2 transition-colors shadow-sm md:hidden z-10">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+                <button id="zoomImgBtn" aria-label="Agrandir l'image" class="absolute bottom-4 left-4 bg-white/90 hover:bg-white text-slate-700 rounded-full px-3 py-2 transition-colors shadow-sm flex items-center gap-1.5 text-xs font-medium z-10">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i><span>Agrandir</span>
+                </button>
+                <img id="modalImg" src="" alt="Aperçu Porte" class="max-h-[38vh] md:max-h-[70vh] object-contain drop-shadow-xl cursor-zoom-in">
+            </div>
+
+            <!-- Partie Droite Dynamique -->
+            <div class="w-full md:w-1/2 p-6 md:p-8 flex flex-col justify-center md:overflow-y-auto relative">
+                
+                <div class="hidden md:flex justify-end absolute top-6 right-6">
+                    <button id="closeModalBtnDesktop" aria-label="Fermer" class="text-slate-400 hover:text-slate-800 transition-colors">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+
+                <!-- ÉTAPE 1 : Configuration et Choix -->
+                <div id="modalStep1" class="flex flex-col h-full w-full animate-fade-in mt-6">
+                    <div id="modalGammeBadge" class="inline-block bg-orange-100 text-sarange-blue px-3 py-1 rounded-full text-sm font-semibold tracking-wider w-max mb-4">GAMME</div>
+                    
+                    <h3 id="modalTitle" class="text-3xl font-bold text-slate-900 mb-1">Modèle XX</h3>
+                    
+                    <!-- NOUVEAU : Légende issue du PDF -->
+                    <p id="modalLegend" class="text-sm text-slate-600 mb-4 italic"><i data-lucide="info" class="w-4 h-4 inline mr-1 text-slate-400"></i><span></span></p>
+
+                    <!-- Sélecteur de variante (CLASSICO : versions d'un même modèle) -->
+                    <div id="variantSection" class="hidden mb-6">
+                        <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Versions disponibles <span id="variantCount" class="text-slate-400 normal-case"></span></p>
+                        <div id="variantStrip" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <!-- Bloc Prix/Plus-value dynamique -->
+                    <div id="modalPvBlock" class="devis-only bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex justify-between items-center transition-all">
+                        <div>
+                            <p id="modalPvLabel" class="text-sm text-slate-500 font-medium uppercase tracking-wide">Plus-value sur devis</p>
+                            <p id="modalPvValue" class="text-2xl font-bold text-amber-600">+ 0,00 € <span class="text-sm font-normal text-slate-500">HT</span></p>
+                        </div>
+                        <div id="modalPvIcon" class="bg-amber-100 p-2 rounded-lg text-amber-600">
+                            <i data-lucide="coins" class="w-6 h-6"></i>
+                        </div>
+                    </div>
+
+                    <!-- NOUVEAU : Section Croisillons (Visible uniquement pour CLASSICO D) -->
+                    <div id="croisillonSection" class="devis-only hidden mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <label class="flex items-center gap-2 mb-3">
+                            <i data-lucide="layout-grid" class="w-5 h-5 text-sarange-blue"></i>
+                            <span class="font-medium text-slate-900">Choix des croisillons intégrés (Inclus)</span>
+                        </label>
+                        <select id="croisillonSelect" class="w-full rounded-lg border-slate-300 border p-3 text-sm focus:ring-2 focus:ring-sarange-blue outline-none bg-white shadow-sm">
+                            <option value="Blancs">Croisillons Blancs</option>
+                            <option value="Laitons">Croisillons Laitons</option>
+                        </select>
+                    </div>
+
+                    <!-- Section Couleur Dynamique -->
+                    <div id="colorSection" class="devis-only mb-4">
+                        <!-- Généré par JavaScript -->
+                    </div>
+
+                    <!-- Section Avertissements (Modèle et Couleur) - Remplie dynamiquement par JS -->
+                    <div id="dynamicDisclaimersContainer" class="devis-only mb-6"></div>
+
+                    <!-- Bouton de Sélection -->
+                    <button id="preSelectBtn" class="devis-only btn-sheen w-full bg-sarange-blue hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2 mb-4">
+                        <i data-lucide="check" class="w-5 h-5"></i>
+                        <span>Sélectionner ce modèle</span>
+                    </button>
+
+                    <div class="mt-auto bg-slate-50 border border-slate-200 p-3 rounded-lg flex gap-2.5 text-slate-500 text-xs items-center">
+                        <i data-lucide="info" class="w-4 h-4 flex-shrink-0"></i>
+                        <p>La quincaillerie (poignée, rosace) est présentée à titre d'illustration.</p>
+                    </div>
+                </div>
+
+                <!-- ÉTAPE 2 : Récapitulatif et Validation Définitive -->
+                <div id="modalStep2" class="hidden flex-col h-full w-full justify-center animate-fade-in">
+                    <div class="text-center mb-6">
+                        <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-orange-50 text-sarange-blue mb-4">
+                            <i data-lucide="clipboard-check" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-900 mb-2">Récapitulatif de votre choix</h3>
+                        <p class="text-sm text-slate-500">Veuillez vérifier les informations de votre panneau avant de confirmer définitivement.</p>
+                    </div>
+
+                    <!-- Encadré récapitulatif -->
+                    <div class="bg-white rounded-xl border-2 border-slate-100 shadow-sm p-5 mb-8">
+                        <div id="summaryDetails">
+                            <!-- Rempli dynamiquement par JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Boutons de validation -->
+                    <div class="space-y-3 mt-auto">
+                        <button id="confirmSelectionBtn" class="btn-sheen w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-lg transform hover:scale-[1.02]">
+                            <i data-lucide="check-circle" class="w-6 h-6"></i>
+                            <span>Confirmer définitivement</span>
+                        </button>
+                        <button id="backToStep1Btn" class="w-full bg-white hover:bg-slate-50 text-slate-600 font-medium py-3 px-4 rounded-xl border border-slate-300 transition-colors flex items-center justify-center gap-2">
+                            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                            <span>Modifier ma configuration</span>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox plein écran (zoom image pleine résolution) -->
+    <div id="lightbox" class="fixed inset-0 z-[60] hidden bg-black/95 items-center justify-center opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true" aria-label="Image agrandie">
+        <button id="lightboxClose" aria-label="Fermer l'aperçu" class="absolute top-4 right-4 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full p-2 transition-colors z-10">
+            <i data-lucide="x" class="w-6 h-6"></i>
+        </button>
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/60 text-xs flex items-center gap-1.5 pointer-events-none">
+            <i data-lucide="mouse-pointer-click" class="w-4 h-4"></i><span>Cliquez sur l'image pour zoomer</span>
+        </div>
+        <img id="lightboxImg" src="" alt="Aperçu agrandi" class="max-w-[95vw] max-h-[92vh] object-contain transition-transform duration-200 cursor-zoom-in select-none">
+    </div>
+
+    <!-- Styles d'animation personnalisés -->
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+    </style>
+
+    <!-- Script Application -->
+    <script>
+        // =====================================================================
+        // [INTEGRATION IA] - LOGIQUE DE CALCUL DES PRIX ET PLUS-VALUES
+        // Ce module gère la tarification des panneaux selon la marge définie.
+        // - TAUX_REMISE_ACHAT : Ratio de remise fournisseur (basé sur 463.68 pour 900)
+        // - MARGE_VENTE : Coefficient multiplicateur de vente appliqué (fixé à 2)
+        // - PRIX_BASE_INCLUS : Prix de référence qui correspond au forfait "Inclus" dans le devis
+        //   (Toute porte générant un prix inférieur ou égal est facturée 0€ de PV).
+        // =====================================================================
+        const TAUX_REMISE_ACHAT = 463.68 / 900;
+        const MARGE_VENTE = 2;
+        const MULTIPLICATEUR_GLOBAL = TAUX_REMISE_ACHAT * MARGE_VENTE;
+
+        // [INTEGRATION IA] - HAUSSE TARIF FOURNISSEUR (+6% au 01/07/2026)
+        // Le fournisseur augmente TOUS les prix d'achat de 6% (panneau standard inclus).
+        // On applique donc la hausse à tous les "brut" ET à la référence standard :
+        // les panneaux standards restent à 0€ de plus-value, et les plus-values des
+        // modèles premium augmentent d'environ 6%. Le coefficient de vente (×2) est inchangé.
+        // Pour annuler la hausse, repasser HAUSSE_ACHAT à 0.
+        const HAUSSE_ACHAT = 0.06;
+
+        const PRIX_BASE_INCLUS = 900 * (1 + HAUSSE_ACHAT) * MULTIPLICATEUR_GLOBAL;
+
+        /**
+         * [INTEGRATION IA] : Fonction calcPVPanneau(prixBrutCatalogue)
+         * Calcule la plus-value (PV) HT finale à facturer au client.
+         * Applique un forfait minimum de 49.98 € si la PV dépasse 0 mais est inférieure à ce forfait.
+         * Retourne un nombre (float) correspondant à la plus-value HT.
+         */
+        function calcPVPanneau(prixBrutCatalogue) {
+            const vente = prixBrutCatalogue * MULTIPLICATEUR_GLOBAL;
+            let pv = vente - PRIX_BASE_INCLUS;
+            
+            if (pv > 0.01) {
+                return pv < 49.98 ? 49.98 : pv;
+            }
+            return 0; // Standard inclus
+        }
+
+        // =====================================================================
+        // [INTEGRATION IA] - LÉGENDES TECHNIQUES PAR RÉFÉRENCE
+        // Extraites et vérifiées sur le catalogue Novador 2025/2026 (page par page).
+        // Une référence absente de sa table utilise la légende par défaut de sa gamme.
+        // =====================================================================
+        const LEGEND_DEFAULT = {
+            ELA:  "Vitrage Satinato 33/2, Ornement Alu-Nox",
+            GEO:  "Décor rainuré fraisé 2 faces (non filmable)",
+            LEO:  "Vitrage Satinato 33/2, Rainuré embouti 2 faces",
+            LINA: "Vitrage Satinato 33/2, Décor Alu-Nox brossé",
+            REVA: "Double vitrage Satinato, Décor Alu-Nox brossé"
+        };
+
+        const _SO = "Vitrage Satinato 33/2, Sans ornement";          // sans ornement
+        const _RF = "Rainurée fraisée (non filmable)";
+
+        // ELA : seules les exceptions sont listées (le reste = Ornement Alu-Nox)
+        const LEGENDS_ELA = {
+            '05': _SO, '06': _SO, '12': _SO, '13': _SO, '14': _SO, '16': _SO,
+            '25': _SO, '27': _SO, '28': _SO, '42': _SO, '44': _SO, '46': _SO,
+            '47': _SO, '55': _SO, '62': _SO,
+            '36': `Tôle 1,5 mm, ${_RF}`,
+            '37': "Tôle 1,8 mm, Ornement Alu-Nox affleurant",
+            '38': `Tôle 1,5 mm, ${_RF}`,
+            '39': "Tôle 1,8 mm, Vitrage Satinato 33/2, Ornement Alu-Nox affleurant",
+            '40': `Tôle 1,5 mm, Vitrage Satinato 33/2, ${_RF}`,
+            '43': "Tôle 1,8 mm, Vitrage Satinato 33/2, Ornement Alu-Nox affleurant",
+            '45': `Tôle 1,5 mm, Vitrage Satinato 33/2, Ornement Alu-Nox, ${_RF}`,
+            '63': `Ornement Alu-Nox, ${_RF}`,
+            '64': `Vitrage Satinato 33/2, Ornement Alu-Nox, ${_RF}`,
+            '65': `Ornement Alu-Nox, ${_RF}`,
+            '66': `Ornement Alu-Nox, ${_RF}`,
+            '67': `Ornement Alu-Nox, ${_RF}`,
+            '68': `Vitrage Satinato 33/2, Sans ornement, ${_RF}`,
+            '69': `Vitrage Satinato 33/2, ${_RF}`,
+            '70': `Vitrage Satinato 33/2, Sans ornement, ${_RF}`
+        };
+
+        // LINA : exceptions (le reste = décor Alu-Nox brossé)
+        const _LM = "Vitrage sablé motif clair";
+        const LEGENDS_LINA = {
+            '01': "Vitrage Satinato 33/2, Ornement Alu-Nox",
+            '15': "Vitrage sablé motif clair, inserts à facette",
+            '16': "Vitrage sablé bord clair",
+            '22': _LM, '25': _LM, '26': _LM, '28': _LM, '29': _LM
+        };
+
+        // REVA : exceptions (le reste = décor Alu-Nox brossé)
+        const _RBORD = "Vitrage sablé bord clair";
+        const _RMOTIF = "Vitrage sablé motif clair";
+        const _RT25 = "Tôle 2,5 mm, Ornement Alu-Nox affleurant";
+        const _RT18 = "Tôle 1,8 mm, Ornement Alu-Nox affleurant";
+        const LEGENDS_REVA = {
+            '09': _RBORD, '10': _RBORD, '11': _RBORD, '12': _RBORD,
+            '13': _RMOTIF, '15': _RMOTIF, '17': _RMOTIF, '20': _RMOTIF, '21': _RMOTIF,
+            '28': _RMOTIF, '29': _RMOTIF, '34': _RMOTIF, '36': _RMOTIF,
+            '56': "Vitrage sablé motif clair, rainuré fraisé (non filmable)",
+            '38': _RT25, '39': _RT25, '40': _RT25, '57': _RT25, '58': _RT25, '59': _RT25,
+            '60': _RT25, '61': _RT25, '62': _RT25, '66': _RT25, '67': _RT25, '69': _RT25,
+            '70': _RT25, '71': _RT25, '73': _RT25, '77': _RT25, '80': _RT25,
+            '52': "Tôle 2,5 mm, Ornement Alu-Nox affleurant, rainuré fraisé (non filmable)",
+            '48': _RT18, '53': _RT18, '55': _RT18,
+            '81': "Sans ornement"
+        };
+
+        // CLASSICO : motif selon le suffixe + quelques exceptions
+        const CLASSICO_MOTIF = {
+            'E': "Vitrail cathédrale plombé",
+            'F': "Vitrage motif Art Déco sablé",
+            'G': "Vitrage motif floral sablé",
+            'H': "Vitrage motif bulles sablé",
+            'I': "Grille motif losange"
+        };
+        const LEGENDS_CLASSICO_OVERRIDE = {
+            '06-I': "Vitrage sablé motif clair",
+            '15-C': "Vitrage sablé bord clair",
+            '16-B': "Vitrage sablé bord clair"
+        };
+
+        function getDoorLegend(gamme, ref) {
+            if (gamme === 'ELA')  return LEGENDS_ELA[ref]  || LEGEND_DEFAULT.ELA;
+            if (gamme === 'GEO')  return LEGEND_DEFAULT.GEO;
+            if (gamme === 'LEO')  return LEGEND_DEFAULT.LEO;
+            if (gamme === 'LINA') return LEGENDS_LINA[ref] || LEGEND_DEFAULT.LINA;
+            if (gamme === 'REVA') return LEGENDS_REVA[ref] || LEGEND_DEFAULT.REVA;
+            if (gamme === 'CLASSICO') {
+                if (LEGENDS_CLASSICO_OVERRIDE[ref]) return LEGENDS_CLASSICO_OVERRIDE[ref];
+                if (ref.endsWith('-D')) return "Croisillons intégrés (blanc ou laiton au choix), double vitrage";
+                const m = ref.match(/-([A-I])$/);
+                if (m && CLASSICO_MOTIF[m[1]]) return CLASSICO_MOTIF[m[1]];
+                if (ref.includes('-')) return "Double vitrage Satinato, moulures embouties"; // -A, -B, -C
+                return "Panneau plein, moulures embouties 2 faces";                            // modèle de base
+            }
+            return LEGEND_DEFAULT.ELA;
+        }
+
+        // =====================================================================
+        // [INTEGRATION IA] - BASE DE DONNÉES DU CATALOGUE
+        // Liste exhaustive des modèles par gamme avec leur prix brut fournisseur de base.
+        // Mises à jour : REVA 33 & 41 supprimées. CLASSICO 15-B supprimée.
+        // =====================================================================
+        const doorDefinitions = [
+            { gamme: "ELA", brut: 900, list: Array.from({length: 70}, (_, i) => String(i + 1).padStart(2, '0')) },
+            { gamme: "GEO", brut: 700, list: Array.from({length: 10}, (_, i) => String(i + 1).padStart(2, '0')) },
+            { gamme: "LEO", brut: 970, list: ['01','02','03','04','05','06','07','08','09'] },
+            { gamme: "LEO", brut: 740, list: ['10','11','12','13','14','15','16','17','18','19','20'] },
+            { gamme: "LINA", brut: 920, list: ['19','34'] },
+            { gamme: "LINA", brut: 1050, list: ['02','15','29','31'] },
+            { gamme: "LINA", brut: 1080, list: ['07','16','32'] },
+            { gamme: "LINA", brut: 1120, list: ['01','14','28'] },
+            { gamme: "LINA", brut: 1180, list: ['33'] },
+            { gamme: "LINA", brut: 1260, list: ['22','25'] },
+            { gamme: "LINA", brut: 1360, list: ['26'] },
+            { gamme: "REVA", brut: 920, list: ['05','20','22','44','48','63','64','65'] },
+            { gamme: "REVA", brut: 980, list: ['01','02','03','26','34','55'] },
+            { gamme: "REVA", brut: 1050, list: ['04','15','21','28','53'] },
+            { gamme: "REVA", brut: 1080, list: ['06','23','27','31','52','74','75','76'] },
+            { gamme: "REVA", brut: 1120, list: ['16','35','36','38','43','56'] },
+            { gamme: "REVA", brut: 1140, list: ['29','30','40'] },
+            { gamme: "REVA", brut: 1180, list: ['09','10','17'] },
+            { gamme: "REVA", brut: 1240, list: ['19'] },
+            { gamme: "REVA", brut: 1260, list: ['39','57'] },
+            { gamme: "REVA", brut: 1300, list: ['11','12','58','59','60','70','73'] },
+            { gamme: "REVA", brut: 1340, list: ['13','61','79'] },
+            { gamme: "REVA", brut: 1400, list: ['78','81'] },
+            { gamme: "REVA", brut: 1460, list: ['18','62','77'] },
+            { gamme: "REVA", brut: 1500, list: ['71','80'] },
+            { gamme: "REVA", brut: 1540, list: ['68','82'] },
+            { gamme: "REVA", brut: 1580, list: ['69'] },
+            { gamme: "REVA", brut: 1600, list: ['66','67','72'] },
+            { gamme: "CLASSICO", brut: 680, list: ['01','02','03','04','05','06','07','08','09','10'] },
+            { gamme: "CLASSICO", brut: 730, list: ['11','14','15','16','17','18'] },
+            { gamme: "CLASSICO", brut: 760, list: ['06-A','07-A'] },
+            { gamme: "CLASSICO", brut: 860, list: ['08-A','17-A'] },
+            { gamme: "CLASSICO", brut: 880, list: ['02-A','11-A'] },
+            { gamme: "CLASSICO", brut: 930, list: ['02-D','06-B','06-D','07-B','07-C','08-D'] },
+            { gamme: "CLASSICO", brut: 1000, list: ['09-D','15-A','16-A','18-A'] },
+            { gamme: "CLASSICO", brut: 1050, list: ['03-A','04-A','05-A','09-A','10-A','10-F','10-G','10-H','14-A','14-B'] },
+            { gamme: "CLASSICO", brut: 1100, list: ['01-A','04-F','04-G','04-H','10-D'] },
+            { gamme: "CLASSICO", brut: 1150, list: ['01-D','01-F','01-G','01-H','02-F','02-G','03-D','04-I','11-D','11-F','11-G','11-H','16-B'] },
+            { gamme: "CLASSICO", brut: 1180, list: ['03-F','03-G','03-H','03-I','04-D','05-D','06-C','18-I'] },
+            { gamme: "CLASSICO", brut: 1200, list: ['05-F','05-G','05-H','09-F','09-G','09-H','10-I'] },
+            { gamme: "CLASSICO", brut: 1280, list: ['08-F'] },
+            { gamme: "CLASSICO", brut: 1340, list: ['11-I','12','13'] },
+            { gamme: "CLASSICO", brut: 1400, list: ['02-E','06-F','06-I','11-E','15-C'] },
+            { gamme: "CLASSICO", brut: 1420, list: ['01-E','03-E','05-E','14-C'] },
+            { gamme: "CLASSICO", brut: 1600, list: ['12-A','13-A'] },
+            { gamme: "CLASSICO", brut: 1760, list: ['12-I','13-I'] }
+        ];
+
+        // =====================================================================
+        // [INTEGRATION IA] - GESTION DE LA COULEUR ISSUE DU DEVIS (Outil Parent)
+        // Lit la couleur pré-définie via 2 méthodes possibles pour le parent :
+        // 1. Paramètre URL (GET) : ?couleur=Gris%20Anthracite
+        // 2. Écouteur d'évènement : window.postMessage({event: 'SET_DEVIS_COLOR', color: 'Blanc'})
+        // =====================================================================
+        const urlParams = new URLSearchParams(window.location.search);
+        let devisColor = urlParams.get('couleur');
+
+        // Mode catalogue (Mode B) : aperçu seul, sans prix ni parcours de sélection.
+        const CATALOGUE_MODE = urlParams.get('mode') === 'catalogue';
+        // Sous-mode : lien dédié n'affichant que les panneaux sans plus-value.
+        const CATALOGUE_ONLY_INCLUS = CATALOGUE_MODE && urlParams.get('inclus') === '1';
+
+        // [SÉCURITÉ postMessage] Origine du parent autorisée :
+        //  1) param ?parentOrigin= ; 2) origine de l'embarqueur (ancestorOrigins) ;
+        //  3) referrer ; 4) repli sur la même origine (déploiement sous /public).
+        //  On ne diffuse jamais vers "*".
+        const PARENT_ORIGIN = (() => {
+            const fromParam = urlParams.get('parentOrigin');
+            if (fromParam) { try { return new URL(fromParam).origin; } catch (e) {} }
+            try {
+                const anc = window.location.ancestorOrigins;
+                if (anc && anc.length) return anc[anc.length - 1];
+            } catch (e) {}
+            try { if (document.referrer) return new URL(document.referrer).origin; } catch (e) {}
+            return window.location.origin;
+        })();
+
+        window.addEventListener('message', (event) => {
+            // N'accepter les ordres du parent que depuis l'origine attendue.
+            if (event.origin !== PARENT_ORIGIN) return;
+            if (event.data && event.data.event === 'SET_DEVIS_COLOR') {
+                devisColor = event.data.color;
+            }
+        });
+
+        // =====================================================================
+        // [INTEGRATION IA] - GENERATION DYNAMIQUE DES PORTES
+        // Transforme la configuration en un tableau plat d'objets `doors`
+        // Ajoute la propriété "legend" à chaque porte.
+        // =====================================================================
+        // [INTEGRATION IA] - EXTENSION RÉELLE DE CHAQUE VISUEL
+        // Évite les requêtes 404 inutiles : on connaît d'avance le bon format de fichier.
+        // (Le fallback handleImageError reste actif en filet de sécurité.)
+        const IMG_EXT = {"CLASSICO_01-A":"png","CLASSICO_01-D":"png","CLASSICO_01-E":"png","CLASSICO_01-F":"png","CLASSICO_01-G":"png","CLASSICO_01-H":"png","CLASSICO_01":"png","CLASSICO_02-A":"png","CLASSICO_02-D":"png","CLASSICO_02-E":"png","CLASSICO_02-F":"png","CLASSICO_02-G":"png","CLASSICO_02":"png","CLASSICO_03-A":"png","CLASSICO_03-D":"png","CLASSICO_03-E":"png","CLASSICO_03-F":"jpg","CLASSICO_03-G":"jpg","CLASSICO_03-H":"png","CLASSICO_03-I":"png","CLASSICO_03":"png","CLASSICO_04-A":"png","CLASSICO_04-D":"png","CLASSICO_04-F":"png","CLASSICO_04-G":"png","CLASSICO_04-H":"jpg","CLASSICO_04-I":"png","CLASSICO_04":"png","CLASSICO_05-A":"png","CLASSICO_05-D":"png","CLASSICO_05-E":"png","CLASSICO_05-F":"png","CLASSICO_05-G":"png","CLASSICO_05-H":"png","CLASSICO_05":"png","CLASSICO_06-A":"png","CLASSICO_06-B":"png","CLASSICO_06-C":"png","CLASSICO_06-D":"png","CLASSICO_06-F":"png","CLASSICO_06-I":"jpg","CLASSICO_06":"png","CLASSICO_07-A":"png","CLASSICO_07-B":"png","CLASSICO_07-C":"png","CLASSICO_07":"png","CLASSICO_08-A":"png","CLASSICO_08-D":"png","CLASSICO_08-F":"png","CLASSICO_08":"png","CLASSICO_09-A":"png","CLASSICO_09-D":"png","CLASSICO_09-F":"png","CLASSICO_09-G":"png","CLASSICO_09-H":"png","CLASSICO_09":"png","CLASSICO_10-A":"png","CLASSICO_10-D":"png","CLASSICO_10-F":"png","CLASSICO_10-G":"png","CLASSICO_10-H":"jpg","CLASSICO_10-I":"png","CLASSICO_10":"png","CLASSICO_11-A":"png","CLASSICO_11-D":"png","CLASSICO_11-E":"jpg","CLASSICO_11-F":"jpg","CLASSICO_11-G":"png","CLASSICO_11-H":"png","CLASSICO_11-I":"png","CLASSICO_11":"png","CLASSICO_12-A":"png","CLASSICO_12-I":"png","CLASSICO_12":"png","CLASSICO_13-A":"png","CLASSICO_13-I":"png","CLASSICO_13":"png","CLASSICO_14-A":"png","CLASSICO_14-B":"png","CLASSICO_14-C":"png","CLASSICO_14":"png","CLASSICO_15-A":"png","CLASSICO_15-C":"png","CLASSICO_15":"png","CLASSICO_16-A":"png","CLASSICO_16-B":"png","CLASSICO_16":"png","CLASSICO_17-A":"png","CLASSICO_17":"png","CLASSICO_18-A":"png","CLASSICO_18-I":"png","CLASSICO_18":"png","ELA_01":"jpg","ELA_02":"jpg","ELA_03":"jpg","ELA_04":"jpg","ELA_05":"jpg","ELA_06":"jpg","ELA_07":"jpg","ELA_08":"jpg","ELA_09":"jpg","ELA_10":"jpg","ELA_11":"jpg","ELA_12":"jpg","ELA_13":"jpg","ELA_14":"jpg","ELA_15":"png","ELA_16":"png","ELA_17":"png","ELA_18":"png","ELA_19":"jpg","ELA_20":"jpg","ELA_21":"jpg","ELA_22":"jpg","ELA_23":"jpg","ELA_24":"jpg","ELA_25":"jpg","ELA_26":"jpg","ELA_27":"jpg","ELA_28":"jpg","ELA_29":"jpg","ELA_30":"jpg","ELA_31":"jpg","ELA_32":"jpg","ELA_33":"jpg","ELA_34":"jpg","ELA_35":"jpg","ELA_36":"jpg","ELA_37":"jpg","ELA_38":"jpg","ELA_39":"jpg","ELA_40":"jpg","ELA_41":"jpg","ELA_42":"jpg","ELA_43":"jpg","ELA_44":"jpg","ELA_45":"jpg","ELA_46":"png","ELA_47":"jpg","ELA_48":"jpg","ELA_49":"jpg","ELA_50":"jpg","ELA_51":"jpg","ELA_52":"jpg","ELA_53":"jpg","ELA_54":"jpg","ELA_55":"jpg","ELA_56":"jpg","ELA_57":"jpg","ELA_58":"jpg","ELA_59":"jpg","ELA_60":"jpg","ELA_61":"jpg","ELA_62":"jpg","ELA_63":"png","ELA_64":"png","ELA_65":"png","ELA_66":"JPG","ELA_67":"JPG","ELA_68":"png","ELA_69":"png","ELA_70":"png","GEO_01":"png","GEO_02":"png","GEO_03":"png","GEO_04":"png","GEO_05":"png","GEO_06":"png","GEO_07":"png","GEO_08":"png","GEO_09":"png","GEO_10":"jpg","LEO_01":"png","LEO_02":"png","LEO_03":"png","LEO_04":"jpg","LEO_05":"png","LEO_06":"png","LEO_07":"png","LEO_08":"png","LEO_09":"png","LEO_10":"png","LEO_11":"png","LEO_12":"jpg","LEO_13":"jpg","LEO_14":"jpg","LEO_15":"png","LEO_16":"png","LEO_17":"png","LEO_18":"png","LEO_19":"png","LEO_20":"jpg","LINA_01":"jpg","LINA_02":"png","LINA_07":"png","LINA_14":"png","LINA_15":"png","LINA_16":"png","LINA_19":"png","LINA_22":"png","LINA_25":"png","LINA_26":"png","LINA_28":"png","LINA_29":"png","LINA_31":"png","LINA_32":"jpg","LINA_33":"png","LINA_34":"jpg","REVA_01":"jpg","REVA_02":"jpg","REVA_03":"jpg","REVA_04":"jpg","REVA_05":"jpg","REVA_06":"jpg","REVA_09":"jpg","REVA_10":"png","REVA_11":"png","REVA_12":"jpg","REVA_13":"jpg","REVA_15":"png","REVA_16":"png","REVA_17":"png","REVA_18":"jpg","REVA_19":"jpg","REVA_20":"png","REVA_21":"png","REVA_22":"jpg","REVA_23":"png","REVA_26":"jpg","REVA_27":"jpg","REVA_28":"jpg","REVA_29":"jpg","REVA_30":"png","REVA_31":"png","REVA_34":"jpg","REVA_35":"jpg","REVA_36":"jpg","REVA_38":"png","REVA_39":"png","REVA_40":"png","REVA_43":"png","REVA_44":"jpg","REVA_48":"jpg","REVA_52":"png","REVA_53":"png","REVA_55":"png","REVA_56":"jpg","REVA_57":"png","REVA_58":"png","REVA_59":"png","REVA_60":"png","REVA_61":"png","REVA_62":"png","REVA_63":"jpg","REVA_64":"jpg","REVA_65":"jpg","REVA_66":"png","REVA_67":"png","REVA_68":"jpg","REVA_69":"jpg","REVA_70":"png","REVA_71":"png","REVA_72":"jpg","REVA_73":"png","REVA_74":"jpg","REVA_75":"jpg","REVA_76":"jpg","REVA_77":"png","REVA_78":"jpg","REVA_79":"png","REVA_80":"png","REVA_81":"png","REVA_82":"png"};
+
+        // Prix d'achat catalogue après la hausse fournisseur (+6%), arrondi au centime.
+        // La référence standard étant elle aussi augmentée (cf. PRIX_BASE_INCLUS),
+        // les standards restent à 0€ et les plus-values premium montent d'environ 6%.
+        function brutApresHausse(brut) {
+            return Math.round(brut * (1 + HAUSSE_ACHAT) * 100) / 100;
+        }
+
+        const doors = [];
+        doorDefinitions.forEach(def => {
+            const brut = brutApresHausse(def.brut);   // prix d'achat après hausse
+            const pvCalculee = calcPVPanneau(brut);
+            def.list.forEach(suffix => {
+                const fileKey = `${def.gamme}_${suffix}`;
+                const ext = IMG_EXT[fileKey] || 'jpg';
+                doors.push({
+                    id: `${def.gamme} ${suffix}`,
+                    gamme: def.gamme,
+                    searchKey: suffix,
+                    brut: brut,
+                    pv: pvCalculee,
+                    legend: getDoorLegend(def.gamme, suffix), // Ajout de la légende technique
+                    image: `${fileKey}.${ext}`,          // pleine résolution (modale)
+                    thumb: `thumbs/${fileKey}.${ext}`     // vignette ~400px (grille, chargement allégé)
+                });
+            });
+        });
+
+        // Gammes ayant au moins un modèle sans plus-value (catalogue « inclus »).
+        const GAMMES_WITH_INCLUS = new Set(doors.filter(d => d.pv === 0).map(d => d.gamme));
+
+        // Initialiser les icônes Lucide UI
+        lucide.createIcons();
+
+        // Éléments du DOM globaux
+        const grid = document.getElementById('doorsGrid');
+        const searchInput = document.getElementById('searchInput');
+        const doorCountSpan = document.getElementById('doorCount');
+        const noResultsMsg = document.getElementById('noResults');
+        const tabsContainer = document.getElementById('tabsContainer');
+        
+        // Modale & Composants des Étapes
+        const modal = document.getElementById('imageModal');
+        const modalContent = document.getElementById('modalContent');
+        const modalImg = document.getElementById('modalImg');
+        const closeModalBtns = [document.getElementById('closeModalBtn'), document.getElementById('closeModalBtnDesktop')];
+        
+        // Composants Étape 1 (Sélection du Panneau)
+        const modalStep1 = document.getElementById('modalStep1');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalGammeBadge = document.getElementById('modalGammeBadge');
+        const modalLegend = document.getElementById('modalLegend'); // Élément légende
+        const modalPvValue = document.getElementById('modalPvValue');
+        const modalPvLabel = document.getElementById('modalPvLabel');
+        const modalPvBlock = document.getElementById('modalPvBlock');
+        const modalPvIcon = document.getElementById('modalPvIcon');
+        const colorSection = document.getElementById('colorSection');
+        const croisillonSection = document.getElementById('croisillonSection'); // Section spéciale CLASSICO D
+        const dynamicDisclaimersContainer = document.getElementById('dynamicDisclaimersContainer'); 
+        const preSelectBtn = document.getElementById('preSelectBtn');
+        const variantSection = document.getElementById('variantSection');
+        const variantStrip = document.getElementById('variantStrip');
+
+        // Lightbox (zoom plein écran)
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightboxImg');
+        const lightboxClose = document.getElementById('lightboxClose');
+        const zoomImgBtn = document.getElementById('zoomImgBtn');
+
+        // Composants Étape 2 (Récapitulatif)
+        const modalStep2 = document.getElementById('modalStep2');
+        const summaryDetails = document.getElementById('summaryDetails');
+        const confirmSelectionBtn = document.getElementById('confirmSelectionBtn');
+        const backToStep1Btn = document.getElementById('backToStep1Btn');
+
+        // Variable globale stockant l'état de la porte en cours de consultation
+        let currentDoor = null;
+        // Groupe de variantes en cours (CLASSICO) — tableau de portes partageant le même modèle de base
+        let currentGroup = [];
+        // État du sélecteur de couleur visuel (pastilles)
+        let colorState = { color: null, faces: 1, customText: '' };
+        // Élément ayant le focus avant ouverture de la modale (restauré à la fermeture)
+        let lastFocusedEl = null;
+
+        // --- CATALOGUE COULEURS (pastilles visuelles) ---
+        // base = supplément HT par face (Blanc = inclus). aspect = rendu visuel de la pastille.
+        const COLOR_OPTIONS = [
+            { key: 'blanc',      name: 'Blanc',          ral: 'Standard',  base: 0,  swatch: '#ffffff', border: true },
+            { key: 'anthracite', name: 'Gris Anthracite',ral: 'RAL 7016',  base: 90, swatch: '#383e42' },
+            { key: 'noir',       name: 'Noir',           ral: 'RAL 9005',  base: 90, swatch: '#0e0e10' },
+            { key: 'quartz',     name: 'Gris Quartz',    ral: 'RAL 7039',  base: 90, swatch: '#6d6a63' },
+            { key: 'chene',      name: 'Chêne Doré',     ral: 'Plaxé bois',base: 90, swatch: 'linear-gradient(135deg,#c69a5b,#8a5a2b)' },
+            { key: 'autre',      name: 'Autre RAL',      ral: 'sur-mesure',base: 90, swatch: 'conic-gradient(red,orange,yellow,lime,cyan,blue,magenta,red)', custom: true }
+        ];
+
+        // --- GESTION DES ONGLETS DE FILTRAGE ---
+        // ELA est notre gamme recommandée (mise en avant, sélectionnée par défaut).
+        // "Inclus dans le devis" regroupe TOUS les panneaux sans plus-value (toutes gammes confondues).
+        const TAB_ELA = 'ELA';
+        const TAB_INCLUS = 'Inclus dans le devis';
+        const TAB_ALL = 'Toute la collection';
+        const gammes = [TAB_ELA, TAB_INCLUS, 'GEO', 'LEO', 'LINA', 'REVA', 'CLASSICO', TAB_ALL];
+        let currentGammeFilter = TAB_ELA; // ELA recommandée par défaut
+
+        function renderTabs() {
+            tabsContainer.innerHTML = '';
+            gammes.filter(g => {
+                if (CATALOGUE_MODE && g === TAB_INCLUS) return false;          // pas de notion de prix en catalogue
+                if (CATALOGUE_ONLY_INCLUS && g !== TAB_ALL && !GAMMES_WITH_INCLUS.has(g)) return false; // onglet sans modèle inclus
+                return true;
+            }).forEach(gamme => {
+                const btn = document.createElement('button');
+                const isActive = gamme === currentGammeFilter;
+
+                let classes, label;
+                if (gamme === TAB_ELA) {
+                    label = '★ ELA · Recommandée';
+                    // ELA reste visuellement distincte (accent bleu) même quand un autre onglet est actif
+                    classes = isActive
+                        ? 'bg-sarange-blue text-white shadow-md'
+                        : 'bg-orange-50 text-sarange-blue border border-orange-200 hover:bg-orange-100';
+                } else if (gamme === TAB_INCLUS) {
+                    label = '✓ Inclus dans le devis';
+                    classes = isActive
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100';
+                } else {
+                    label = gamme;
+                    classes = isActive
+                        ? 'bg-sarange-blue text-white shadow-md'
+                        : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200';
+                }
+
+                btn.className = `px-5 py-2 text-sm md:text-base rounded-full font-medium transition-all whitespace-nowrap ${classes}`;
+                btn.textContent = label;
+                btn.onclick = () => {
+                    currentGammeFilter = gamme;
+                    renderTabs();
+                    applyFilters();
+                };
+                tabsContainer.appendChild(btn);
+            });
+        }
+
+        // --- GESTION DU FALLBACK DES IMAGES (JPG > PNG > etc.) ---
+        function handleImageError(imgElement, doorData) {
+            const currentSrc = imgElement.src;
+            const prefix = `${doorData.gamme}_${doorData.searchKey}`;
+            
+            // Logique de remplacement d'extension dynamique si fichier manquant
+            if (currentSrc.includes('.jpg')) {
+                imgElement.src = `${prefix}.png`;
+            } else if (currentSrc.includes('.png')) {
+                imgElement.src = `${prefix}.JPG`;
+            } else if (currentSrc.includes('.JPG')) {
+                imgElement.src = `${prefix}.PNG`;
+            } else {
+                imgElement.onerror = null; 
+                // Affiche un SVG vide par défaut
+                imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600"><rect width="400" height="600" fill="%23f1f5f9"/><path d="M150 250h100v100h-100z" fill="%23cbd5e1"/><text x="50%" y="50%" font-family="sans-serif" font-size="16" fill="%2364748b" text-anchor="middle" dy="70">Image non trouvée</text></svg>';
+                imgElement.classList.add('border', 'border-slate-200');
+            }
+        }
+
+        // Ordre d'affichage des gammes dans les vues groupées (ELA en premier)
+        const GAMME_ORDER = ['ELA', 'GEO', 'LEO', 'LINA', 'REVA', 'CLASSICO'];
+
+        // Modèle de base CLASSICO ("01-D" -> "01") pour regrouper les variantes
+        function classicoBase(key) { return key.split('-')[0]; }
+
+        // --- CONSTRUCTION D'UNE CARTE PANNEAU (accessible au clavier) ---
+        // door = porte représentative ; variants = toutes les versions regroupées (>=1)
+        function buildCard(door, variants) {
+            variants = variants || [door];
+            const isGroup = variants.length > 1;
+            // Pour un groupe CLASSICO, le titre affiche le modèle de base (ex: "CLASSICO 01")
+            const title = isGroup ? `${door.gamme} ${classicoBase(door.searchKey)}` : door.id;
+
+            const card = document.createElement('div');
+            card.className = 'door-card bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden cursor-pointer flex flex-col group relative focus:outline-none focus:ring-2 focus:ring-sarange-blue focus:ring-offset-2';
+            card.setAttribute('role', 'button');
+            card.setAttribute('tabindex', '0');
+            card.setAttribute('aria-label', `${title}${isGroup ? ', ' + variants.length + ' versions disponibles' : ''}${CATALOGUE_MODE ? '' : ' — ' + (door.pv > 0 ? 'plus-value ' + door.pv.toFixed(2).replace('.', ',') + ' euros HT' : 'inclus, sans supplément')}. Ouvrir pour ${CATALOGUE_MODE ? 'voir le détail' : 'choisir'}.`);
+
+            const pvBadgeHtml = CATALOGUE_MODE ? '' : door.pv > 0
+                ? `<span class="bg-amber-100 text-amber-800 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm shadow-amber-900/10 border border-amber-200">+ ${door.pv.toFixed(2).replace('.', ',')} € HT</span>`
+                : `<span class="bg-emerald-50 text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm shadow-emerald-900/10 border border-emerald-200">Inclus</span>`;
+
+            const versionsBadge = isGroup
+                ? `<span class="bg-white/90 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-full shadow-sm border border-slate-200 flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5"></i>${variants.length} versions</span>`
+                : '';
+
+            const open = function() {
+                // La modale charge l'image pleine résolution (la grille n'affiche qu'une vignette)
+                openModal(door, door.image, variants);
+            };
+            card.addEventListener('click', open);
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+            });
+
+            card.innerHTML = `
+                <div class="absolute top-4 left-4 z-20 flex flex-col gap-1.5 items-start">
+                    ${pvBadgeHtml}
+                    ${versionsBadge}
+                </div>
+                <div class="door-image-container relative bg-slate-50 pt-8 px-3 pb-2 sm:pt-12 sm:px-6 flex-grow flex items-center justify-center overflow-hidden">
+                    <div class="absolute inset-0 bg-sarange-blue/0 group-hover:bg-sarange-blue/5 transition-colors z-10"></div>
+                    <img src="${door.thumb}" alt="Panneau ${title}" loading="lazy" decoding="async"
+                         class="h-44 sm:h-64 lg:h-[320px] w-auto object-contain drop-shadow-md relative z-0"
+                         onerror="handleImageError(this, {gamme: '${door.gamme}', searchKey: '${door.searchKey}'})">
+
+                    <!-- Indice "voir/choisir" : toujours visible sur tactile, au survol sur desktop -->
+                    <div class="absolute bottom-4 right-4 bg-white shadow-md rounded-full p-2 translate-y-0 opacity-100 sm:translate-y-10 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100 transition-all duration-300 z-20 text-sarange-blue">
+                        <i data-lucide="zoom-in" class="w-5 h-5"></i>
+                    </div>
+                </div>
+                <div class="p-4 border-t border-slate-100 bg-white flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-slate-800">${title}</h3>
+                    <span class="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded">${door.gamme}</span>
+                </div>
+            `;
+            return card;
+        }
+
+        // Ajoute les cartes d'une liste à la grille. Pour CLASSICO, regroupe les variantes
+        // (01, 01-A, 01-D…) sous une seule carte "modèle de base".
+        function appendCards(list, gamme) {
+            if (gamme === 'CLASSICO') {
+                const byBase = {};
+                list.forEach(d => { const b = classicoBase(d.searchKey); (byBase[b] = byBase[b] || []).push(d); });
+                Object.keys(byBase).sort().forEach(b => {
+                    const vs = byBase[b];
+                    // Représentant : le modèle de base sans suffixe si présent, sinon la 1re variante
+                    const rep = vs.find(d => d.searchKey === b) || vs[0];
+                    grid.appendChild(buildCard(rep, vs));
+                });
+            } else {
+                list.forEach(d => grid.appendChild(buildCard(d, [d])));
+            }
+        }
+
+        // Nombre de cartes réellement affichées pour une gamme (CLASSICO = modèles de base)
+        function countCards(list, gamme) {
+            if (gamme === 'CLASSICO') {
+                return new Set(list.map(d => classicoBase(d.searchKey))).size;
+            }
+            return list.length;
+        }
+
+        // En-tête de section (occupe toute la largeur de la grille)
+        function buildSectionHeader(gamme, list) {
+            const count = countCards(list, gamme);
+            const total = list.length;
+            const h = document.createElement('div');
+            h.className = 'col-span-full flex items-center gap-3 mt-2 mb-1 first:mt-0';
+            const tag = gamme === 'ELA'
+                ? '<span class="text-xs font-semibold text-sarange-blue bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">Recommandée</span>'
+                : '';
+            const countLabel = (gamme === 'CLASSICO' && total > count)
+                ? `${count} modèle${count > 1 ? 's' : ''} · ${total} versions`
+                : `${count} modèle${count > 1 ? 's' : ''}`;
+            h.innerHTML = `
+                <h3 class="text-lg font-bold text-slate-800">${gamme}</h3>
+                ${tag}
+                <span class="text-sm text-slate-400">${countLabel}</span>
+                <span class="flex-grow h-px bg-slate-200"></span>`;
+            return h;
+        }
+
+        // --- RENDU DOM DE LA GRILLE DES PORTES ---
+        function renderDoors(doorsToRender, grouped, animate) {
+            grid.innerHTML = '';
+
+            if (doorsToRender.length === 0) {
+                grid.classList.add('hidden');
+                noResultsMsg.classList.remove('hidden');
+            } else {
+                grid.classList.remove('hidden');
+                noResultsMsg.classList.add('hidden');
+
+                // Vues multi-gammes / recherche -> on groupe par gamme avec un en-tête de section
+                if (grouped) {
+                    GAMME_ORDER.forEach(gamme => {
+                        const inGamme = doorsToRender.filter(d => d.gamme === gamme);
+                        if (inGamme.length === 0) return;
+                        grid.appendChild(buildSectionHeader(gamme, inGamme));
+                        appendCards(inGamme, gamme);
+                    });
+                } else {
+                    appendCards(doorsToRender, currentGammeFilter);
+                }
+
+                if (window.lucide) lucide.createIcons();
+            }
+            if (animate !== false) {
+                grid.querySelectorAll(".door-card").forEach((c, i) => {
+                    c.classList.add("anim-rise");
+                    c.style.animationDelay = Math.min(i, 8) * 45 + "ms";
+                });
+            }
+            doorCountSpan.textContent = doorsToRender.length;
+        }
+
+        // --- FILTRAGE ET RECHERCHE TEXTUELLE ---
+        function applyFilters() {
+            const term = searchInput.value.toLowerCase().trim();
+            const searching = term.length > 0;
+
+            const filtered = doors.filter(door => {
+                // Recherche GLOBALE : dès qu'on tape, on cherche dans toutes les gammes
+                // (évite le "0 résultat" quand on tape « REVA » depuis l'onglet ELA).
+                let matchGamme;
+                if (searching || currentGammeFilter === TAB_ALL) {
+                    matchGamme = true;
+                } else if (currentGammeFilter === TAB_INCLUS) {
+                    matchGamme = door.pv === 0; // Tous les panneaux sans plus-value, toutes gammes
+                } else {
+                    matchGamme = door.gamme === currentGammeFilter;
+                }
+                const matchSearch = door.id.toLowerCase().includes(term)
+                    || door.searchKey.toLowerCase().includes(term)
+                    || door.gamme.toLowerCase().includes(term);
+                return matchGamme && matchSearch && (!CATALOGUE_ONLY_INCLUS || door.pv === 0);
+            });
+
+            // Vue groupée (en-têtes par gamme) en recherche globale ou vues multi-gammes
+            const grouped = searching || currentGammeFilter === TAB_ALL || currentGammeFilter === TAB_INCLUS;
+            renderDoors(filtered, grouped, !searching);
+            updateGammeBanner(term);
+        }
+
+        // --- BANDEAU CONTEXTUEL ---
+        function updateGammeBanner(term) {
+            const banner = document.getElementById('gammeBanner');
+            let html = '';
+
+            if (CATALOGUE_ONLY_INCLUS && !term) {
+                html = `
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="font-semibold text-emerald-800">Modèles inclus — sans supplément</p>
+                            <p class="text-sm text-emerald-700">Cette sélection regroupe les panneaux proposés sans aucun surcoût. Touchez un modèle pour le découvrir.</p>
+                        </div>
+                    </div>`;
+            } else if (currentGammeFilter === TAB_ELA && !term) {
+                html = `
+                    <div class="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-start gap-3">
+                        <i data-lucide="star" class="w-5 h-5 text-sarange-blue flex-shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="font-semibold text-sarange-blue">Gamme ELA — notre sélection recommandée</p>
+                            <p class="text-sm text-slate-600">Des modèles épurés et intemporels, sans plus-value. Touchez un panneau pour le choisir.</p>
+                        </div>
+                    </div>`;
+            } else if (currentGammeFilter === TAB_INCLUS && !term) {
+                html = `
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="font-semibold text-emerald-800">Modèles inclus dans votre devis</p>
+                            <p class="text-sm text-emerald-700">Tous ces panneaux, toutes gammes confondues, sont disponibles sans supplément.</p>
+                        </div>
+                    </div>`;
+            }
+
+            if (html) {
+                banner.innerHTML = html;
+                banner.classList.remove('hidden');
+                if (window.lucide) lucide.createIcons();
+            } else {
+                banner.classList.add('hidden');
+                banner.innerHTML = '';
+            }
+        }
+
+        searchInput.addEventListener('input', applyFilters);
+
+        // --- GESTION ET CALCUL DU PRIX DYNAMIQUE DANS LA MODALE ---
+        function updateModalPrice() {
+            if (!currentDoor) return;
+            
+            let colorPv = 0;
+            let chosenColorName = devisColor || "Blanc (Standard)";
+
+            // Lit l'état des pastilles de couleur (si aucune couleur n'est imposée par le devis)
+            if (!devisColor && colorState.color) {
+                const c = colorState.color;
+                const facesLabel = colorState.faces === 2 ? '2 faces' : '1 face';
+                if (c.base === 0) {
+                    colorPv = 0;
+                    chosenColorName = "Blanc (Standard)";
+                } else if (c.custom) {
+                    colorPv = c.base * colorState.faces;
+                    const val = colorState.customText.trim() || "à préciser";
+                    chosenColorName = `Couleur sur-mesure (${val}) - ${facesLabel}`;
+                } else {
+                    colorPv = c.base * colorState.faces;
+                    chosenColorName = `${c.name} (${c.ral}) - ${facesLabel}`;
+                }
+            }
+
+            // Calcul du total cumulé (Panneau + Option Peinture éventuelle)
+            const totalPv = currentDoor.pv + colorPv;
+            
+            // [INTEGRATION IA] : Sauvegarde des attributs dans l'objet "currentDoor" pour l'envoi ultérieur
+            currentDoor.selectedColor = chosenColorName;
+            currentDoor.colorPv = colorPv;
+            currentDoor.finalPv = totalPv;
+
+            // Mise à jour visuelle (Étape 1) : Bloc Prix
+            if (totalPv > 0) {
+                modalPvBlock.classList.replace('bg-emerald-50', 'bg-amber-50');
+                modalPvBlock.classList.replace('border-emerald-200', 'border-amber-200');
+                modalPvLabel.textContent = "Plus-value à prévoir";
+                modalPvValue.innerHTML = `+ ${totalPv.toFixed(2).replace('.', ',')} € <span class="text-sm font-normal">HT</span>`;
+                modalPvValue.className = "text-2xl font-bold text-amber-600";
+                modalPvIcon.className = "bg-amber-100 p-2 rounded-lg text-amber-600";
+            } else {
+                modalPvBlock.classList.replace('bg-amber-50', 'bg-emerald-50');
+                modalPvBlock.classList.replace('border-amber-200', 'border-emerald-200');
+                modalPvLabel.textContent = "Tarification";
+                modalPvValue.innerHTML = "Inclus en standard";
+                modalPvValue.className = "text-xl font-bold text-emerald-600";
+                modalPvIcon.className = "bg-emerald-100 p-2 rounded-lg text-emerald-600";
+            }
+
+            // [INTEGRATION IA] : Mise à jour dynamique des avertissements (Modèle et Couleur)
+            let disclaimersHtml = '';
+
+            if (currentDoor.pv > 0) {
+                disclaimersHtml += `
+                    <div class="mb-2">
+                        <p class="text-xs text-amber-800 leading-relaxed">
+                            <i data-lucide="info" class="w-4 h-4 inline mr-1 text-amber-600 align-text-bottom"></i>
+                            <strong>Choix du modèle :</strong> Nos devis de base sont toujours chiffrés avec des panneaux standards. Le choix de ce modèle spécifique (hors standard) engendre donc la plus-value indiquée ci-dessus.
+                        </p>
+                    </div>
+                `;
+            }
+
+            if (!devisColor && colorPv > 0) {
+                disclaimersHtml += `
+                    <div class="${currentDoor.pv > 0 ? 'mt-3 pt-3 border-t border-amber-200/60' : ''}">
+                        <p class="text-xs text-amber-800 leading-relaxed">
+                            <i data-lucide="paint-bucket" class="w-4 h-4 inline mr-1 text-amber-600 align-text-bottom"></i>
+                            <strong>Bon à savoir concernant la couleur :</strong><br>
+                            <span class="block mt-1">• <strong>Votre devis est déjà chiffré dans cette couleur ?</strong> Ignorez le supplément couleur indiqué (+${colorPv}€ HT), il est déjà inclus dans votre devis global !</span>
+                            <span class="block mt-1">• <strong>Vous ajoutez ou modifiez la couleur aujourd'hui ?</strong> Le montant indiqué ne couvre que la peinture du panneau. Le prix de la porte complète (cadre/dormant) devra être mis à jour par votre conseiller.</span>
+                        </p>
+                    </div>
+                `;
+            }
+
+            if (disclaimersHtml !== '') {
+                dynamicDisclaimersContainer.innerHTML = `<div class="bg-amber-50 p-3 rounded-xl border border-amber-100 shadow-sm">${disclaimersHtml}</div>`;
+                if (window.lucide) window.lucide.createIcons();
+            } else {
+                dynamicDisclaimersContainer.innerHTML = '';
+            }
+        }
+
+        // --- SÉLECTEUR DE COULEUR VISUEL (PASTILLES) ---
+        function renderColorPicker() {
+            colorState = { color: COLOR_OPTIONS[0], faces: 1, customText: '' }; // Blanc par défaut
+
+            colorSection.innerHTML = `
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <label class="flex items-center gap-2 mb-3">
+                        <i data-lucide="paint-bucket" class="w-5 h-5 text-sarange-blue"></i>
+                        <span class="font-medium text-slate-900">Choix de la couleur</span>
+                    </label>
+                    <div id="swatches" class="flex flex-wrap gap-3 mb-3"></div>
+                    <div id="customColorInputContainer" class="hidden mb-3">
+                        <label class="block text-xs font-medium text-slate-700 mb-1">Précisez votre couleur (RAL ou description) :</label>
+                        <input type="text" id="customColorInput" placeholder="Ex: Rouge RAL 3004..." class="w-full rounded-lg border-slate-300 border p-3 text-sm focus:ring-2 focus:ring-sarange-blue outline-none bg-white shadow-sm">
+                    </div>
+                    <div id="facesToggle" class="hidden">
+                        <p class="text-xs font-medium text-slate-500 mb-2">Application de la couleur</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" data-faces="1" class="faces-btn">1 face extérieure<span class="block text-xs font-normal mt-0.5">+90 € HT</span></button>
+                            <button type="button" data-faces="2" class="faces-btn">2 faces<span class="block text-xs font-normal mt-0.5">+180 € HT</span></button>
+                        </div>
+                    </div>
+                </div>`;
+
+            const swatches = document.getElementById('swatches');
+            COLOR_OPTIONS.forEach(c => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.dataset.key = c.key;
+                btn.className = 'swatch flex flex-col items-center gap-1 w-14 focus:outline-none';
+                btn.setAttribute('aria-label', `${c.name} (${c.ral})`);
+                btn.innerHTML = `
+                    <span class="swatch-dot w-10 h-10 rounded-full shadow-inner ring-2 ring-offset-2 ring-transparent ${c.border ? 'border border-slate-300' : ''}" style="background:${c.swatch}"></span>
+                    <span class="text-[11px] leading-tight text-center text-slate-600">${c.name}</span>`;
+                btn.addEventListener('click', () => setColor(c.key));
+                swatches.appendChild(btn);
+            });
+
+            document.querySelectorAll('#facesToggle .faces-btn').forEach(b => {
+                b.addEventListener('click', () => setFaces(parseInt(b.dataset.faces, 10)));
+            });
+
+            setColor('blanc'); // état initial + styles
+        }
+
+        function setColor(key) {
+            const c = COLOR_OPTIONS.find(o => o.key === key) || COLOR_OPTIONS[0];
+            colorState.color = c;
+
+            // Surbrillance de la pastille active
+            document.querySelectorAll('#swatches .swatch').forEach(btn => {
+                const dot = btn.querySelector('.swatch-dot');
+                const active = btn.dataset.key === key;
+                dot.classList.toggle('ring-sarange-blue', active);
+                dot.classList.toggle('ring-transparent', !active);
+            });
+
+            // Faces visibles uniquement pour une couleur payante ; champ libre pour "Autre RAL"
+            document.getElementById('facesToggle').classList.toggle('hidden', c.base === 0);
+            document.getElementById('customColorInputContainer').classList.toggle('hidden', !c.custom);
+            if (c.custom) {
+                const inp = document.getElementById('customColorInput');
+                inp.oninput = () => { colorState.customText = inp.value; updateModalPrice(); };
+            }
+
+            updateFacesStyle();
+            updateModalPrice();
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function setFaces(n) {
+            colorState.faces = n;
+            updateFacesStyle();
+            updateModalPrice();
+        }
+
+        function updateFacesStyle() {
+            document.querySelectorAll('#facesToggle .faces-btn').forEach(b => {
+                const active = parseInt(b.dataset.faces, 10) === colorState.faces;
+                b.className = 'faces-btn rounded-lg border p-2.5 text-sm font-medium text-center transition-colors ' +
+                    (active ? 'border-sarange-blue bg-orange-50 text-sarange-blue' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50');
+            });
+        }
+
+        // --- SÉLECTEUR DE VARIANTE (CLASSICO) ---
+        function renderVariantStrip() {
+            if (currentGroup.length <= 1) {
+                variantSection.classList.add('hidden');
+                variantStrip.innerHTML = '';
+                return;
+            }
+            variantSection.classList.remove('hidden');
+            const countEl = document.getElementById('variantCount');
+            if (countEl) countEl.textContent = `(${currentGroup.length})`;
+            variantStrip.innerHTML = '';
+            currentGroup.forEach(d => {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.dataset.key = d.searchKey;
+                b.className = 'variant-thumb flex-shrink-0 rounded-lg border-2 p-1 bg-white transition-colors';
+                b.setAttribute('aria-label', `Version ${d.id}`);
+                b.innerHTML = `<img src="${d.thumb}" alt="${d.id}" loading="lazy" class="h-16 w-12 object-contain" onerror="handleImageError(this, {gamme:'${d.gamme}', searchKey:'${d.searchKey}'})">`;
+                b.addEventListener('click', () => switchVariant(d));
+                variantStrip.appendChild(b);
+            });
+        }
+
+        function updateVariantActive(key) {
+            variantStrip.querySelectorAll('.variant-thumb').forEach(b => {
+                const active = b.dataset.key === key;
+                b.classList.toggle('border-sarange-blue', active);
+                b.classList.toggle('border-slate-200', !active);
+            });
+        }
+
+        function switchVariant(door) {
+            applyDoorToModal(door);
+            updateVariantActive(door.searchKey);
+        }
+
+        // --- APPLIQUE LE CONTENU D'UNE PORTE DANS LA MODALE (image, prix, options) ---
+        function applyDoorToModal(door) {
+            currentDoor = door;
+
+            modalImg.src = door.image; // pleine résolution
+            modalImg.onerror = function() { handleImageError(this, door); };
+            modalTitle.textContent = `Modèle ${door.id}`;
+            modalGammeBadge.textContent = `GAMME ${door.gamme}`;
+            modalLegend.querySelector('span').textContent = door.legend;
+
+            // Croisillons (CLASSICO -D)
+            if (door.gamme === 'CLASSICO' && door.searchKey.endsWith('-D')) {
+                croisillonSection.classList.remove('hidden');
+                document.getElementById('croisillonSelect').value = "Blancs";
+            } else {
+                croisillonSection.classList.add('hidden');
+            }
+
+            // Couleur : imposée par le devis, ou choix libre par pastilles
+            if (devisColor) {
+                colorSection.innerHTML = `
+                    <div class="bg-orange-50 p-4 rounded-xl border border-orange-100 flex items-start gap-3">
+                        <i data-lucide="paint-bucket" class="w-5 h-5 text-sarange-blue mt-0.5 flex-shrink-0"></i>
+                        <div>
+                            <p class="text-sm font-medium text-slate-700 mb-1">Couleur prévue à votre devis :</p>
+                            <p class="text-lg font-bold text-sarange-blue mb-3">${devisColor}</p>
+                            <div class="bg-white p-3 rounded-lg border border-orange-100 shadow-sm space-y-2">
+                                <p class="text-xs text-slate-700">
+                                    <i data-lucide="check-circle" class="w-4 h-4 inline mr-1 text-emerald-500 align-text-bottom"></i>
+                                    <strong>Inclus :</strong> Le coût de cette couleur est déjà pris en compte dans votre devis global. Il n'y a aucun supplément tarifaire pour le panneau.
+                                </p>
+                                <hr class="border-slate-100">
+                                <p class="text-xs text-slate-500">
+                                    <i data-lucide="alert-circle" class="w-4 h-4 inline mr-1 text-amber-500 align-text-bottom"></i>
+                                    <em>Si vous désirez changer de couleur, prévenez votre conseiller : le devis de la porte complète devra être recalculé.</em>
+                                </p>
+                            </div>
+                        </div>
+                    </div>`;
+                updateModalPrice();
+            } else {
+                renderColorPicker(); // appelle updateModalPrice via setColor
+            }
+
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        // --- OUVERTURE DE LA MODALE ---
+        function openModal(door, finalSrc, variants) {
+            currentGroup = (variants && variants.length) ? variants : [door];
+
+            // S'assurer qu'on est sur l'étape 1
+            modalStep1.classList.remove('hidden');
+            modalStep1.classList.add('flex');
+            modalStep2.classList.add('hidden');
+            modalStep2.classList.remove('flex');
+
+            // Remise à zéro visuelle du bouton de confirmation
+            confirmSelectionBtn.innerHTML = '<i data-lucide="check-circle" class="w-6 h-6"></i><span>Confirmer définitivement</span>';
+            confirmSelectionBtn.classList.remove('bg-emerald-500');
+            confirmSelectionBtn.classList.add('bg-green-600');
+
+            applyDoorToModal(door);
+            renderVariantStrip();
+            updateVariantActive(door.searchKey);
+
+            // Mémorise l'élément qui avait le focus pour le restaurer à la fermeture (accessibilité)
+            lastFocusedEl = document.activeElement;
+
+            // Déclenche l'animation d'ouverture
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-95');
+                preSelectBtn.focus();
+            }, 10);
+            document.body.style.overflow = 'hidden';
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        // --- LIGHTBOX (zoom plein écran) ---
+        function openLightbox(src) {
+            lightboxImg.src = src;
+            lightboxImg.classList.remove('scale-[2.2]', 'cursor-zoom-out');
+            lightboxImg.classList.add('cursor-zoom-in');
+            lightboxImg.style.transformOrigin = 'center';
+            lightbox.classList.remove('hidden');
+            lightbox.classList.add('flex');
+            setTimeout(() => lightbox.classList.remove('opacity-0'), 10);
+            if (window.lucide) window.lucide.createIcons();
+        }
+        function closeLightbox() {
+            lightbox.classList.add('opacity-0');
+            setTimeout(() => { lightbox.classList.add('hidden'); lightbox.classList.remove('flex'); }, 200);
+        }
+        zoomImgBtn.addEventListener('click', () => openLightbox(modalImg.src));
+        modalImg.addEventListener('click', () => openLightbox(modalImg.src));
+        lightboxClose.addEventListener('click', closeLightbox);
+        lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightbox(); });
+        lightboxImg.addEventListener('click', (e) => {
+            const zoomed = lightboxImg.classList.toggle('scale-[2.2]');
+            lightboxImg.classList.toggle('cursor-zoom-out', zoomed);
+            lightboxImg.classList.toggle('cursor-zoom-in', !zoomed);
+            if (zoomed) {
+                const r = lightboxImg.getBoundingClientRect();
+                const x = ((e.clientX - r.left) / r.width) * 100;
+                const y = ((e.clientY - r.top) / r.height) * 100;
+                lightboxImg.style.transformOrigin = `${x}% ${y}%`;
+            } else {
+                lightboxImg.style.transformOrigin = 'center';
+            }
+        });
+
+        // --- FONCTIONS DE FERMETURE ---
+        function closeModal() {
+            modal.classList.add('opacity-0');
+            modalContent.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                document.body.style.overflow = 'auto';
+                // Restaure le focus sur la carte d'origine
+                if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus();
+            }, 300);
+        }
+
+        closeModalBtns.forEach(btn => btn.addEventListener('click', closeModal));
+        modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+        document.addEventListener('keydown', (e) => {
+            if (e.key !== 'Escape') return;
+            // La lightbox se ferme en priorité (elle est au-dessus de la modale)
+            if (!lightbox.classList.contains('hidden')) { closeLightbox(); return; }
+            if (!modal.classList.contains('hidden')) closeModal();
+        });
+
+        // Piège de focus : maintient la tabulation à l'intérieur de la modale ouverte
+        modal.addEventListener('keydown', (e) => {
+            if (e.key !== 'Tab') return;
+            const focusables = modal.querySelectorAll('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])');
+            const visibles = Array.from(focusables).filter(el => el.offsetParent !== null);
+            if (visibles.length === 0) return;
+            const first = visibles[0];
+            const last = visibles[visibles.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault(); last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault(); first.focus();
+            }
+        });
+
+        // --- NAVIGATION ENTRE ETAPES 1 ET 2 ---
+        
+        // Aller à l'Étape 2 (Bouton "Sélectionner ce modèle")
+        preSelectBtn.addEventListener('click', () => {
+            if (!currentDoor) return;
+
+            // [INTEGRATION IA] : Mémoriser le choix de croisillons si applicable (Modèle CLASSICO D)
+            if (currentDoor.gamme === 'CLASSICO' && currentDoor.searchKey.endsWith('-D')) {
+                currentDoor.selectedCroisillon = document.getElementById('croisillonSelect').value;
+            } else {
+                currentDoor.selectedCroisillon = null; // Nettoyer pour les autres
+            }
+
+            // HTML du badge de prix pour le récapitulatif
+            const priceHtml = currentDoor.finalPv === 0
+                ? `<span class="bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full text-sm font-bold">Inclus (0,00 €)</span>`
+                : `<span class="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-sm font-bold">+ ${currentDoor.finalPv.toFixed(2).replace('.', ',')} € HT *</span>`;
+
+            // Ajout du texte de rappel commercial sur la plus value
+            let disclaimerHtml = '';
+            if (currentDoor.finalPv > 0) {
+                disclaimerHtml = `<div class="mt-4 text-xs text-amber-700 italic border-t border-slate-100 pt-3">
+                                    <strong>* À noter :</strong> Nos devis de base incluent des panneaux standards. Ce supplément (modèle et/ou couleur) est à prévoir uniquement si cette configuration n'est pas déjà incluse dans votre devis actuel.
+                                  </div>`;
+            }
+
+            // Génération de la ligne Croisillons si applicable
+            let croisillonHtml = '';
+            if (currentDoor.selectedCroisillon) {
+                croisillonHtml = `
+                <div class="flex justify-between items-center border-b border-slate-100 py-3">
+                    <span class="text-slate-500 font-medium">Croisillons intégrés</span>
+                    <span class="text-slate-900 text-right w-2/3">Croisillons ${currentDoor.selectedCroisillon}</span>
+                </div>`;
+            }
+
+            summaryDetails.innerHTML = `
+                <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+                    <span class="text-slate-500 font-medium">Gamme</span>
+                    <span class="text-slate-900">${currentDoor.gamme}</span>
+                </div>
+                <div class="flex justify-between items-center border-b border-slate-100 py-3">
+                    <span class="text-slate-500 font-medium">Modèle de panneau</span>
+                    <span class="font-bold text-slate-900 text-lg">${currentDoor.id}</span>
+                </div>
+                ${croisillonHtml}
+                <div class="flex justify-between items-center border-b border-slate-100 py-3">
+                    <span class="text-slate-500 font-medium">Couleur retenue</span>
+                    <span class="text-slate-900 text-right w-2/3">${currentDoor.selectedColor}</span>
+                </div>
+                <div class="flex justify-between items-center pt-3">
+                    <span class="text-slate-500 font-medium">Impact tarifaire total</span>
+                    ${priceHtml}
+                </div>
+                ${disclaimerHtml}
+            `;
+
+            // Transition DOM
+            modalStep1.classList.add('hidden');
+            modalStep1.classList.remove('flex');
+            modalStep2.classList.remove('hidden');
+            modalStep2.classList.add('flex');
+            
+            if (window.lucide) window.lucide.createIcons();
+        });
+
+        // Retourner à l'Étape 1 depuis l'Étape 2
+        backToStep1Btn.addEventListener('click', () => {
+            modalStep2.classList.add('hidden');
+            modalStep2.classList.remove('flex');
+            modalStep1.classList.remove('hidden');
+            modalStep1.classList.add('flex');
+        });
+
+        // =====================================================================
+        // [INTEGRATION IA] - VALIDATION DEFINITIVE ET EXPORT DES DONNÉES (Étape 2)
+        // C'est ici que l'objet contenant toutes les métadonnées de la sélection
+        // est formaté puis envoyé à votre application parente ou Iframe.
+        // Un nouvel attribut "croisillonChoisi" a été ajouté si la porte est un CLASSICO D.
+        // =====================================================================
+        confirmSelectionBtn.addEventListener('click', () => {
+            if (!currentDoor) return;
+
+            // Structure de l'objet de données renvoyé à l'outil parent
+            const selection = {
+                event: 'PANEL_SELECTED',                // Identifiant de l'évènement
+                gamme: currentDoor.gamme,               // ex: "REVA", "ELA"...
+                panelName: currentDoor.id,              // ex: "REVA 62", "CLASSICO 01-D"
+                panelRef: currentDoor.searchKey,        // ex: "62", "01-D"
+                image: currentDoor.image,               // ex: "ELA_01.jpg" (visuel pleine résolution)
+                prixBrutCatalogue: currentDoor.brut,    // Tarif d'achat HT du tableau de définition
+                legendeVitrage: currentDoor.legend,     // Description technique issue du devis (vitrage etc)
+                croisillonChoisi: currentDoor.selectedCroisillon || null, // null si non applicable, ou "Blancs" / "Laitons"
+                couleurChoisie: currentDoor.selectedColor, 
+                plusValueCouleurHT: currentDoor.colorPv || 0, // PV issue *uniquement* de la couleur
+                plusValuePanneauHT: currentDoor.pv,           // PV issue *uniquement* du modèle de panneau
+                plusValueTotaleHT: currentDoor.finalPv,       // PV Totale (Couleur + Panneau)
+                infoCouleur: devisColor ? "Inclus (Couleur prévue au devis)" : "Couleur choisie dans le sélecteur (Devis porte à recalculer)"
+            };
+
+            // Envoi de la donnée via 2 canaux pour garantir la compatibilité
+            window.parent.postMessage(selection, PARENT_ORIGIN);
+            window.dispatchEvent(new CustomEvent('onSarangePanelSelect', { detail: selection }));
+
+            // Feedback visuel de succès pour rassurer le client
+            confirmSelectionBtn.innerHTML = '<i data-lucide="check-circle" class="w-6 h-6"></i><span>Choix validé avec succès !</span>';
+            confirmSelectionBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+            confirmSelectionBtn.classList.add('bg-emerald-500');
+            if (window.lucide) window.lucide.createIcons();
+
+            // Fermeture de la fenêtre modale après délai
+            setTimeout(closeModal, 1200);
+        });
+
+        // --- DEMARRAGE & INITIALISATION ---
+        // Sur grand écran, l'encart "Informations importantes" est déplié par défaut ;
+        // sur mobile il reste replié pour gagner de la place.
+        const infoDetails = document.getElementById('infoDetails');
+        if (infoDetails && window.matchMedia('(min-width: 768px)').matches) {
+            infoDetails.open = true;
+        }
+
+        if (CATALOGUE_MODE) {
+            document.body.classList.add('catalogue-mode');
+            const _sum = document.getElementById('infoSummary');
+            if (_sum) _sum.textContent = 'Couleurs et visuels — l\'essentiel en 2 points';
+        }
+        // Le catalogue « inclus » s'ouvre sur toute la collection filtrée (évite les onglets vides).
+        if (CATALOGUE_ONLY_INCLUS) currentGammeFilter = TAB_ALL;
+        renderTabs();
+        applyFilters();
+    </script>
+</body>
+</html>

@@ -21,6 +21,7 @@ export async function POST(request, { params }) {
       signerName: body?.signerName,
       acceptReducedVat: body?.acceptReducedVat === true,
       selectedVariantId: body?.selectedVariantId,
+      panelChoices: body?.panelChoices,
       signerIp: getClientIp(request),
       userAgent: request.headers.get('user-agent') || '',
     });

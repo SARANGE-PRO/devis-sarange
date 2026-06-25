@@ -36,6 +36,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Outil sélecteur de panneaux : dossier source de travail (catalogue PDF ~39 Mo
+# + images dupliquées dans public/selecteur-panneaux/). Conservé en local ;
+# seuls les artefacts servis sous public/selecteur-panneaux/ sont versionnés.
+/Outils Panneaux décoratifs/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

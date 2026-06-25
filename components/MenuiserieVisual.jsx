@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import CompositeSVG from '@/components/CompositeSVG';
+import CompositeFrameSVG from '@/components/CompositeFrameSVG';
 import { MenuiserieRenderer } from '@/lib/MenuiserieRenderer';
 import { buildMenuiserieConfig } from '@/lib/menuiserie';
 
@@ -25,13 +26,17 @@ export default function MenuiserieVisual({
 }) {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
+  const compositionSource = options.composition;
   const isComposite =
-    options.isComposite &&
-    Array.isArray(options.composition) &&
-    options.composition.length > 0;
+    Boolean(options.isComposite) &&
+    Boolean(compositionSource) &&
+    (Array.isArray(compositionSource)
+      ? compositionSource.length > 0
+      : Boolean(compositionSource.type));
+  const isFrame = Boolean(options.compositeFrame); // modèle « ossature » v2
 
   const config = useMemo(() => {
-    if (isComposite) return null;
+    if (isComposite || isFrame) return null;
 
     return buildMenuiserieConfig({
       sheetName,
@@ -42,7 +47,7 @@ export default function MenuiserieVisual({
   }, [sheetName, width, height, options, isComposite]);
 
   useEffect(() => {
-    if (isComposite) return;
+    if (isComposite || isFrame) return;
     if (!canvasRef.current || !config) return;
 
     if (!rendererRef.current) {
@@ -54,14 +59,20 @@ export default function MenuiserieVisual({
     rendererRef.current.draw(config);
   }, [config, isComposite]);
 
+  if (isFrame) {
+    return <CompositeFrameSVG frame={options.compositeFrame} className={className} />;
+  }
+
   if (isComposite) {
     return (
       <CompositeSVG
-        composition={options.composition}
+        composition={compositionSource}
         frameColor={options.svgColor}
         voletMonobloc={options.voletMonobloc}
         voletMonoblocManoeuvre={options.voletMonoblocManoeuvre}
         className={className}
+        selectedLeafId={options.selectedLeafId ?? null}
+        onSelectLeaf={options.onSelectLeaf ?? null}
       />
     );
   }

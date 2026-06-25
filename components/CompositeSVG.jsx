@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from 'react';
 import { buildCompositeModuleConfig } from '@/lib/menuiserie';
 import { normalizeCompositeComposition } from '@/lib/products';
+import { computeCompositeLayout, collectLeaves, isTreeNode } from '@/lib/composite-layout';
 
 const COLORS = {
   frameBorder: '#4A4A4A',
@@ -723,7 +724,7 @@ const StandaloneShutter = ({ width, height, frameColor, solarPanel, metrics }) =
   );
 };
 
-const CompositeModule = ({ module, frameColor }) => {
+export const CompositeModule = ({ module, frameColor }) => {
   const config = buildCompositeModuleConfig({
     module,
     options: { svgColor: frameColor },
@@ -859,75 +860,40 @@ export default function CompositeSVG({
   voletMonobloc = false,
   voletMonoblocManoeuvre = null,
   className = '',
+  selectedLeafId = null,
+  onSelectLeaf = null,
 }) {
   const layout = useMemo(() => {
-    const rawModuleById = new Map(
-      (Array.isArray(composition) ? composition : []).flatMap((row) =>
-        Array.isArray(row?.modules)
-          ? row.modules.map((module) => [module.id, module])
-          : []
-      )
-    );
+    // Conserver les champs « extra » des modules d'origine (ex. svgColor) que la
+    // normalisation (createCompositeModule) ne reporte pas.
+    const rawById = new Map();
+    if (Array.isArray(composition)) {
+      composition.forEach((row) => {
+        if (Array.isArray(row?.modules)) {
+          row.modules.forEach((module) => module?.id && rawById.set(module.id, module));
+        }
+      });
+    } else if (isTreeNode(composition)) {
+      collectLeaves(composition).forEach((leaf) => {
+        if (leaf.module?.id) rawById.set(leaf.module.id, leaf.module);
+      });
+    }
 
-    const rows = normalizeCompositeComposition(composition);
-    const normalizedRows = rows.reduce(
-      (accumulator, row) => {
-        const rowHeight = row.modules.reduce((maxHeight, rowModule) => {
-          const moduleHeight =
-            Number.parseInt(rowModule?.heightMm ?? rowModule?.hauteur, 10) || 0;
-          return Math.max(maxHeight, moduleHeight);
-        }, 0);
+    const tree = normalizeCompositeComposition(composition);
+    const computed = computeCompositeLayout(tree);
+    const leaves = computed.leaves.map((leaf) => ({
+      id: leaf.id,
+      x: leaf.xMm,
+      y: leaf.yMm,
+      widthMm: leaf.widthMm,
+      heightMm: leaf.heightMm,
+      module: { ...(rawById.get(leaf.id) || {}), ...leaf.module },
+    }));
 
-        const moduleAccumulator = row.modules.reduce(
-          (rowState, rowModule) => {
-            const widthMm =
-              Number.parseInt(rowModule?.widthMm ?? rowModule?.largeur, 10) || 0;
-            const heightMm =
-              Number.parseInt(rowModule?.heightMm ?? rowModule?.hauteur, 10) || rowHeight;
-
-            rowState.modules.push({
-              module: {
-                ...(rawModuleById.get(rowModule.id) || {}),
-                ...rowModule,
-              },
-              x: rowState.currentX,
-              y: accumulator.currentY + Math.max(0, rowHeight - heightMm),
-              widthMm,
-              heightMm,
-            });
-            rowState.currentX += widthMm;
-            return rowState;
-          },
-          { currentX: 0, modules: [] }
-        );
-
-        accumulator.rows.push({
-          id: row.id,
-          y: accumulator.currentY,
-          widthMm: moduleAccumulator.currentX,
-          heightMm: rowHeight,
-          modules: moduleAccumulator.modules,
-        });
-        accumulator.currentY += rowHeight;
-        return accumulator;
-      },
-      { currentY: 0, rows: [] }
-    ).rows;
-
-    return {
-      rows: normalizedRows,
-      totalWidth: normalizedRows.reduce(
-        (maxWidth, row) => Math.max(maxWidth, row.widthMm),
-        0
-      ),
-      totalHeight: normalizedRows.reduce(
-        (totalHeight, row) => totalHeight + row.heightMm,
-        0
-      ),
-    };
+    return { leaves, totalWidth: computed.widthMm, totalHeight: computed.heightMm };
   }, [composition]);
 
-  if (!layout.rows.length || layout.totalWidth <= 0 || layout.totalHeight <= 0) {
+  if (!layout.leaves.length || layout.totalWidth <= 0 || layout.totalHeight <= 0) {
     return null;
   }
 
@@ -996,19 +962,38 @@ export default function CompositeSVG({
         )}
 
         <g transform={`translate(0, ${coffreHeight})`}>
-          {layout.rows.map((row) =>
-            row.modules.map((moduleLayout) => (
-              <g
-                key={moduleLayout.module.id}
-                transform={`translate(${moduleLayout.x}, ${moduleLayout.y})`}
-              >
-                <CompositeModule
-                  module={moduleLayout.module}
-                  frameColor={moduleLayout.module?.svgColor || frameColor}
+          {layout.leaves.map((leaf) => (
+            <g
+              key={leaf.id}
+              transform={`translate(${leaf.x}, ${leaf.y})`}
+              onClick={
+                onSelectLeaf
+                  ? (event) => {
+                      event.stopPropagation();
+                      onSelectLeaf(leaf.id);
+                    }
+                  : undefined
+              }
+              style={onSelectLeaf ? { cursor: 'pointer' } : undefined}
+            >
+              <CompositeModule
+                module={leaf.module}
+                frameColor={leaf.module?.svgColor || frameColor}
+              />
+              {selectedLeafId === leaf.id && (
+                <rect
+                  x={0}
+                  y={0}
+                  width={leaf.widthMm}
+                  height={leaf.heightMm}
+                  fill="none"
+                  stroke="#f97316"
+                  strokeWidth={Math.max(8, monoMetrics.scaleFactor * 10)}
+                  pointerEvents="none"
                 />
-              </g>
-            ))
-          )}
+              )}
+            </g>
+          ))}
         </g>
 
         {voletMonobloc && apronHeight > 0 && (

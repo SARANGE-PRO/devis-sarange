@@ -14,6 +14,8 @@ import {
   BadgeCheck,
   CalendarDays,
   CheckCircle2,
+  DoorOpen,
+  Maximize2,
   ChevronRight,
   Download,
   FileText,
@@ -708,9 +710,17 @@ function SignatureModal({
                 className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
               />
               <span className="leading-relaxed">
-                Je certifie que les travaux réalisés concernent un local à usage
-                d&apos;habitation achevé depuis plus de deux ans et qu&apos;ils remplissent les
-                conditions d&apos;éligibilité au taux réduit de TVA.
+                <strong className="block">
+                  CERTIFICATION POUR L&rsquo;APPLICATION DES TAUX RÉDUITS DE TVA
+                </strong>
+                Le client certifie que les travaux prévus au présent devis concernent des
+                locaux affectés à l&rsquo;habitation et achevés depuis plus de deux ans et que,
+                sur une période de deux ans au plus, ils ne concourent pas à la production
+                d&rsquo;un immeuble neuf ni à une augmentation de plus de 10&nbsp;% de la surface
+                de plancher existante. Pour les prestations soumises à la TVA à 5,5&nbsp;%, il
+                certifie également qu&rsquo;elles constituent des travaux de rénovation
+                énergétique. La signature du présent devis vaut certification de ces
+                déclarations.
               </span>
             </label>
           )}
@@ -1089,6 +1099,54 @@ export default function QuoteSignaturePage({ token }) {
   const [contactModalOpen, setContactModalOpen] = useState(false);
   // Choix de configuration (devis multi-variantes) — obligatoire avant signature.
   const [selectedVariantId, setSelectedVariantId] = useState('');
+  // Choix de panneau décoratif par porte (lineId -> détail) — obligatoire avant signature.
+  const [panelChoices, setPanelChoices] = useState({});
+  const panelIframeRefs = useRef({});
+  // Porte dont le sélecteur est affiché en plein écran (null = aucun).
+  const [fullscreenPanelId, setFullscreenPanelId] = useState(null);
+
+  // Échap ferme la vue plein écran du sélecteur (quand le focus est hors de l'iframe).
+  useEffect(() => {
+    if (!fullscreenPanelId) return undefined;
+    const onKey = (event) => {
+      if (event.key === 'Escape') setFullscreenPanelId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullscreenPanelId]);
+
+  // Capture des choix remontés par les iframes du sélecteur de panneaux. L'outil est
+  // servi en same-origin : on vérifie quand même l'origine et on retrouve la porte
+  // concernée en comparant la source du message au contentWindow de chaque iframe.
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || data.event !== 'PANEL_SELECTED') return;
+      const match = Object.entries(panelIframeRefs.current).find(
+        ([, el]) => el && el.contentWindow === event.source
+      );
+      if (!match) return;
+      const [lineId] = match;
+      setPanelChoices((previous) => ({
+        ...previous,
+        [lineId]: {
+          gamme: data.gamme || '',
+          panelName: data.panelName || '',
+          panelRef: data.panelRef || '',
+          image: data.image || '',
+          croisillon: data.croisillonChoisi || '',
+          couleur: data.couleurChoisie || '',
+          legendeVitrage: data.legendeVitrage || '',
+          plusValueTotaleHT: Number(data.plusValueTotaleHT) || 0,
+        },
+      }));
+      // Le choix vaut validation : on referme la vue plein écran de cette porte.
+      setFullscreenPanelId((current) => (current === lineId ? null : current));
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   // ---- Data fetching (timeout + abort + retry) ----
   useEffect(() => {
@@ -1184,6 +1242,7 @@ export default function QuoteSignaturePage({ token }) {
             acceptReducedVat,
             signatureDataUrl,
             selectedVariantId: selectedVariantId || undefined,
+            panelChoices,
           }),
         }
       );
@@ -1251,6 +1310,10 @@ export default function QuoteSignaturePage({ token }) {
   const isVariantQuote = session?.variantsMode === true && variantOptions.length > 1;
   const selectedVariant = variantOptions.find((variant) => variant.id === selectedVariantId) || null;
   const variantChoiceMissing = isVariantQuote && !selectedVariant;
+  // Portes à panneau décoratif : un panneau doit être choisi pour chacune avant signature.
+  const panelSelections = Array.isArray(session?.panelSelections) ? session.panelSelections : [];
+  const panelChoiceMissing =
+    canAct && panelSelections.some((selection) => !panelChoices[selection.lineId]);
   // Mention TVA réduite : pour la variante choisie si dispo, sinon exigence globale.
   const requiresReducedVat = isVariantQuote
     ? Boolean(selectedVariant?.requiresReducedVatAck)
@@ -1374,6 +1437,106 @@ export default function QuoteSignaturePage({ token }) {
               </div>
               <MobilePdfViewer url={session.originalDocumentUrl} title="Aperçu du devis" />
             </div>
+
+            {/* Personnalisation des portes à panneau décoratif (obligatoire avant signature) */}
+            {canAct && panelSelections.length > 0 && (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <DoorOpen size={18} className="text-orange-500" />
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        Personnalisez le panneau de votre porte
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Choisissez le modèle de panneau décoratif pour chaque porte. La couleur
+                        est déjà imposée par votre devis : aucun supplément de couleur.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-6 p-4">
+                  {panelSelections.map((selection) => {
+                    const chosen = panelChoices[selection.lineId];
+                    const colorParam = selection.colorLabel
+                      ? `?couleur=${encodeURIComponent(selection.colorLabel)}`
+                      : '';
+                    const meta = [
+                      selection.widthMm && selection.heightMm
+                        ? `${selection.widthMm} × ${selection.heightMm} mm`
+                        : null,
+                      selection.colorLabel ? `Couleur : ${selection.colorLabel}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ');
+                    const isFs = fullscreenPanelId === selection.lineId;
+                    const doorTitle = `${selection.productLabel}${
+                      selection.repere ? ` — ${selection.repere}` : ''
+                    }`;
+                    return (
+                      <div key={selection.lineId} className="overflow-hidden rounded-xl border border-slate-200">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-4 py-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-slate-900">{doorTitle}</p>
+                            {meta && <p className="mt-0.5 text-xs text-slate-500">{meta}</p>}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {chosen ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                <CheckCircle2 size={14} />
+                                {chosen.panelName || chosen.panelRef || 'Panneau choisi'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
+                                À choisir
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setFullscreenPanelId(selection.lineId)}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                            >
+                              <Maximize2 size={14} />
+                              Agrandir
+                            </button>
+                          </div>
+                        </div>
+                        {/* L'iframe reste le MÊME élément (monté) en mode normal ou plein écran :
+                            seules les classes du conteneur changent — pas de rechargement ni perte du choix. */}
+                        <div className={isFs ? 'fixed inset-0 z-[60] flex flex-col bg-slate-900' : 'flex flex-col'}>
+                          <div
+                            className={
+                              isFs
+                                ? 'flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white'
+                                : 'hidden'
+                            }
+                          >
+                            <span className="truncate text-sm font-bold">{doorTitle}</span>
+                            <button
+                              type="button"
+                              onClick={() => setFullscreenPanelId(null)}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+                            >
+                              Fermer
+                              <X size={16} />
+                            </button>
+                          </div>
+                          <iframe
+                            ref={(el) => {
+                              panelIframeRefs.current[selection.lineId] = el;
+                            }}
+                            src={`/selecteur-panneaux/selecteur.html${colorParam}`}
+                            title={`Sélecteur de panneau — ${selection.productLabel}`}
+                            className={isFs ? 'w-full flex-1 border-0' : 'block h-[620px] w-full border-0'}
+                            loading="lazy"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </section>
 
           {/* ---- Action column ---- */}
@@ -1481,6 +1644,13 @@ export default function QuoteSignaturePage({ token }) {
                 </div>
               )}
 
+              {canAct && panelChoiceMissing && (
+                <div className="mt-4 rounded-2xl border border-orange-300/20 bg-orange-400/5 px-4 py-3 text-xs font-semibold text-orange-200">
+                  Choisissez le panneau décoratif de chaque porte (section ci-dessus) pour pouvoir
+                  signer.
+                </div>
+              )}
+
               {sessionMessage && !isSigned && !isRefused && (
                 <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
                   {sessionMessage}
@@ -1505,7 +1675,7 @@ export default function QuoteSignaturePage({ token }) {
                 <div className="mt-5 hidden gap-2 xl:flex xl:flex-col">
                   <button
                     type="button"
-                    disabled={variantChoiceMissing}
+                    disabled={variantChoiceMissing || panelChoiceMissing}
                     onClick={() => {
                       setSubmitError('');
                       setSignModalOpen(true);
@@ -1653,7 +1823,7 @@ export default function QuoteSignaturePage({ token }) {
               </button>
               <button
                 type="button"
-                disabled={variantChoiceMissing}
+                disabled={variantChoiceMissing || panelChoiceMissing}
                 onClick={() => {
                   setSubmitError('');
                   setSignModalOpen(true);
@@ -1661,7 +1831,7 @@ export default function QuoteSignaturePage({ token }) {
                 className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:shadow-none"
               >
                 <PenLine size={16} />
-                {variantChoiceMissing ? 'Choisir' : 'Signer'}
+                {variantChoiceMissing || panelChoiceMissing ? 'À compléter' : 'Signer'}
               </button>
             </div>
           </div>

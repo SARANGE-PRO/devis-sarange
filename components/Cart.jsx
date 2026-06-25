@@ -112,7 +112,10 @@ function SortableCartItem({
 
   const calc = calculateItemPrice(item);
   const pricing = getItemPricingSummary(item, calc);
-  const compositeCount = getCompositeModuleCount(item.composition, item.modules);
+  const compositeCount = getCompositeModuleCount(
+    item.compositionTree ?? item.composition,
+    item.modules
+  );
   const thermalMetrics = getItemThermalMetrics(item);
   const petitsBoisConfig = getPetitsBoisConfig(item);
   const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
@@ -232,7 +235,8 @@ function SortableCartItem({
             height={item.heightMm}
             options={{
               isComposite: item.isComposite,
-              composition: item.composition,
+              compositeFrame: item.compositeFrame,
+              composition: item.compositionTree ?? item.composition,
               colorOption: item.colorOption,
               glazingId: item.glazingOption?.id,
               petitsBoisH: petitsBoisConfig.petitsBoisH,
@@ -327,7 +331,7 @@ function SortableCartItem({
                 )}
                 {item.isComposite && compositeCount > 0 && (
                   <span className="ml-1">
-                    · {formatCompositeModules(item.composition || item.modules)}
+                    · {formatCompositeModules(item.compositionTree ?? item.composition ?? item.modules)}
                   </span>
                 )}
                 {item.colorOption?.id && item.colorOption.id !== 'blanc' && (
