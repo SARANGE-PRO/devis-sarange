@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
-import styles from './QuoteSummary.module.css';
+import PdfGenerationLoader from './PdfGenerationLoader';
 import {
   calculateItemPrice,
   formatCompositeModules,
   getCompositeModuleCount,
+  getDisplayProductLabel,
   getItemPricingSummary,
   getPoseLabel,
 } from '@/lib/products';
@@ -113,62 +114,6 @@ const waitForLoaderPaint = () =>
     });
   });
 
-const PdfGenerationLoader = () => (
-  <div
-    className={styles.loaderOverlay}
-    role="status"
-    aria-live="polite"
-    aria-label="Generation du devis en cours"
-  >
-    <div className={styles.loaderCard}>
-      <div className={styles.loaderWrapper}>
-        <div className={styles.iconContainer} aria-hidden="true">
-          <svg
-            viewBox="0 0 100 100"
-            xmlns="http://www.w3.org/2000/svg"
-            className={styles.loaderSvg}
-          >
-            <defs>
-              <clipPath id="quote-loader-window-clip">
-                <rect x="14" y="24" width="72" height="66" />
-              </clipPath>
-            </defs>
-
-            <rect x="10" y="10" width="80" height="80" rx="3" fill="none" stroke="#1A1A1A" strokeWidth="5" />
-            <rect x="15" y="15" width="70" height="70" fill="#FFFFFF" />
-            <line x1="50" y1="15" x2="50" y2="85" stroke="#1A1A1A" strokeWidth="3" />
-            <line x1="15" y1="50" x2="85" y2="50" stroke="#1A1A1A" strokeWidth="3" />
-            <polygon points="15,45 45,15 60,15 15,60" fill="#F0F0F0" fillOpacity="0.8" />
-            <polygon points="15,85 85,15 90,15 15,90" fill="#F0F0F0" fillOpacity="0.5" />
-
-            <g clipPath="url(#quote-loader-window-clip)">
-              <g className={styles.shutter}>
-                <rect x="15" y="25" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="33" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="41" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="49" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="57" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="65" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="73" width="70" height="7" fill="#FF5F1F" />
-                <rect x="15" y="81" width="70" height="9" fill="#1A1A1A" />
-              </g>
-            </g>
-
-            <rect x="8" y="8" width="84" height="18" rx="2" fill="#1A1A1A" />
-          </svg>
-        </div>
-
-        <div className="text-center">
-          <p className="m-0 text-sm font-black uppercase tracking-[0.24em] text-slate-900 sm:text-base">
-            Creation du devis
-          </p>
-          <p className={styles.subtitle}>Veuillez patienter...</p>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
 export default function QuoteSummary({
   clientData,
   cartItems,
@@ -267,7 +212,9 @@ export default function QuoteSummary({
 
   return (
     <>
-      {isGeneratingPdf && <PdfGenerationLoader />}
+      {isGeneratingPdf && (
+        <PdfGenerationLoader title="Creation du devis" messages={['Veuillez patienter...']} />
+      )}
 
       <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Header section with Client Info */}
@@ -423,7 +370,7 @@ export default function QuoteSummary({
                       <div className="flex items-start justify-between gap-3">
                         <p className="font-bold text-slate-900 text-sm flex min-w-0 flex-wrap items-center gap-1.5">
                           {item.productId === 'gestion-dechets' && <WasteRecycleIcon size={12} className="text-green-500 shrink-0" />}
-                          <span className="truncate">{item.productLabel}</span>
+                          <span className="truncate">{getDisplayProductLabel(item.productLabel)}</span>
                           
                           {item.repere && (
                             <span className="italic text-slate-400 text-[10px] shrink-0">{item.repere}</span>
@@ -665,7 +612,7 @@ export default function QuoteSummary({
                                 {item.productId === 'gestion-dechets' && (
                                   <WasteRecycleIcon size={14} className="text-green-500 shrink-0" />
                                 )}
-                                <span className="min-w-0 truncate">{item.productLabel}</span>
+                                <span className="min-w-0 truncate">{getDisplayProductLabel(item.productLabel)}</span>
                                 
                                 {item.repere && (
                                   <span className="italic text-slate-500 text-[10px] bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 shrink-0 font-medium tracking-tight">

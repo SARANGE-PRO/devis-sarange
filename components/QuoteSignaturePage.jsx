@@ -11,18 +11,17 @@ import {
 } from 'react';
 import {
   AlertTriangle,
-  BadgeCheck,
-  CalendarDays,
+  Check,
   CheckCircle2,
   DoorOpen,
   Maximize2,
+  ChevronLeft,
   ChevronRight,
   Download,
   FileText,
   ImagePlus,
   Loader2,
   Mail,
-  MapPin,
   MessageCircle,
   PenLine,
   Phone,
@@ -30,7 +29,6 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
-  User,
   X,
   XCircle,
 } from 'lucide-react';
@@ -48,6 +46,7 @@ import {
   getQuoteNumberDisplay,
   getQuoteSignatureStatusMeta,
 } from '@/lib/quote-signature';
+import PdfGenerationLoader from './PdfGenerationLoader';
 
 const SUPPORT_PHONE = '09 86 71 34 44';
 const FETCH_TIMEOUT_MS = 15000;
@@ -239,7 +238,7 @@ const exportTrimmedTransparentPng = (canvas, padding = 10) => {
 /* -------------------------------------------------------------------------- */
 
 const SignaturePad = forwardRef(function SignaturePad(
-  { disabled = false, onContentChange },
+  { disabled = false, onContentChange, invalid = false },
   ref
 ) {
   const canvasRef = useRef(null);
@@ -536,14 +535,18 @@ const SignaturePad = forwardRef(function SignaturePad(
         )}
       </div>
 
-      <div className="mt-3 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-2.5">
+      <div
+        className={`mt-3 rounded-2xl border-2 border-dashed bg-white p-2.5 transition ${
+          invalid ? 'border-red-400 bg-red-50/40' : 'border-slate-200'
+        }`}
+      >
         <canvas
           ref={canvasRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
-          className={`h-48 w-full rounded-xl bg-white sm:h-56 ${
+          className={`h-48 w-full rounded-xl bg-white ${
             disabled
               ? 'pointer-events-none opacity-60'
               : 'cursor-crosshair touch-none select-none'
@@ -587,37 +590,92 @@ const SignaturePad = forwardRef(function SignaturePad(
 });
 
 /* -------------------------------------------------------------------------- */
+/*  Case à cocher personnalisée (case native masquée + faux carré + icône)    */
+/* -------------------------------------------------------------------------- */
+
+function CustomCheckbox({ checked, onChange, disabled = false, accent = 'orange' }) {
+  const theme =
+    accent === 'emerald'
+      ? 'border-emerald-300 checked:border-emerald-600 checked:bg-emerald-600 focus-visible:ring-emerald-300'
+      : 'border-slate-300 checked:border-orange-500 checked:bg-orange-500 focus-visible:ring-orange-300';
+  return (
+    <span className="relative mt-0.5 flex shrink-0 items-center">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        className={`peer h-5 w-5 cursor-pointer appearance-none rounded-md border-2 bg-white outline-none transition focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${theme}`}
+      />
+      <Check
+        size={14}
+        strokeWidth={3.5}
+        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 transition peer-checked:opacity-100"
+      />
+    </span>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Signature modal                                                           */
 /* -------------------------------------------------------------------------- */
 
-function SignatureModal({
-  session,
-  displayQuoteNumber,
-  requiresReducedVat,
-  onClose,
-  onSubmit,
-  isSubmitting,
-  submitError,
-}) {
+const SignatureStep = forwardRef(function SignatureStep(
+  { session, requiresReducedVat, onSubmit, isSubmitting, submitError, onValidityChange },
+  ref
+) {
   const padRef = useRef(null);
+  const nameRef = useRef(null);
+  const signatureRef = useRef(null);
+  const vatRef = useRef(null);
+  const consentRef = useRef(null);
   const [signerName, setSignerName] = useState(session?.recipient?.fullName || '');
   const [signerFunction, setSignerFunction] = useState('');
   const [hasSignature, setHasSignature] = useState(false);
   const [acceptReducedVat, setAcceptReducedVat] = useState(false);
   const [consent, setConsent] = useState(false);
+  // Passe à true au 1er clic sur « Signer » : déclenche l'affichage des alertes ciblées.
+  const [attempted, setAttempted] = useState(false);
 
   const requiresVat =
     requiresReducedVat != null ? requiresReducedVat === true : session?.requiresReducedVatAck === true;
 
+  // Conditions manquantes (une par champ obligatoire) pour des alertes précises.
+  const nameMissing = signerName.trim().length <= 1;
+  const signatureMissing = !hasSignature;
+  const vatMissing = requiresVat && !acceptReducedVat;
+  const consentMissing = !consent;
+
   const canSubmit =
-    !isSubmitting &&
-    signerName.trim().length > 1 &&
-    hasSignature &&
-    consent &&
-    (!requiresVat || acceptReducedVat);
+    !isSubmitting && !nameMissing && !signatureMissing && !consentMissing && !vatMissing;
+
+  // Récap lisible de ce qu'il reste à compléter (affiché après une tentative).
+  const missingItems = [
+    nameMissing && 'votre nom et prénom',
+    signatureMissing && 'votre signature',
+    vatMissing && 'la case de certification TVA réduite',
+    consentMissing && 'la case « Lu et approuvé, bon pour accord »',
+  ].filter(Boolean);
 
   const handleConfirm = () => {
-    if (!canSubmit || !padRef.current) return;
+    // Champ manquant : on n'envoie pas, on révèle les alertes et on guide le client
+    // vers le premier élément à compléter (scroll doux + focus du nom).
+    if (!canSubmit) {
+      setAttempted(true);
+      const target = nameMissing
+        ? nameRef.current
+        : signatureMissing
+          ? signatureRef.current
+          : vatMissing
+            ? vatRef.current
+            : consentMissing
+              ? consentRef.current
+              : null;
+      if (target?.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (nameMissing && nameRef.current?.focus) nameRef.current.focus();
+      return;
+    }
+    if (!padRef.current) return;
     let signatureDataUrl;
     try {
       signatureDataUrl = padRef.current.buildDataUrl();
@@ -633,105 +691,149 @@ function SignatureModal({
     onSubmit({ signerName: composedName, acceptReducedVat, signatureDataUrl });
   };
 
+  // Le bouton principal « Signer et valider » vit dans la barre d'action en bas : on
+  // expose la soumission (ref) et on remonte la validité du formulaire au parent.
+  useImperativeHandle(ref, () => ({ submit: handleConfirm }));
+  useEffect(() => {
+    if (onValidityChange) onValidityChange(canSubmit);
+  }, [canSubmit, onValidityChange]);
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/70 p-0 backdrop-blur-sm sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Signer le devis"
-    >
-      <div
-        className="flex max-h-[94vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-500">
-              Signature électronique
-            </p>
-            <h2 className="mt-1 text-lg font-black text-slate-900">
-              {displayQuoteNumber ? `Devis n°${displayQuoteNumber}` : 'Signer le devis'}
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-200/60 hover:text-slate-700 disabled:opacity-40"
-            aria-label="Fermer"
-          >
-            <X size={20} />
-          </button>
-        </div>
+    <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-black/20">
+      <div className="border-b border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
+        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-orange-500">
+          Dernière étape — Signature
+        </p>
+        <h2 className="mt-1 text-lg font-black text-slate-900">Bon pour accord</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Renseignez votre nom puis signez ci-dessous pour valider votre commande.
+        </p>
+      </div>
 
-        {/* Body (scrollable) */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-semibold text-slate-700">
-              Nom et prénom du signataire *
-              <input
-                value={signerName}
-                onChange={(event) => setSignerName(event.target.value)}
-                disabled={isSubmitting}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                placeholder="Ex : Jean Dupont"
-                autoComplete="name"
-              />
-            </label>
-            <label className="block text-sm font-semibold text-slate-700">
-              Fonction
-              <input
-                value={signerFunction}
-                onChange={(event) => setSignerFunction(event.target.value)}
-                disabled={isSubmitting}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
-                placeholder="Ex : Gérant (facultatif)"
-              />
-            </label>
-          </div>
-
-          <div className="mt-5">
-            <p className="mb-2 text-sm font-semibold text-slate-700">Votre signature *</p>
-            <SignaturePad
-              ref={padRef}
-              disabled={isSubmitting}
-              onContentChange={setHasSignature}
-            />
-          </div>
-
-          {requiresVat && (
-            <label className="mt-5 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              <input
-                type="checkbox"
-                checked={acceptReducedVat}
-                onChange={(event) => setAcceptReducedVat(event.target.checked)}
-                disabled={isSubmitting}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
-              />
-              <span className="leading-relaxed">
-                <strong className="block">
-                  CERTIFICATION POUR L&rsquo;APPLICATION DES TAUX RÉDUITS DE TVA
-                </strong>
-                Le client certifie que les travaux prévus au présent devis concernent des
-                locaux affectés à l&rsquo;habitation et achevés depuis plus de deux ans et que,
-                sur une période de deux ans au plus, ils ne concourent pas à la production
-                d&rsquo;un immeuble neuf ni à une augmentation de plus de 10&nbsp;% de la surface
-                de plancher existante. Pour les prestations soumises à la TVA à 5,5&nbsp;%, il
-                certifie également qu&rsquo;elles constituent des travaux de rénovation
-                énergétique. La signature du présent devis vaut certification de ces
-                déclarations.
-              </span>
-            </label>
+      {/* Body — 2 colonnes sur desktop pour éviter le scroll vertical. */}
+      <div className="px-5 py-5 sm:px-6">
+          {/* Alerte récapitulative : visible seulement après une tentative de signature. */}
+          {attempted && missingItems.length > 0 && (
+            <div className="mb-5 flex items-start gap-3 rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">
+                  {missingItems.length === 1
+                    ? 'Il reste 1 élément à compléter avant de signer :'
+                    : `Il reste ${missingItems.length} éléments à compléter avant de signer :`}
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {missingItems.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+            {/* Colonne gauche : identité du signataire + attestation TVA. */}
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-slate-700">
+                Nom et prénom du signataire *
+                <input
+                  ref={nameRef}
+                  value={signerName}
+                  onChange={(event) => setSignerName(event.target.value)}
+                  disabled={isSubmitting}
+                  className={`mt-1.5 w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${
+                    attempted && nameMissing
+                      ? 'border-red-400 focus:border-red-400 focus:ring-red-100'
+                      : 'border-slate-200 focus:border-orange-400 focus:ring-orange-100'
+                  }`}
+                  placeholder="Ex : Jean Dupont"
+                  autoComplete="name"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-slate-700">
+                Fonction
+                <input
+                  value={signerFunction}
+                  onChange={(event) => setSignerFunction(event.target.value)}
+                  disabled={isSubmitting}
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+                  placeholder="Ex : Gérant (facultatif)"
+                />
+              </label>
 
-          <label className="mt-4 flex gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-            <input
-              type="checkbox"
+              {requiresVat && (
+                <div
+                  ref={vatRef}
+                  className={`rounded-2xl border bg-emerald-50 p-4 text-sm text-emerald-900 transition ${
+                    attempted && vatMissing
+                      ? 'border-red-400 ring-2 ring-red-200'
+                      : 'border-emerald-200'
+                  }`}
+                >
+                  {/* Case + intitulé restent toujours visibles. */}
+                  <label className="flex cursor-pointer gap-3">
+                    <CustomCheckbox
+                      checked={acceptReducedVat}
+                      onChange={(event) => setAcceptReducedVat(event.target.checked)}
+                      disabled={isSubmitting}
+                      accent="emerald"
+                    />
+                    <strong className="leading-relaxed">
+                      CERTIFICATION POUR L&rsquo;APPLICATION DES TAUX RÉDUITS DE TVA
+                    </strong>
+                  </label>
+                  {/* Texte légal long : hauteur contrainte + scroll interne + fondu bas. */}
+                  <div className="relative mt-2">
+                    <div className="scrollbar-thin max-h-24 overflow-y-auto pr-2 text-sm leading-relaxed text-emerald-900/90">
+                      Le client certifie que les travaux prévus au présent devis concernent des
+                      locaux affectés à l&rsquo;habitation et achevés depuis plus de deux ans et que,
+                      sur une période de deux ans au plus, ils ne concourent pas à la production
+                      d&rsquo;un immeuble neuf ni à une augmentation de plus de 10&nbsp;% de la surface
+                      de plancher existante. Pour les prestations soumises à la TVA à 5,5&nbsp;%, il
+                      certifie également qu&rsquo;elles constituent des travaux de rénovation
+                      énergétique. La signature du présent devis vaut certification de ces
+                      déclarations.
+                    </div>
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 rounded-b bg-gradient-to-t from-emerald-50 to-transparent" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Colonne droite : zone de signature. */}
+            <div ref={signatureRef}>
+              <p
+                className={`mb-2 text-sm font-semibold ${
+                  attempted && signatureMissing ? 'text-red-600' : 'text-slate-700'
+                }`}
+              >
+                Votre signature *
+              </p>
+              <SignaturePad
+                ref={padRef}
+                disabled={isSubmitting}
+                onContentChange={setHasSignature}
+                invalid={attempted && signatureMissing}
+              />
+              {attempted && signatureMissing && (
+                <p className="mt-2 text-xs font-semibold text-red-600">
+                  Veuillez signer dans le cadre ci-dessus (au doigt, à la souris, ou importez votre cachet).
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Bon pour accord — pleine largeur sous les 2 colonnes. */}
+          <label
+            ref={consentRef}
+            className={`mt-6 flex cursor-pointer gap-3 rounded-2xl border bg-slate-50 p-4 text-sm text-slate-700 transition ${
+              attempted && consentMissing ? 'border-red-400 ring-2 ring-red-200' : 'border-slate-200'
+            }`}
+          >
+            <CustomCheckbox
               checked={consent}
               onChange={(event) => setConsent(event.target.checked)}
               disabled={isSubmitting}
-              className="mt-0.5 h-4 w-4 shrink-0 accent-orange-500"
+              accent="orange"
             />
             <span className="leading-relaxed">
               Lu et approuvé, bon pour accord. Je reconnais avoir pris connaissance du devis et
@@ -747,39 +849,15 @@ function SignatureModal({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center gap-3 border-t border-slate-100 bg-white px-5 py-4 sm:px-6">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="rounded-full border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-          >
-            Annuler
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!canSubmit}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Signature en cours…
-              </>
-            ) : (
-              <>
-                <PenLine size={16} />
-                Valider et signer
-              </>
-            )}
-          </button>
+        {/* Le bouton « Signer et valider » est dans la barre d'action fixe en bas. */}
+        <div className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-center text-xs font-medium text-slate-500 sm:px-6">
+          {canSubmit
+            ? 'Tout est prêt — cliquez sur « Signer et valider » en bas de l’écran.'
+            : 'Renseignez votre nom, signez et cochez « bon pour accord » : nous vous indiquerons ce qu’il manque.'}
         </div>
       </div>
-    </div>
   );
-}
+});
 
 /* -------------------------------------------------------------------------- */
 /*  Refusal modal                                                             */
@@ -967,79 +1045,6 @@ function ContactModal({ onClose, waLink, telLink, emailLink }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Document recap header (premium, inspired by the official PDF)             */
-/* -------------------------------------------------------------------------- */
-
-function RecapHeader({ session, displayQuoteNumber, totalTTC }) {
-  const recipient = session?.recipient || {};
-  const chantierAddress = recipient.chantierAddress || recipient.address || '';
-  const chantierName = recipient.chantierFullName || recipient.fullName || '';
-
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="flex items-center justify-between gap-3 bg-slate-900 px-5 py-4">
-        <div>
-          <p className="text-xl font-black tracking-tight text-white">
-            SARANGE<span className="text-orange-500">.</span>
-          </p>
-          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.28em] text-slate-400">
-            Menuiseries sur-mesure
-          </p>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-bold text-emerald-300">
-          <BadgeCheck size={14} />
-          Certifié RGE
-        </span>
-      </div>
-
-      <div className="px-5 py-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm font-black text-slate-900">
-            Devis n°{displayQuoteNumber || '—'}
-          </p>
-          <p className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
-            <CalendarDays size={13} />
-            {formatDate(session.quote?.issueDate)}
-          </p>
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              <User size={12} /> Client
-            </p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
-              {recipient.fullName || 'Client'}
-            </p>
-          </div>
-          <div className="rounded-xl bg-slate-50 p-3">
-            <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              <MapPin size={12} /> Chantier
-            </p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
-              {chantierAddress || chantierName || 'Non renseigné'}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3">
-          <p className="text-xs font-bold uppercase tracking-wider text-orange-700">
-            Montant total TTC
-          </p>
-          {totalTTC != null ? (
-            <p className="text-xl font-black text-slate-900">
-              {currencyFormatter.format(totalTTC)}
-            </p>
-          ) : (
-            <p className="text-sm font-bold text-slate-500">Selon la configuration</p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
 /*  Badge de validité dynamique (devis émis + 30 jours)                       */
 /* -------------------------------------------------------------------------- */
 
@@ -1052,7 +1057,7 @@ function ValidityBadge({ issueDate }) {
   // Devis déjà expiré
   if (joursRestants <= 0) {
     return (
-      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-red-400/30 bg-red-500/15 px-4 py-2.5 text-sm font-bold text-red-100">
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 dark:border-red-400/30 dark:bg-red-500/15 dark:text-red-100">
         <span aria-hidden>⏳</span>
         Ce devis a expiré le {formatDate(expiry)}
       </div>
@@ -1062,7 +1067,7 @@ function ValidityBadge({ issueDate }) {
   // Échéance proche (7 jours ou moins) → badge qui attire l'œil
   if (joursRestants <= 7) {
     return (
-      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-orange-400/40 bg-orange-500/15 px-4 py-2.5 text-sm font-bold text-orange-100">
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-bold text-orange-700 dark:border-orange-400/40 dark:bg-orange-500/15 dark:text-orange-100">
         <span aria-hidden>⏳</span>
         Expire dans {joursRestants} jour{joursRestants > 1 ? 's' : ''}
       </div>
@@ -1071,8 +1076,8 @@ function ValidityBadge({ issueDate }) {
 
   // Validité confortable → badge discret et rassurant
   return (
-    <div className="mt-4 flex items-center gap-2 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-2.5 text-sm font-medium text-emerald-100/90">
-      <ShieldCheck size={15} className="shrink-0 text-emerald-300" />
+    <div className="mt-4 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-100/90">
+      <ShieldCheck size={15} className="shrink-0 text-emerald-600 dark:text-emerald-300" />
       Valable jusqu&apos;au {formatDate(expiry)}
     </div>
   );
@@ -1092,9 +1097,12 @@ export default function QuoteSignaturePage({ token }) {
   const [submitError, setSubmitError] = useState('');
   const [submitMessage, setSubmitMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Spécifique à la signature (≠ refus) : pilote l'écran de chargement plein écran.
+  const [isSigning, setIsSigning] = useState(false);
   const [justSigned, setJustSigned] = useState(false);
 
-  const [signModalOpen, setSignModalOpen] = useState(false);
+  // Étape courante du parcours guidé (wizard) : 'devis' | 'config' | 'signature'.
+  const [step, setStep] = useState('devis');
   const [refuseModalOpen, setRefuseModalOpen] = useState(false);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   // Choix de configuration (devis multi-variantes) — obligatoire avant signature.
@@ -1103,8 +1111,20 @@ export default function QuoteSignaturePage({ token }) {
   const [panelChoices, setPanelChoices] = useState({});
   const panelIframeRefs = useRef({});
   const panelSectionRef = useRef(null);
+  // Cartes de porte (réf par lineId) pour scroller vers la première non validée.
+  const panelCardRefs = useRef({});
+  // Portes en erreur (clic « Continuer » sans choix) + secousse temporaire d'attention.
+  const [panelErrorIds, setPanelErrorIds] = useState([]);
+  const [panelShake, setPanelShake] = useState(false);
   // Raison d'un blocage de signature ('panel' | 'variant' | null) pour un message explicite.
   const [signBlockedReason, setSignBlockedReason] = useState(null);
+  // Étape signature pilotée depuis la barre d'action (le bouton « Signer » est dans le footer).
+  const signatureStepRef = useRef(null);
+  const [signatureReady, setSignatureReady] = useState(false);
+  // Panneaux ré-ouverts pour modification (force l'affichage de l'iframe même si choisi).
+  const [reopenedPanels, setReopenedPanels] = useState({});
+  // Pulse du bouton « Continuer » quand tous les panneaux viennent d'être choisis.
+  const [pulseContinue, setPulseContinue] = useState(false);
   // Porte dont le sélecteur est affiché en plein écran (null = aucun).
   const [fullscreenPanelId, setFullscreenPanelId] = useState(null);
 
@@ -1150,8 +1170,10 @@ export default function QuoteSignaturePage({ token }) {
           plusValueTotaleHT: Number(data.plusValueTotaleHT) || 0,
         },
       }));
-      // Le choix vaut validation : on referme la vue plein écran de cette porte.
+      // Le choix vaut validation : on referme le plein écran ET le mode « modification »
+      // de cette porte (on bascule sur la carte de succès à la place de l'iframe).
       setFullscreenPanelId((current) => (current === lineId ? null : current));
+      setReopenedPanels((previous) => ({ ...previous, [lineId]: false }));
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -1221,13 +1243,13 @@ export default function QuoteSignaturePage({ token }) {
 
   // ---- Lock body scroll while a modal is open ----
   useEffect(() => {
-    if (!signModalOpen && !refuseModalOpen && !contactModalOpen) return undefined;
+    if (!refuseModalOpen && !contactModalOpen) return undefined;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [signModalOpen, refuseModalOpen, contactModalOpen]);
+  }, [refuseModalOpen, contactModalOpen]);
 
   useEffect(() => {
     if (!justSigned || !successCardRef.current) return;
@@ -1237,6 +1259,7 @@ export default function QuoteSignaturePage({ token }) {
   // ---- Actions ----
   const handleSign = async ({ signerName, acceptReducedVat, signatureDataUrl }) => {
     setIsSubmitting(true);
+    setIsSigning(true);
     setSubmitError('');
     setSubmitMessage('');
 
@@ -1262,13 +1285,13 @@ export default function QuoteSignaturePage({ token }) {
       }
 
       setSession(data);
-      setSignModalOpen(false);
       setJustSigned(true);
       setSubmitMessage('Le devis a bien été signé.');
     } catch (nextError) {
       setSubmitError(nextError.message || 'Impossible de signer ce devis.');
     } finally {
       setIsSubmitting(false);
+      setIsSigning(false);
     }
   };
 
@@ -1338,23 +1361,85 @@ export default function QuoteSignaturePage({ token }) {
     if (signBlockedReason === 'variant' && !variantChoiceMissing) setSignBlockedReason(null);
   }, [signBlockedReason, panelChoiceMissing, variantChoiceMissing]);
 
-  // Tentative de signature : si un choix manque, on l'explique clairement et on amène le
-  // client à la section concernée (plutôt qu'un bouton grisé sans aucun retour au clic).
-  const requestSign = () => {
-    setSubmitError('');
-    if (variantChoiceMissing) {
-      setSignBlockedReason('variant');
-      return;
-    }
-    if (panelChoiceMissing) {
-      setSignBlockedReason('panel');
-      if (panelSectionRef.current?.scrollIntoView) {
-        panelSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-      return;
-    }
+  // « Effet panier » : quand tous les panneaux viennent d'être choisis (étape config),
+  // on fait pulser le bouton « Continuer » ~2 s pour guider vers l'étape suivante.
+  useEffect(() => {
+    if (step !== 'config' || panelSelections.length === 0 || panelChoiceMissing) return undefined;
+    setPulseContinue(true);
+    const timer = setTimeout(() => setPulseContinue(false), 2200);
+    return () => clearTimeout(timer);
+  }, [step, panelChoiceMissing, panelSelections.length]);
+
+  // La secousse d'attention ne joue qu'une fois (~0,5 s) puis se désarme.
+  useEffect(() => {
+    if (!panelShake) return undefined;
+    const timer = setTimeout(() => setPanelShake(false), 600);
+    return () => clearTimeout(timer);
+  }, [panelShake]);
+
+  // ---- Parcours en étapes (wizard) ----
+  const hasPanels = panelSelections.length > 0;
+  // Wording dynamique : « Votre panneau » (1 porte) / « Vos panneaux » (2+).
+  const panelStepLabel = panelSelections.length > 1 ? 'Vos panneaux' : 'Votre panneau';
+  const steps = hasPanels
+    ? [
+        { id: 'devis', label: 'Votre devis' },
+        { id: 'config', label: panelStepLabel },
+        { id: 'signature', label: 'Signature' },
+      ]
+    : [
+        { id: 'devis', label: 'Votre devis' },
+        { id: 'signature', label: 'Signature' },
+      ];
+  const currentIndex = Math.max(0, steps.findIndex((entry) => entry.id === step));
+
+  // Si l'étape courante n'existe plus (ex. variante sans porte), on recale sur la 1re.
+  useEffect(() => {
+    const validIds = hasPanels
+      ? ['devis', 'config', 'signature']
+      : ['devis', 'signature'];
+    if (!validIds.includes(step)) setStep('devis');
+  }, [hasPanels, step]);
+
+  const goPrev = () => {
     setSignBlockedReason(null);
-    setSignModalOpen(true);
+    if (currentIndex > 0) setStep(steps[currentIndex - 1].id);
+  };
+  const goNext = () => {
+    setSubmitError('');
+    if (step === 'devis') {
+      if (variantChoiceMissing) {
+        setSignBlockedReason('variant');
+        return;
+      }
+      setSignBlockedReason(null);
+      setStep(steps[Math.min(currentIndex + 1, steps.length - 1)].id);
+      return;
+    }
+    if (step === 'config') {
+      if (panelChoiceMissing) {
+        setSignBlockedReason('panel');
+        // Marque toutes les portes non validées et scrolle en douceur vers la 1re.
+        const missing = panelSelections
+          .filter((selection) => !panelChoices[selection.lineId])
+          .map((selection) => selection.lineId);
+        setPanelErrorIds(missing);
+        // Rejoue la secousse : on désarme, puis on réarme à la frame suivante.
+        setPanelShake(false);
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => requestAnimationFrame(() => setPanelShake(true)));
+        } else {
+          setPanelShake(true);
+        }
+        const firstNode = panelCardRefs.current[missing[0]];
+        if (firstNode?.scrollIntoView) {
+          firstNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+      setSignBlockedReason(null);
+      setStep('signature');
+    }
   };
   // Mention TVA réduite : pour la variante choisie si dispo, sinon exigence globale.
   const requiresReducedVat = isVariantQuote
@@ -1378,12 +1463,12 @@ export default function QuoteSignaturePage({ token }) {
   /* ----- Loading state ----- */
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 text-slate-100">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div className="flex flex-col items-center gap-4 text-center">
-          <Loader2 size={36} className="animate-spin text-orange-400" />
+          <Loader2 size={36} className="animate-spin text-orange-500 dark:text-orange-400" />
           <div>
-            <p className="text-lg font-bold text-white">Chargement de votre devis…</p>
-            <p className="mt-1 text-sm text-slate-400">Merci de patienter quelques instants.</p>
+            <p className="text-lg font-bold text-slate-900 dark:text-white">Chargement de votre devis…</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Merci de patienter quelques instants.</p>
           </div>
         </div>
       </main>
@@ -1393,13 +1478,13 @@ export default function QuoteSignaturePage({ token }) {
   /* ----- Error state (bulletproof, with retry) ----- */
   if (error || !session) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4 py-10 text-slate-100">
-        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/30 backdrop-blur">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-500/15 text-red-300">
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-2xl shadow-black/10 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:shadow-black/30">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300">
             <AlertTriangle size={30} />
           </div>
-          <h1 className="mt-5 text-xl font-black text-white">Devis indisponible</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300">
+          <h1 className="mt-5 text-xl font-black text-slate-900 dark:text-white">Devis indisponible</h1>
+          <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
             {error ||
               'Impossible de charger le devis. Vérifiez votre connexion ou contactez SARANGE.'}
           </p>
@@ -1411,9 +1496,9 @@ export default function QuoteSignaturePage({ token }) {
             <RefreshCcw size={16} />
             Réessayer
           </button>
-          <p className="mt-6 text-xs text-slate-400">
+          <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">
             Besoin d&apos;aide ? Contactez SARANGE au{' '}
-            <a href={`tel:${SUPPORT_PHONE.replace(/\s/g, '')}`} className="font-bold text-orange-300">
+            <a href={`tel:${SUPPORT_PHONE.replace(/\s/g, '')}`} className="font-bold text-orange-600 dark:text-orange-300">
               {SUPPORT_PHONE}
             </a>
           </p>
@@ -1422,100 +1507,310 @@ export default function QuoteSignaturePage({ token }) {
     );
   }
 
-  /* ----- Main content ----- */
-  return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div
-        className={`mx-auto max-w-6xl px-4 py-6 sm:py-8 ${
-          canAct ? 'pb-32 xl:pb-8' : ''
-        }`}
-      >
-        {/* Page header */}
-        <div className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-orange-300">
-            Signature de devis
-          </p>
-          <h1 className="mt-3 text-2xl font-black text-white sm:text-3xl">
-            {displayQuoteNumber ? `Devis n°${displayQuoteNumber}` : 'Votre devis'}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-300">
-            {isSigned
-              ? 'Votre signature a bien été enregistrée. Vous pouvez retrouver votre devis signé ci-dessous.'
-              : isRefused
-                ? 'Votre refus a bien été enregistré. Nous reviendrons vers vous si nécessaire.'
-                : 'Consultez votre devis, puis signez-le en ligne en toute sécurité ou refusez-le si nécessaire.'}
-          </p>
-        </div>
-
-        <div className="mt-5 flex flex-col gap-5 xl:grid xl:grid-cols-[1.45fr_0.9fr] xl:items-start">
-          {/* ---- Document column ---- */}
-          <section className="space-y-4">
-            <RecapHeader
-              session={session}
-              displayQuoteNumber={displayQuoteNumber}
-              totalTTC={displayTotalTTC}
-            />
-
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <FileText size={18} className="text-orange-500" />
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Document officiel</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Le PDF ci-dessous est exactement le document que vous signez.
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href={session.originalDocumentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex shrink-0 items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-100"
-                >
-                  <Download size={14} />
-                  <span className="hidden sm:inline">Télécharger</span>
-                </a>
-              </div>
-              <MobilePdfViewer url={session.originalDocumentUrl} title="Aperçu du devis" />
-            </div>
-
-            {/* Personnalisation des portes à panneau décoratif (obligatoire avant signature) */}
-            {canAct && panelSelections.length > 0 && (
-              <div
-                ref={panelSectionRef}
-                className={`overflow-hidden rounded-2xl border bg-white transition ${
-                  signBlockedReason === 'panel'
-                    ? 'border-orange-400 ring-2 ring-orange-400 ring-offset-2'
-                    : 'border-slate-200'
+  /* ----- Parcours guidé (layout large SaaS) ----- */
+  // Une fois signé, toutes les étapes passent au vert (« Validé… / Signé »).
+  const stepsCompleted = isSigned;
+  const stepBar = (
+    <ol className="flex items-center">
+      {steps.map((entry, index) => {
+        const isLast = index === steps.length - 1;
+        const done = stepsCompleted || index < currentIndex;
+        const active = !stepsCompleted && index === currentIndex;
+        const label = stepsCompleted ? (isLast ? 'Signé' : 'Validé') : entry.label;
+        return (
+          <li key={entry.id} className="flex flex-1 items-center last:flex-none">
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black transition ${
+                  active
+                    ? 'bg-orange-500 text-white'
+                    : done
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-slate-200 text-slate-500 dark:bg-white/10 dark:text-slate-400'
                 }`}
               >
-                {signBlockedReason === 'panel' && (
-                  <div className="flex items-start gap-2 border-b border-orange-200 bg-orange-50 px-5 py-3 text-sm font-bold text-orange-700">
-                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
-                    Pour signer, choisissez d&apos;abord un panneau pour chaque porte ci-dessous.
+                {done ? <Check size={13} strokeWidth={3} /> : index + 1}
+              </span>
+              <span
+                className={`hidden whitespace-nowrap text-xs font-bold sm:inline ${
+                  done
+                    ? 'text-emerald-600 dark:text-emerald-300'
+                    : active
+                      ? 'text-slate-900 dark:text-white'
+                      : 'text-slate-400 dark:text-slate-500'
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+            {index < steps.length - 1 && (
+              <span
+                className={`mx-2 h-0.5 flex-1 rounded-full transition ${
+                  done ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-white/10'
+                }`}
+              />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+
+  const signedCard = (
+    <div
+      ref={successCardRef}
+      className="mx-auto flex max-w-3xl flex-col items-center px-4 py-16 text-center"
+    >
+      {/* Icône de validation animée (cercle vert + halo). */}
+      <div className="relative mb-8">
+        {justSigned && (
+          <span className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-emerald-400/30" />
+        )}
+        <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl shadow-emerald-500/40 ring-8 ring-emerald-100 dark:ring-emerald-500/15">
+          <Check size={52} strokeWidth={3} className="duration-500 animate-in zoom-in" />
+        </div>
+      </div>
+
+      <p className="text-xs font-black uppercase tracking-[0.28em] text-emerald-600 dark:text-emerald-300">
+        {justSigned ? 'Devis signé avec succès' : 'Devis déjà signé'}
+      </p>
+      <h1 className="mt-3 text-3xl font-black leading-tight text-slate-900 dark:text-white sm:text-4xl">
+        {justSigned
+          ? '🎉 Félicitations, votre projet est officiellement lancé !'
+          : 'Ce devis est déjà signé'}
+      </h1>
+      <p className="mt-4 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300">
+        {justSigned
+          ? 'Votre devis a été signé avec succès. Une copie sécurisée vient de vous être envoyée par email.'
+          : 'La signature de ce devis a déjà été enregistrée. Vous pouvez retélécharger le document signé à tout moment.'}
+      </p>
+
+      {session.selectedVariantName && (
+        <p className="mt-6 inline-flex flex-wrap items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-300/30 dark:bg-emerald-400/10 dark:text-emerald-50">
+          Configuration retenue : {session.selectedVariantName}
+          {session?.quote?.totalTTC ? ` — ${currencyFormatter.format(session?.quote?.totalTTC)} TTC` : ''}
+        </p>
+      )}
+
+      {session.signedDocumentUrl && (
+        <a
+          href={session.signedDocumentUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-10 inline-flex items-center justify-center gap-2.5 rounded-full bg-emerald-500 px-8 py-4 text-base font-bold text-white shadow-xl shadow-emerald-500/30 transition hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-2xl hover:shadow-emerald-500/40"
+        >
+          <Download size={20} />
+          Télécharger mon devis signé
+        </a>
+      )}
+
+      <p className="mt-8 inline-flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
+        <ShieldCheck size={14} className="text-emerald-500" />
+        Document archivé en lieu sûr — l’équipe SARANGE reste à votre disposition.
+      </p>
+    </div>
+  );
+
+  const refusedCard = (
+    <div className="mx-auto mt-2 max-w-2xl rounded-3xl border border-red-200 bg-red-50 p-8 shadow-xl shadow-black/5 dark:border-red-300/20 dark:bg-red-500/10 dark:shadow-black/20">
+      <div className="flex items-start gap-4">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+          <XCircle size={28} strokeWidth={2.5} />
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.24em] text-red-700 dark:text-red-200">Refus enregistré</p>
+          <h2 className="mt-2 text-xl font-black text-slate-900 dark:text-white">Votre refus a bien été pris en compte</h2>
+          <p className="mt-3 text-sm leading-6 text-red-800 dark:text-red-50/90">
+            Notre équipe sera notifiée automatiquement. Si besoin, nous reviendrons vers vous pour
+            ajuster la proposition.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Ville du chantier (pour le micro-header). Best-effort depuis l'adresse.
+  const projetVille =
+    (session?.recipient?.chantierAddress || session?.recipient?.address || '')
+      .match(/\b\d{5}\s+([^,]+)/)?.[1]
+      ?.trim() || '';
+  const stickyTotal =
+    displayTotalTTC != null ? currencyFormatter.format(displayTotalTTC) : '—';
+
+  return (
+    <main className="flex min-h-screen flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* ---- Micro-header sticky ---- */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-slate-900/85">
+        <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:gap-6 lg:px-8">
+          <div className="flex min-w-0 items-baseline gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <span className="truncate font-bold text-slate-800 dark:text-slate-100">
+              Devis n°{displayQuoteNumber || '—'}
+            </span>
+            {projetVille && <span className="hidden truncate sm:inline">— Projet à {projetVille}</span>}
+          </div>
+
+          {(canAct || isSigned) && !isRefused && (
+            <div className="lg:max-w-md lg:flex-1 lg:px-2">{stepBar}</div>
+          )}
+
+          <div className="flex shrink-0 items-center justify-between gap-3 lg:justify-end">
+            <span
+              className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wider ${statusMeta.className}`}
+            >
+              {statusMeta.label}
+            </span>
+            <span className="text-base font-black text-slate-900 dark:text-white">
+              {stickyTotal}
+              <span className="ml-1 text-xs font-semibold text-slate-400">TTC</span>
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* ---- Contenu (large) ---- */}
+      <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 pb-28 sm:px-6 lg:px-8">
+        {isSigned ? (
+          signedCard
+        ) : isRefused ? (
+          refusedCard
+        ) : (
+          <>
+            {(sessionMessage || submitMessage) && (
+              <div className="mb-4 space-y-3">
+                {sessionMessage && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-300/20 dark:bg-amber-400/10 dark:text-amber-100">
+                    {sessionMessage}
                   </div>
                 )}
-                <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                {submitMessage && (
+                  <div className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-400/20 dark:bg-green-500/10 dark:text-green-100">
+                    {submitMessage}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ÉTAPE 1 — Lecture du devis */}
+            {step === 'devis' && (
+              <div key="step-devis" className="space-y-5 duration-300 animate-in fade-in slide-in-from-right-4">
+                {canAct && isVariantQuote && (
+                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-300/20 dark:bg-orange-400/5">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      Quelle configuration retenez-vous ?
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Choisissez la configuration à signer ; elle seule deviendra la commande engageante.
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                      {variantOptions.map((variant, index) => {
+                        const active = variant.id === selectedVariantId;
+                        const letter = String.fromCharCode(65 + index);
+                        return (
+                          <button
+                            key={variant.id}
+                            type="button"
+                            onClick={() => setSelectedVariantId(variant.id)}
+                            className={`flex w-full items-center justify-between gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${
+                              active
+                                ? 'border-orange-400 bg-orange-100 dark:bg-orange-500/15'
+                                : 'border-slate-200 bg-white hover:border-slate-300 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/25'
+                            }`}
+                          >
+                            <span className="flex items-center gap-2.5">
+                              <span
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                  active ? 'border-orange-400' : 'border-slate-400'
+                                }`}
+                              >
+                                {active && <span className="h-2 w-2 rounded-full bg-orange-500" />}
+                              </span>
+                              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                                {letter} · {variant.name || `Variante ${letter}`}
+                              </span>
+                            </span>
+                            <span className="shrink-0 text-sm font-bold text-slate-900 dark:text-white">
+                              {currencyFormatter.format(variant.totalTTC || 0)}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {variantChoiceMissing && (
+                      <p className="mt-2 text-xs font-bold text-orange-700 dark:text-orange-200">
+                        Sélectionnez une configuration pour continuer.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 dark:border-white/10 dark:bg-slate-800">
+                    <div className="flex items-center gap-3">
+                      <FileText size={18} className="text-orange-500" />
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">Votre devis</p>
+                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          Le document ci-dessous est exactement celui que vous signez. Faites défiler pour tout consulter.
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href={session.originalDocumentUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-100 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-200"
+                    >
+                      <Download size={14} />
+                      <span className="hidden sm:inline">Télécharger</span>
+                    </a>
+                  </div>
+                  <MobilePdfViewer
+                    url={session.originalDocumentUrl}
+                    title="Aperçu du devis"
+                    heightClass="h-[68vh]"
+                  />
+                </div>
+
+                {canAct && <ValidityBadge issueDate={session.quote?.issueDate} />}
+              </div>
+            )}
+
+            {/* ÉTAPE 2 — Personnalisation des panneaux */}
+            {step === 'config' && hasPanels && (
+              <div
+                key="step-config"
+                ref={panelSectionRef}
+                className="space-y-5 duration-300 animate-in fade-in slide-in-from-right-4"
+              >
+                {signBlockedReason === 'panel' && (
+                  <div className="flex items-start gap-2 rounded-2xl border border-orange-300 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700 dark:border-orange-400/40 dark:bg-orange-500/10 dark:text-orange-200">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                    Choisissez un panneau pour chaque porte pour continuer.
+                  </div>
+                )}
+                <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm dark:border-white/10 dark:bg-slate-900">
                   <div className="flex items-center gap-3">
                     <DoorOpen size={18} className="text-orange-500" />
                     <div>
-                      <p className="text-sm font-bold text-slate-900">
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">
                         Personnalisez le panneau de votre porte
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        Choisissez le modèle de panneau décoratif pour chaque porte. La couleur
-                        est déjà imposée par votre devis : aucun supplément de couleur.
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Choisissez le modèle de panneau décoratif pour chaque porte. La couleur est
+                        déjà imposée par votre devis : aucun supplément de couleur.
                       </p>
                     </div>
                   </div>
                 </div>
-                <div className="space-y-6 p-4">
+
+                <div className="grid grid-cols-1 gap-6">
                   {panelSelections.map((selection) => {
                     const chosen = panelChoices[selection.lineId];
-                    const colorParam = selection.colorLabel
-                      ? `?couleur=${encodeURIComponent(selection.colorLabel)}`
-                      : '';
+                    const showSelector = !chosen || Boolean(reopenedPanels[selection.lineId]);
+                    const params = new URLSearchParams({ embed: 'true' });
+                    if (selection.colorLabel) params.set('couleur', selection.colorLabel);
+                    const iframeSrc = `/selecteur-panneaux/selecteur.html?${params.toString()}`;
+                    const couleur = chosen?.couleur || selection.colorLabel || '';
                     const meta = [
                       selection.widthMm && selection.heightMm
                         ? `${selection.widthMm} × ${selection.heightMm} mm`
@@ -1525,15 +1820,28 @@ export default function QuoteSignaturePage({ token }) {
                       .filter(Boolean)
                       .join(' · ');
                     const isFs = fullscreenPanelId === selection.lineId;
+                    const inError = !chosen && panelErrorIds.includes(selection.lineId);
                     const doorTitle = `${selection.productLabel}${
                       selection.repere ? ` — ${selection.repere}` : ''
                     }`;
                     return (
-                      <div key={selection.lineId} className="overflow-hidden rounded-xl border border-slate-200">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-4 py-3">
+                      <div
+                        key={selection.lineId}
+                        ref={(el) => {
+                          panelCardRefs.current[selection.lineId] = el;
+                        }}
+                        className={`overflow-hidden rounded-2xl border bg-white shadow-sm dark:bg-slate-900 ${
+                          inError
+                            ? `border-red-500 ring-2 ring-red-200 dark:border-red-500 dark:ring-red-500/30 ${
+                                panelShake ? 'animate-shake' : ''
+                              }`
+                            : 'border-slate-200 dark:border-white/10'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-white px-4 py-3 dark:border-white/10 dark:bg-slate-900">
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-bold text-slate-900">{doorTitle}</p>
-                            {meta && <p className="mt-0.5 text-xs text-slate-500">{meta}</p>}
+                            <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{doorTitle}</p>
+                            {meta && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{meta}</p>}
                           </div>
                           <div className="flex items-center gap-2">
                             {chosen ? (
@@ -1541,371 +1849,202 @@ export default function QuoteSignaturePage({ token }) {
                                 <CheckCircle2 size={14} />
                                 {chosen.panelName || chosen.panelRef || 'Panneau choisi'}
                               </span>
+                            ) : inError ? (
+                              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
+                                <AlertTriangle size={13} />
+                                Sélection requise
+                              </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">
                                 À choisir
                               </span>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => setFullscreenPanelId(selection.lineId)}
-                              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                            >
-                              <Maximize2 size={14} />
-                              Agrandir
-                            </button>
+                            {showSelector && (
+                              <button
+                                type="button"
+                                onClick={() => setFullscreenPanelId(selection.lineId)}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/10"
+                              >
+                                <Maximize2 size={14} />
+                                Agrandir
+                              </button>
+                            )}
                           </div>
                         </div>
-                        {/* L'iframe reste le MÊME élément (monté) en mode normal ou plein écran :
-                            seules les classes du conteneur changent — pas de rechargement ni perte du choix. */}
-                        <div className={isFs ? 'fixed inset-0 z-[60] flex flex-col bg-slate-900' : 'flex flex-col'}>
-                          <div
-                            className={
-                              isFs
-                                ? 'flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white'
-                                : 'hidden'
-                            }
-                          >
-                            <span className="truncate text-sm font-bold">{doorTitle}</span>
+                        {showSelector ? (
+                          <div className={isFs ? 'fixed inset-0 z-[60] flex flex-col bg-slate-900' : 'flex flex-col'}>
+                            <div
+                              className={
+                                isFs
+                                  ? 'flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white'
+                                  : 'hidden'
+                              }
+                            >
+                              <span className="truncate text-sm font-bold">{doorTitle}</span>
+                              <button
+                                type="button"
+                                onClick={() => setFullscreenPanelId(null)}
+                                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+                              >
+                                Fermer
+                                <X size={16} />
+                              </button>
+                            </div>
+                            <iframe
+                              ref={(el) => {
+                                panelIframeRefs.current[selection.lineId] = el;
+                              }}
+                              src={iframeSrc}
+                              title={`Sélecteur de panneau — ${selection.productLabel}`}
+                              className={isFs ? 'w-full flex-1 border-0' : 'block h-[640px] w-full border-0'}
+                              loading="lazy"
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
+                            {chosen.image && (
+                              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-slate-800">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`/selecteur-panneaux/thumbs/${chosen.image}`}
+                                  onError={(event) => {
+                                    event.currentTarget.src = `/selecteur-panneaux/${chosen.image}`;
+                                  }}
+                                  alt={chosen.panelName || 'Panneau choisi'}
+                                  className="h-40 w-auto max-w-full object-contain"
+                                />
+                              </div>
+                            )}
+                            <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-bold text-green-700 dark:bg-green-500/15 dark:text-green-300">
+                              <CheckCircle2 size={16} />
+                              Panneau {chosen.panelName || chosen.panelRef || ''} sélectionné avec succès
+                            </span>
+                            {couleur && (
+                              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                Couleur : {couleur}
+                              </p>
+                            )}
+                            <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
+                              Rappel : vous avez sélectionné uniquement le panneau décoratif. La
+                              quincaillerie (poignée, serrure) sera celle prévue dans les lignes de
+                              votre devis.
+                            </p>
                             <button
                               type="button"
-                              onClick={() => setFullscreenPanelId(null)}
-                              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+                              onClick={() =>
+                                setReopenedPanels((previous) => ({
+                                  ...previous,
+                                  [selection.lineId]: true,
+                                }))
+                              }
+                              className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/10"
                             >
-                              Fermer
-                              <X size={16} />
+                              🔄 Modifier mon choix
                             </button>
                           </div>
-                          <iframe
-                            ref={(el) => {
-                              panelIframeRefs.current[selection.lineId] = el;
-                            }}
-                            src={`/selecteur-panneaux/selecteur.html${colorParam}`}
-                            title={`Sélecteur de panneau — ${selection.productLabel}`}
-                            className={isFs ? 'w-full flex-1 border-0' : 'block h-[620px] w-full border-0'}
-                            loading="lazy"
-                          />
-                        </div>
+                        )}
                       </div>
                     );
                   })}
                 </div>
               </div>
             )}
-          </section>
 
-          {/* ---- Action column ---- */}
-          <aside className="space-y-4 xl:sticky xl:top-6">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold text-white">Récapitulatif</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Vérifiez les informations avant de valider.
-                  </p>
-                </div>
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${statusMeta.className}`}
-                >
-                  {statusMeta.label}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    Client
-                  </p>
-                  <p className="mt-1 font-semibold text-white">{session?.recipient?.fullName}</p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    Montant TTC
-                  </p>
-                  <p className="mt-1 font-semibold text-white">
-                    {displayTotalTTC != null
-                      ? currencyFormatter.format(displayTotalTTC)
-                      : 'Selon la configuration'}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    Date du devis
-                  </p>
-                  <p className="mt-1 font-semibold text-white">
-                    {formatDate(session?.quote?.issueDate)}
-                  </p>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-3">
-                  <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
-                    Statut
-                  </p>
-                  <p className="mt-1 font-semibold text-white">{statusMeta.label}</p>
-                </div>
-              </div>
-
-              {/* Badge de validité dynamique : visible tant que le devis peut être signé */}
-              {canAct && <ValidityBadge issueDate={session.quote?.issueDate} />}
-
-              {/* Choix de configuration (obligatoire) pour un devis multi-variantes */}
-              {canAct && isVariantQuote && (
-                <div className="mt-4 rounded-2xl border border-orange-300/20 bg-orange-400/5 p-4">
-                  <p className="text-sm font-bold text-white">
-                    Quelle configuration retenez-vous ?
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Choisissez la configuration à signer ; elle seule deviendra la commande
-                    engageante.
-                  </p>
-                  <div className="mt-3 space-y-2">
-                    {variantOptions.map((variant, index) => {
-                      const active = variant.id === selectedVariantId;
-                      const letter = String.fromCharCode(65 + index);
-                      return (
-                        <button
-                          key={variant.id}
-                          type="button"
-                          onClick={() => setSelectedVariantId(variant.id)}
-                          className={`flex w-full items-center justify-between gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition ${
-                            active
-                              ? 'border-orange-400 bg-orange-500/15'
-                              : 'border-white/10 bg-white/5 hover:border-white/25'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <span
-                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                                active ? 'border-orange-300' : 'border-slate-400'
-                              }`}
-                            >
-                              {active && <span className="h-2 w-2 rounded-full bg-orange-300" />}
-                            </span>
-                            <span className="text-sm font-semibold text-white">
-                              {letter} · {variant.name || `Variante ${letter}`}
-                            </span>
-                          </span>
-                          <span className="shrink-0 text-sm font-bold text-white">
-                            {currencyFormatter.format(variant.totalTTC || 0)}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {variantChoiceMissing && (
-                    <p className="mt-2 text-xs font-semibold text-orange-200">
-                      Sélectionnez une configuration pour pouvoir signer.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {canAct && panelChoiceMissing && (
-                <div className="mt-4 rounded-2xl border border-orange-300/20 bg-orange-400/5 px-4 py-3 text-xs font-semibold text-orange-200">
-                  Choisissez le panneau décoratif de chaque porte (section ci-dessus) pour pouvoir
-                  signer.
-                </div>
-              )}
-
-              {sessionMessage && !isSigned && !isRefused && (
-                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                  {sessionMessage}
-                </div>
-              )}
-
-              {submitMessage && !isSigned && !isRefused && (
-                <div className="mt-4 rounded-2xl border border-green-400/20 bg-green-500/10 px-4 py-3 text-sm text-green-100">
-                  {submitMessage}
-                </div>
-              )}
-
-              {submitError && !signModalOpen && !refuseModalOpen && (
-                <div className="mt-4 flex items-start gap-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              {/* Desktop action buttons */}
-              {canAct && (
-                <div className="mt-5 hidden gap-2 xl:flex xl:flex-col">
-                  <button
-                    type="button"
-                    onClick={requestSign}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600"
-                  >
-                    <PenLine size={16} />
-                    {variantChoiceMissing || panelChoiceMissing
-                      ? 'À compléter avant de signer'
-                      : 'Accepter et signer'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSubmitError('');
-                      setRefuseModalOpen(true);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
-                  >
-                    <XCircle size={16} />
-                    Refuser le devis
-                  </button>
-                </div>
-              )}
-
-              {/* Bouton secondaire discret ouvrant la modale de contact multi-choix */}
-              <button
-                type="button"
-                onClick={() => setContactModalOpen(true)}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/15 bg-transparent px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
-              >
-                <MessageCircle size={16} className="text-slate-300" />
-                Une question ? Contactez-nous
-              </button>
-
-              {session.signedDocumentUrl && (
-                <a
-                  href={session.signedDocumentUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-300/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25"
-                >
-                  <RefreshCcw size={15} />
-                  Ouvrir le devis signé
-                </a>
-              )}
-            </div>
-
-            {/* Signed / refused result cards */}
-            {isSigned && (
-              <div
-                ref={successCardRef}
-                className="relative overflow-hidden rounded-3xl border border-emerald-300/20 bg-gradient-to-br from-emerald-500/15 via-emerald-400/10 to-cyan-400/10 p-6 shadow-2xl shadow-black/20 backdrop-blur"
-              >
-                {justSigned && (
-                  <div className="pointer-events-none absolute left-8 top-8 h-16 w-16 rounded-full bg-emerald-300/25 animate-ping" />
-                )}
-                <div className="relative flex items-start gap-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-emerald-300 text-emerald-950 shadow-lg shadow-emerald-500/25">
-                    <CheckCircle2 size={28} strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-200">
-                      Signature validée
-                    </p>
-                    <h2 className="mt-2 text-xl font-black text-white">
-                      {justSigned ? 'Votre devis a bien été signé' : 'Ce devis est déjà signé'}
-                    </h2>
-                    <p className="mt-3 text-sm leading-6 text-emerald-50/90">
-                      {justSigned
-                        ? 'Votre signature a été prise en compte et un email de confirmation vous a été envoyé.'
-                        : 'La signature de ce devis a déjà été enregistrée. Vous pouvez rouvrir le document signé à tout moment.'}
-                    </p>
-                    {session.selectedVariantName && (
-                      <p className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-xl border border-emerald-300/30 bg-emerald-400/10 px-3 py-2 text-sm font-semibold text-emerald-50">
-                        Configuration retenue : {session.selectedVariantName}
-                        {session?.quote?.totalTTC
-                          ? ` — ${currencyFormatter.format(session?.quote?.totalTTC)} TTC`
-                          : ''}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {session.signedDocumentUrl && (
-                  <a
-                    href={session.signedDocumentUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-emerald-400 px-5 py-3 text-sm font-bold text-emerald-950 transition hover:bg-emerald-300"
-                  >
-                    <ShieldCheck size={16} />
-                    Ouvrir le devis signé
-                  </a>
-                )}
+            {/* ÉTAPE 3 — Signature (carte centrée) */}
+            {step === 'signature' && (
+              <div key="step-signature" className="mx-auto max-w-5xl duration-300 animate-in fade-in slide-in-from-right-4">
+                <SignatureStep
+                  ref={signatureStepRef}
+                  session={session}
+                  requiresReducedVat={requiresReducedVat}
+                  onSubmit={handleSign}
+                  isSubmitting={isSubmitting}
+                  submitError={submitError}
+                  onValidityChange={setSignatureReady}
+                />
               </div>
             )}
-
-            {isRefused && (
-              <div className="rounded-3xl border border-red-300/20 bg-red-500/10 p-6 shadow-2xl shadow-black/20 backdrop-blur">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-red-300 text-red-950">
-                    <XCircle size={28} strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.24em] text-red-200">
-                      Refus enregistré
-                    </p>
-                    <h2 className="mt-2 text-xl font-black text-white">
-                      Votre refus a bien été pris en compte
-                    </h2>
-                    <p className="mt-3 text-sm leading-6 text-red-50/90">
-                      Notre équipe sera notifiée automatiquement. Si besoin, nous reviendrons vers
-                      vous pour ajuster la proposition.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </aside>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* ---- Mobile sticky bottom action bar ---- */}
-      {canAct && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-slate-900/95 px-4 py-3 backdrop-blur xl:hidden">
-          <div className="mx-auto flex max-w-6xl items-center gap-3">
-            <div className="shrink-0">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Total TTC
-              </p>
-              <p className="text-base font-black text-white">
-                {currencyFormatter.format(
-                  (selectedVariant?.totalTTC ?? session?.quote?.totalTTC) || 0
+      {/* ---- Barre d'action fixe (sticky footer) ---- */}
+      {canAct && !isSigned && !isRefused && (
+        <footer className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-slate-900/90 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              {currentIndex > 0 && (
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                >
+                  <ChevronLeft size={16} />
+                  <span className="hidden sm:inline">Retour</span>
+                </button>
+              )}
+              <div className="flex flex-col text-xs sm:flex-row sm:items-center sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setContactModalOpen(true)}
+                  className="text-slate-400 underline underline-offset-2 transition hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  Une question ?
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmitError('');
+                    setRefuseModalOpen(true);
+                  }}
+                  className="text-slate-400 underline underline-offset-2 transition hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  Refuser le devis
+                </button>
+              </div>
+            </div>
+
+            {step === 'signature' ? (
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => signatureStepRef.current?.submit()}
+                className={`inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-bold transition disabled:cursor-not-allowed ${
+                  signatureReady || isSubmitting
+                    ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/30 ring-2 ring-orange-300/60 hover:bg-orange-600'
+                    : 'bg-orange-200 text-orange-800 hover:bg-orange-300 dark:bg-orange-500/25 dark:text-orange-200 dark:hover:bg-orange-500/35'
+                }`}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Signature en cours…
+                  </>
+                ) : (
+                  <>
+                    <PenLine size={16} />
+                    Signer et valider
+                  </>
                 )}
-              </p>
-            </div>
-            <div className="flex flex-1 gap-2">
+              </button>
+            ) : (
               <button
                 type="button"
-                onClick={() => {
-                  setSubmitError('');
-                  setRefuseModalOpen(true);
-                }}
-                className="inline-flex flex-1 items-center justify-center rounded-full border border-white/15 bg-white/5 px-3 py-3 text-sm font-semibold text-slate-200 transition active:bg-white/10"
+                onClick={goNext}
+                disabled={step === 'devis' && variantChoiceMissing}
+                className={`inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none dark:disabled:bg-slate-700 dark:disabled:text-slate-400 ${
+                  pulseContinue ? 'animate-pulse ring-4 ring-orange-300/60' : ''
+                }`}
               >
-                Refuser
+                {step === 'devis' ? "J'ai pris connaissance" : 'Continuer'}
+                <ChevronRight size={16} />
               </button>
-              <button
-                type="button"
-                onClick={requestSign}
-                className="inline-flex flex-[1.6] items-center justify-center gap-2 rounded-full bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg shadow-orange-500/30 transition active:bg-orange-600"
-              >
-                <PenLine size={16} />
-                {variantChoiceMissing || panelChoiceMissing
-                  ? 'À compléter avant de signer'
-                  : 'Signer'}
-              </button>
-            </div>
+            )}
           </div>
-        </div>
+        </footer>
       )}
 
-      {/* ---- Modals ---- */}
-      {signModalOpen && (
-        <SignatureModal
-          session={session}
-          displayQuoteNumber={displayQuoteNumber}
-          requiresReducedVat={requiresReducedVat}
-          onClose={() => {
-            if (isSubmitting) return;
-            setSignModalOpen(false);
-            setSubmitError('');
-          }}
-          onSubmit={handleSign}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-        />
-      )}
-
+      {/* ---- Modales ---- */}
       {refuseModalOpen && (
         <RefuseModal
           onClose={() => {
@@ -1925,6 +2064,19 @@ export default function QuoteSignaturePage({ token }) {
           waLink={waLink}
           telLink={telLink}
           emailLink={emailLink}
+        />
+      )}
+
+      {/* ---- Écran de chargement plein écran pendant la signature ---- */}
+      {isSigning && (
+        <PdfGenerationLoader
+          title="Signature en cours"
+          messages={[
+            'Sécurisation de votre signature…',
+            'Génération du contrat officiel…',
+            'Envoi de la copie par email…',
+            'Encore quelques instants…',
+          ]}
         />
       )}
     </main>

@@ -1636,17 +1636,21 @@ export default function ProductSelector({
                   </div>
 
                   {workingIsPorte ? (
-                    <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={simpleConfig.panneauDecoratif}
-                        onChange={(event) =>
-                          updateSimpleOptions({ panneauDecoratif: event.target.checked })
-                        }
-                        className="h-4 w-4 accent-orange-500"
-                      />
-                      Panneau decoratif
-                    </label>
+                    // En composé, l'option reste dans la config du châssis (pas de repère
+                    // au-dessus) ; en simple elle est remontée sous le schéma + repère.
+                    isCompositeMode ? (
+                      <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={simpleConfig.panneauDecoratif}
+                          onChange={(event) =>
+                            updateSimpleOptions({ panneauDecoratif: event.target.checked })
+                          }
+                          className="h-4 w-4 accent-orange-500"
+                        />
+                        Panneau decoratif
+                      </label>
+                    ) : null
                   ) : (
                     <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700">
                       <input
@@ -2188,6 +2192,20 @@ export default function ProductSelector({
             placeholder="Localisation de la menuiserie..."
             className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
           />
+          {/* Porte d'entrée : option panneau décoratif mise en avant (sous le schéma + repère). */}
+          {workingIsPorte && (
+            <label className="mt-3 flex items-center gap-3 rounded-xl border border-orange-200 bg-white p-3 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                checked={simpleConfig.panneauDecoratif}
+                onChange={(event) =>
+                  updateSimpleOptions({ panneauDecoratif: event.target.checked })
+                }
+                className="h-4 w-4 accent-orange-500"
+              />
+              Panneau décoratif (choisi sur catalogue à la signature)
+            </label>
+          )}
         </div>
       )}
 

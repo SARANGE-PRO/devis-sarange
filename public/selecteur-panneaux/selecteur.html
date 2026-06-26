@@ -79,12 +79,18 @@
         .btn-sheen:hover::after { transform: translateX(130%); }
         @media (prefers-reduced-motion: reduce) { .door-card.anim-rise { animation: none; } .btn-sheen::after { display: none; } .brand-dot { transition: none; } }
         details[open] > summary .chev { transform: rotate(180deg); }
+        /* Mode embed (iframe) : on masque le chrome redondant -> effet "mur de produits". */
+        body.embed-mode #brandBar,
+        body.embed-mode #clientHeaderBlock,
+        body.embed-mode #techSpecsBlock { display: none !important; }
+        body.embed-mode main { max-width: 100% !important; }
+        body.embed-mode { background: #f1f5f9; }
     </style>
 </head>
 <body class="text-slate-800 antialiased flex flex-col min-h-screen">
 
     <!-- Barre de marque SARANGE -->
-    <header class="brand-bar bg-slate-900 text-white border-b-2 border-orange-500 shadow-lg shadow-slate-900/20 relative z-40">
+    <header id="brandBar" class="brand-bar bg-slate-900 text-white border-b-2 border-orange-500 shadow-lg shadow-slate-900/20 relative z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center gap-3 select-none">
                 <span class="text-2xl sm:text-[28px] font-black text-white leading-none" style="letter-spacing:-0.04em">SARANGE<span class="brand-dot text-orange-500">.</span></span>
@@ -98,7 +104,7 @@
     </header>
 
     <!-- En-tête / Avertissement Client -->
-    <div class="bg-white border-b border-slate-200 shadow-sm">
+    <div id="clientHeaderBlock" class="bg-white border-b border-slate-200 shadow-sm">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-12">
             <div class="text-center max-w-3xl mx-auto">
                 <h2 class="text-2xl md:text-4xl font-bold text-slate-900 mb-2 md:mb-4">Choisissez votre panneau de porte</h2>
@@ -151,7 +157,7 @@
     </div>
 
     <!-- Caractéristiques Techniques (repliable) -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+    <div id="techSpecsBlock" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
         <details class="group">
             <summary class="flex items-center gap-2 cursor-pointer select-none text-lg font-bold text-slate-800 mb-4">
                 <i data-lucide="settings" class="w-5 h-5 text-sarange-blue flex-shrink-0"></i>
@@ -236,6 +242,7 @@
 
             <!-- Image en grand (Partie Gauche Fixe) -->
             <div class="w-full md:w-1/2 bg-slate-100 flex items-center justify-center p-4 md:p-8 relative">
+                <span class="absolute top-4 left-4 z-10 inline-flex items-center gap-1 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">👁️ Visuel d'illustration</span>
                 <button id="closeModalBtn" aria-label="Fermer" class="absolute top-4 right-4 bg-white/80 hover:bg-white text-slate-800 rounded-full p-2 transition-colors shadow-sm md:hidden z-10">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
@@ -569,6 +576,8 @@
 
         // Mode catalogue (Mode B) : aperçu seul, sans prix ni parcours de sélection.
         const CATALOGUE_MODE = urlParams.get('mode') === 'catalogue';
+        const EMBED_MODE = urlParams.get('embed') === 'true';
+        if (EMBED_MODE && document.body) document.body.classList.add('embed-mode');
         // Sous-mode : lien dédié n'affichant que les panneaux sans plus-value.
         const CATALOGUE_ONLY_INCLUS = CATALOGUE_MODE && urlParams.get('inclus') === '1';
 
@@ -1192,7 +1201,7 @@
 
             modalImg.src = door.image; // pleine résolution
             modalImg.onerror = function() { handleImageError(this, door); };
-            modalTitle.textContent = `Modèle ${door.id}`;
+            modalTitle.textContent = `Panneau de porte ${door.id}`;
             modalGammeBadge.textContent = `GAMME ${door.gamme}`;
             modalLegend.querySelector('span').textContent = door.legend;
 
@@ -1207,22 +1216,12 @@
             // Couleur : imposée par le devis, ou choix libre par pastilles
             if (devisColor) {
                 colorSection.innerHTML = `
-                    <div class="bg-orange-50 p-4 rounded-xl border border-orange-100 flex items-start gap-3">
-                        <i data-lucide="paint-bucket" class="w-5 h-5 text-sarange-blue mt-0.5 flex-shrink-0"></i>
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                        <i data-lucide="sparkles" class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"></i>
                         <div>
-                            <p class="text-sm font-medium text-slate-700 mb-1">Couleur prévue à votre devis :</p>
-                            <p class="text-lg font-bold text-sarange-blue mb-3">${devisColor}</p>
-                            <div class="bg-white p-3 rounded-lg border border-orange-100 shadow-sm space-y-2">
-                                <p class="text-xs text-slate-700">
-                                    <i data-lucide="check-circle" class="w-4 h-4 inline mr-1 text-emerald-500 align-text-bottom"></i>
-                                    <strong>Inclus :</strong> Le coût de cette couleur est déjà pris en compte dans votre devis global. Il n'y a aucun supplément tarifaire pour le panneau.
-                                </p>
-                                <hr class="border-slate-100">
-                                <p class="text-xs text-slate-500">
-                                    <i data-lucide="alert-circle" class="w-4 h-4 inline mr-1 text-amber-500 align-text-bottom"></i>
-                                    <em>Si vous désirez changer de couleur, prévenez votre conseiller : le devis de la porte complète devra être recalculé.</em>
-                                </p>
-                            </div>
+                            <p class="text-base font-bold text-blue-800 mb-1">✨ Fabriqué sur-mesure en ${devisColor}</p>
+                            <p class="text-sm text-blue-800">Comme défini dans votre devis, ce panneau sera fabriqué dans ce coloris sans supplément.</p>
+                            <p class="text-xs text-blue-600 mt-2 italic">Pour changer de coloris, prévenez votre conseiller : le devis de la porte complète sera recalculé.</p>
                         </div>
                     </div>`;
                 updateModalPrice();

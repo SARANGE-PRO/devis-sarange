@@ -33,6 +33,7 @@ import {
   calculateItemPrice,
   formatCompositeModules,
   getCompositeModuleCount,
+  getDisplayProductLabel,
   getItemPricingSummary,
   getItemThermalMetrics,
   getPoseLabel,
@@ -265,7 +266,7 @@ function SortableCartItem({
                 <Package size={14} className="shrink-0 text-slate-400" />
               )}
               <p className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-900">
-                <span className="min-w-0 truncate">{item.productLabel}</span>
+                <span className="min-w-0 truncate">{getDisplayProductLabel(item.productLabel)}</span>
                 
                 {item.repere && (
                   <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] italic text-slate-500">
