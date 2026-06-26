@@ -395,7 +395,7 @@ export default function CataloguePage() {
 
   return (
     <AppShell
-      title="Catalogue"
+      title="Paramètres"
       subtitle="Le catalogue est maintenant pense pour etre synchronise dans Firebase afin de partager les coefficients, les prix et les vitrages personnalises."
       actions={
         <button

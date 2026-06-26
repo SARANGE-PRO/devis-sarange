@@ -11,7 +11,7 @@ const PAGE_TITLES = {
   '/':          'Nouveau devis',
   '/devis':     'Mes devis',
   '/clients':   'Clients',
-  '/catalogue': 'Catalogue',
+  '/catalogue': 'Paramètres',
 };
 
 export default function AppShell({ title, subtitle, actions = null, children }) {

@@ -2,13 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { DoorOpen, FilePlus, FolderOpen, Package, Users } from 'lucide-react';
+import { DoorOpen, FilePlus, FolderOpen, Settings, Users } from 'lucide-react';
 
 const NAV_ITEMS = [
   { icon: FilePlus,   label: 'Devis',      href: '/' },
   { icon: FolderOpen, label: 'Mes devis',  href: '/devis' },
   { icon: Users,      label: 'Clients',    href: '/clients' },
-  { icon: Package,    label: 'Catalogue',  href: '/catalogue' },
+  { icon: Settings,   label: 'Paramètres', href: '/catalogue' },
   { icon: DoorOpen,   label: 'Catalogues', href: '/parametres' },
 ];
 
