@@ -72,6 +72,11 @@
         .door-card:hover { box-shadow: 0 22px 32px -14px rgba(249,115,22,.30), 0 8px 14px -8px rgba(15,23,42,.12); }
         #tabsContainer button { transition: transform .15s ease, background-color .2s ease, color .2s ease, box-shadow .2s ease; }
         #tabsContainer button:active { transform: scale(.96); }
+        /* Indice de défilement horizontal des onglets de gammes (mobile surtout) :
+           petit chevron qui invite à faire défiler pour découvrir les autres gammes. */
+        @keyframes tabScrollHint { 0%, 100% { transform: translateX(0); opacity: .55; } 50% { transform: translateX(3px); opacity: 1; } }
+        #tabsFadeRight span { animation: tabScrollHint 1.3s ease-in-out infinite; }
+        @media (prefers-reduced-motion: reduce) { #tabsFadeRight span { animation: none; } }
         .brand-dot { display: inline-block; transition: transform .35s cubic-bezier(.22,1,.36,1); }
         .brand-bar:hover .brand-dot { transform: translateY(-3px); }
         .btn-sheen { position: relative; overflow: hidden; }
@@ -195,9 +200,16 @@
         
         <!-- Barre collante : onglets de gammes + recherche (restent accessibles au scroll) -->
         <div class="sticky top-0 z-30 bg-slate-100/95 backdrop-blur-sm -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 pt-3 pb-3 mb-6 border-b border-slate-200">
-            <!-- Onglets des Gammes -->
-            <div class="flex space-x-2 overflow-x-auto pb-3 mb-3 no-scrollbar" id="tabsContainer">
-                <!-- Onglets générés par JS -->
+            <!-- Onglets des Gammes (défilement horizontal sur mobile) -->
+            <div class="relative" id="tabsScrollWrap">
+                <div class="flex space-x-2 overflow-x-auto pb-3 mb-3 no-scrollbar" id="tabsContainer">
+                    <!-- Onglets générés par JS -->
+                </div>
+                <!-- Indices de défilement : signalent qu'il existe d'autres gammes à droite/gauche -->
+                <div id="tabsFadeLeft" aria-hidden="true" style="pointer-events:none;position:absolute;left:0;top:0;height:calc(100% - 0.75rem);width:2rem;opacity:0;transition:opacity .2s ease;background:linear-gradient(to right, rgba(241,245,249,0.97), rgba(241,245,249,0));"></div>
+                <div id="tabsFadeRight" aria-hidden="true" style="pointer-events:none;position:absolute;right:0;top:0;height:calc(100% - 0.75rem);width:2.75rem;opacity:0;transition:opacity .2s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:3px;background:linear-gradient(to left, rgba(241,245,249,0.97), rgba(241,245,249,0));">
+                    <span style="color:#64748b;font-size:1.35rem;font-weight:700;line-height:1;">›</span>
+                </div>
             </div>
 
             <!-- Filtres et Recherche -->
@@ -653,7 +665,21 @@
         const doorCountSpan = document.getElementById('doorCount');
         const noResultsMsg = document.getElementById('noResults');
         const tabsContainer = document.getElementById('tabsContainer');
-        
+
+        // Indice de défilement des onglets : on n'affiche le dégradé + chevron que
+        // s'il reste des gammes cachées dans la direction concernée (sinon rien).
+        const tabsFadeLeft = document.getElementById('tabsFadeLeft');
+        const tabsFadeRight = document.getElementById('tabsFadeRight');
+        function updateTabsScrollHint() {
+            if (!tabsContainer || !tabsFadeRight) return;
+            const max = tabsContainer.scrollWidth - tabsContainer.clientWidth;
+            const x = tabsContainer.scrollLeft;
+            if (tabsFadeLeft) tabsFadeLeft.style.opacity = x > 4 ? '1' : '0';
+            tabsFadeRight.style.opacity = x < max - 4 ? '1' : '0';
+        }
+        tabsContainer.addEventListener('scroll', updateTabsScrollHint, { passive: true });
+        window.addEventListener('resize', updateTabsScrollHint);
+
         // Modale & Composants des Étapes
         const modal = document.getElementById('imageModal');
         const modalContent = document.getElementById('modalContent');
@@ -755,6 +781,8 @@
                 };
                 tabsContainer.appendChild(btn);
             });
+            // Recalcule l'indice de défilement une fois la mise en page faite.
+            requestAnimationFrame(updateTabsScrollHint);
         }
 
         // --- GESTION DU FALLBACK DES IMAGES (JPG > PNG > etc.) ---
