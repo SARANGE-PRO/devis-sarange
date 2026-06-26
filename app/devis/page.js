@@ -296,6 +296,7 @@ function FiltersSheet({
 function QuoteCard({
   quote,
   isWorking,
+  workingKind,
   onDelete,
   onDuplicate,
   onDownloadPdf,
@@ -417,8 +418,8 @@ function QuoteCard({
             className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
             title={hasClientEmail ? 'Envoyer le devis par email' : 'Ajoutez un email client pour envoyer ce devis'}
           >
-            <Mail size={14} />
-            Envoyer le devis
+            {workingKind === 'email' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+            {workingKind === 'email' ? 'Envoi…' : 'Envoyer le devis'}
           </button>
           <button
             type="button"
@@ -427,8 +428,8 @@ function QuoteCard({
             className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
             title={hasClientEmail ? 'Envoyer le devis pour signature' : 'Ajoutez un email client pour envoyer ce devis'}
           >
-            <PenSquare size={14} />
-            Envoyer pour signature
+            {workingKind === 'signature' ? <Loader2 size={14} className="animate-spin" /> : <PenSquare size={14} />}
+            {workingKind === 'signature' ? 'Envoi…' : 'Envoyer pour signature'}
           </button>
           {canOpenSignedQuote && (
             <button
@@ -471,7 +472,11 @@ function QuoteCard({
                     title={reminderMeta?.label || 'Relance'}
                     className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <BellRing size={12} />
+                    {workingKind === `reminder-${level}` ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <BellRing size={12} />
+                    )}
                     {reminderMeta?.shortLabel || `J+${level}`}
                   </button>
                 );
@@ -500,7 +505,7 @@ function QuoteCard({
               disabled={isWorking}
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:opacity-50"
             >
-              {isWorking ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
+              {workingKind === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
             </button>
             <button
               type="button"
@@ -535,6 +540,7 @@ export default function SavedQuotesPage() {
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingClients, setLoadingClients] = useState(true);
   const [actionId, setActionId]       = useState(null);
+  const [actionKind, setActionKind]   = useState(null);
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [searchTerm, setSearchTerm]   = useState('');
@@ -599,7 +605,7 @@ export default function SavedQuotesPage() {
   };
 
   const handleDownloadPdf = async (quote) => {
-    setActionId(quote.id); setActionError(''); setActionMessage('');
+    setActionId(quote.id); setActionKind('pdf'); setActionError(''); setActionMessage('');
     try {
       await generateQuotePDF(
         quote.payload?.clientData || null,
@@ -610,7 +616,7 @@ export default function SavedQuotesPage() {
       );
     } catch (e) {
       setActionError(e.message || 'Impossible de générer le PDF.');
-    } finally { setActionId(null); }
+    } finally { setActionId(null); setActionKind(null); }
   };
 
   const sendQuoteDelivery = async (quote, deliveryMode) => {
@@ -623,6 +629,7 @@ export default function SavedQuotesPage() {
     }
 
     setActionId(quote.id);
+    setActionKind(deliveryMode);
     setActionError('');
     setActionMessage('');
 
@@ -672,6 +679,7 @@ export default function SavedQuotesPage() {
       setActionError(error.message || "Impossible d'envoyer le devis.");
     } finally {
       setActionId(null);
+      setActionKind(null);
     }
   };
 
@@ -695,6 +703,7 @@ export default function SavedQuotesPage() {
     }
 
     setActionId(quote.id);
+    setActionKind(`reminder-${reminderLevel}`);
     setActionError('');
     setActionMessage('');
 
@@ -726,6 +735,7 @@ export default function SavedQuotesPage() {
       setActionError(error.message || "Impossible d'envoyer la relance.");
     } finally {
       setActionId(null);
+      setActionKind(null);
     }
   };
 
@@ -1051,6 +1061,7 @@ export default function SavedQuotesPage() {
                   key={quote.id}
                   quote={quote}
                   isWorking={actionId === quote.id}
+                  workingKind={actionId === quote.id ? actionKind : null}
                   onDelete={handleDelete}
                   onDuplicate={handleDuplicate}
                   onDownloadPdf={handleDownloadPdf}
