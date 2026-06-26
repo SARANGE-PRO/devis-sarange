@@ -88,7 +88,7 @@ function CatalogueLinkCard({ link }) {
 
   return (
     <div
-      className={`group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${link.ringClass}`}
+      className={`group flex min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md ${link.ringClass}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className={`rounded-xl p-2.5 ${link.iconClass}`}>
@@ -184,7 +184,7 @@ export default function ParametresPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
             {CATALOGUE_LINKS.map((link) => (
               <CatalogueLinkCard key={link.id} link={link} />
             ))}
