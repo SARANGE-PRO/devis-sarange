@@ -523,10 +523,11 @@ const SignaturePad = forwardRef(function SignaturePad(
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
-          className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Upload size={15} />
+          <Upload size={14} />
           Importer un cachet
+          <span className="text-slate-400">(optionnel)</span>
         </button>
         {stampFileName && (
           <span className="inline-flex max-w-full items-center gap-2 truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
