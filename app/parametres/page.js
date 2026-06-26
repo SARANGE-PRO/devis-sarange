@@ -10,7 +10,6 @@ import {
   Eye,
   Info,
   Link2,
-  Lock,
   Sparkles,
   Tag,
 } from 'lucide-react';
@@ -22,43 +21,43 @@ const PUBLIC_BASE = (
   process.env.NEXT_PUBLIC_APP_URL || 'https://devis-sarange.vercel.app'
 ).replace(/\/$/, '');
 
-// Les différents liens du sélecteur de panneaux, selon le mode d'affichage.
+// Les 3 vues du sélecteur de panneaux, classées du plus envoyé au plus rare.
 const CATALOGUE_LINKS = [
   {
-    id: 'client',
-    badge: 'À montrer au client',
+    id: 'inclus',
+    badge: '★ Le plus envoyé',
     badgeClass: 'bg-emerald-100 text-emerald-700',
     icon: Eye,
     iconClass: 'bg-emerald-100 text-emerald-600',
     ringClass: 'hover:border-emerald-300',
-    title: 'Catalogue client — sans prix',
+    title: 'Catalogue client — sans surcoût',
     description:
-      "La gamme complète des panneaux de porte d'entrée, présentée sans aucun prix ni bouton de sélection. Parfait pour faire choisir un modèle en rendez-vous ou par message.",
-    path: '/selecteur-panneaux/selecteur.html?mode=catalogue',
-  },
-  {
-    id: 'inclus',
-    badge: 'Sans supplément',
-    badgeClass: 'bg-sky-100 text-sky-700',
-    icon: Tag,
-    iconClass: 'bg-sky-100 text-sky-600',
-    ringClass: 'hover:border-sky-300',
-    title: 'Panneaux inclus — tout compris',
-    description:
-      "N'affiche que les modèles compris dans le tarif de base, sans plus-value. Idéal pour rassurer un client sur ce qui est inclus sans aucun surcoût.",
+      "N'affiche que les modèles compris dans le tarif de base, sans aucune plus-value par rapport à votre devis. C'est le lien à envoyer en priorité : le client choisit sans aucun surcoût.",
     path: '/selecteur-panneaux/selecteur.html?mode=catalogue&inclus=1',
   },
   {
     id: 'pro',
-    badge: 'Usage interne',
-    badgeClass: 'bg-orange-100 text-orange-700',
-    icon: Lock,
-    iconClass: 'bg-orange-100 text-orange-600',
-    ringClass: 'hover:border-orange-300',
-    title: 'Catalogue pro — prix & plus-values',
+    badge: 'À envoyer régulièrement',
+    badgeClass: 'bg-amber-100 text-amber-700',
+    icon: Tag,
+    iconClass: 'bg-amber-100 text-amber-600',
+    ringClass: 'hover:border-amber-300',
+    title: 'Catalogue client — avec suppléments',
     description:
-      "Vue commerciale complète : prix d'achat après hausse, plus-values des modèles premium et parcours de sélection. À ne pas partager avec le client.",
+      "Affiche pour chaque modèle le supplément par rapport au panneau standard (et non un prix d'achat). À envoyer aux clients : c'est l'intermédiaire entre le catalogue sans surcoût et celui sans aucun prix.",
     path: '/selecteur-panneaux/selecteur.html',
+  },
+  {
+    id: 'complet',
+    badge: 'Sur demande spécifique',
+    badgeClass: 'bg-slate-100 text-slate-600',
+    icon: Sparkles,
+    iconClass: 'bg-slate-100 text-slate-600',
+    ringClass: 'hover:border-slate-300',
+    title: 'Catalogue complet — sans prix',
+    description:
+      "Toute la gamme, y compris les modèles les plus chers, sans aucun prix ni supplément affiché. À réserver aux demandes spécifiques (recherche d'un modèle précis en rendez-vous).",
+    path: '/selecteur-panneaux/selecteur.html?mode=catalogue',
   },
 ];
 
@@ -145,8 +144,8 @@ function CatalogueLinkCard({ link }) {
 export default function ParametresPage() {
   return (
     <AppShell
-      title="Paramètres"
-      subtitle="Liens à partager et ressources de l'application."
+      title="Catalogues"
+      subtitle="Les liens de catalogue à partager avec vos clients."
     >
       <div className="mx-auto max-w-6xl space-y-6">
         {/* Bandeau d'introduction */}
@@ -163,9 +162,9 @@ export default function ParametresPage() {
                 Tous vos liens de catalogue, au même endroit
               </h3>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
-                Trois vues du même catalogue selon le contexte : une pour présenter au
-                client, une pour les modèles inclus sans supplément, et une interne avec les
-                prix. Ouvrez-les en un clic ou copiez le lien pour l&apos;envoyer.
+                Trois vues clients du même catalogue selon ce que vous montrez : sans aucun
+                surcoût (le plus envoyé), avec les suppléments par rapport au standard, ou sans
+                aucun prix. Ouvrez-les en un clic ou copiez le lien pour l&apos;envoyer.
               </p>
             </div>
           </div>
@@ -234,8 +233,9 @@ export default function ParametresPage() {
               <p className="font-bold">Bon à savoir</p>
               <ul className="mt-2 list-disc space-y-1 pl-5 text-sky-800">
                 <li>
-                  Les liens « client » et « inclus » masquent automatiquement les prix : vous
-                  pouvez les envoyer sans risque.
+                  Aucun de ces liens n&apos;affiche votre prix d&apos;achat : « sans surcoût »
+                  ne montre que les modèles inclus, « avec suppléments » montre l&apos;écart au
+                  modèle standard, et « sans prix » ne montre aucun montant.
                 </li>
                 <li>
                   Vous pouvez imposer un coloris en ajoutant{' '}

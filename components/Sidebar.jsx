@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ChevronRight,
+  DoorOpen,
   FilePlus,
   FolderOpen,
   LogOut,
   Package,
-  Settings,
   Users,
 } from 'lucide-react';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
@@ -19,7 +19,7 @@ const menuItems = [
   { icon: FolderOpen, label: 'Mes devis',           href: '/devis' },
   { icon: Users,      label: 'Portefeuille client', href: '/clients' },
   { icon: Package,    label: 'Catalogue',           href: '/catalogue' },
-  { icon: Settings,   label: 'Paramètres',          href: '/parametres' },
+  { icon: DoorOpen,   label: 'Catalogues',          href: '/parametres' },
 ];
 
 /**
