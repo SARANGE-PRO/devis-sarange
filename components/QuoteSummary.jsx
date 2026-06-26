@@ -216,6 +216,26 @@ export default function QuoteSummary({
         <PdfGenerationLoader title="Creation du devis" messages={['Veuillez patienter...']} />
       )}
 
+      {/* Envoi du devis (email ou signature) : on bloque l'écran avec l'animation. */}
+      {isSendingDelivery && !isGeneratingPdf && (
+        <PdfGenerationLoader
+          title="Envoi en cours"
+          messages={
+            activeDeliveryMode === 'signature'
+              ? [
+                  'Préparation du devis…',
+                  'Envoi de la demande de signature…',
+                  'Notification du client…',
+                ]
+              : [
+                  'Préparation du devis…',
+                  'Envoi du devis par email…',
+                  'Le client va le recevoir…',
+                ]
+          }
+        />
+      )}
+
       <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Header section with Client Info */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

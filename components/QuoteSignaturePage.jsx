@@ -26,6 +26,7 @@ import {
   PenLine,
   Phone,
   RefreshCcw,
+  Search,
   ShieldCheck,
   Trash2,
   Upload,
@@ -593,25 +594,28 @@ const SignaturePad = forwardRef(function SignaturePad(
 /*  Case à cocher personnalisée (case native masquée + faux carré + icône)    */
 /* -------------------------------------------------------------------------- */
 
+// Le visuel est piloté DIRECTEMENT par l'état React (`checked`), pas par du CSS
+// `:checked` : ainsi un clic n'importe où dans le <label> parent coche la case de
+// manière infaillible (la case native, en sr-only, reste la source d'accessibilité).
 function CustomCheckbox({ checked, onChange, disabled = false, accent = 'orange' }) {
-  const theme =
-    accent === 'emerald'
-      ? 'border-emerald-300 checked:border-emerald-600 checked:bg-emerald-600 focus-visible:ring-emerald-300'
-      : 'border-slate-300 checked:border-orange-500 checked:bg-orange-500 focus-visible:ring-orange-300';
+  const onClasses =
+    accent === 'emerald' ? 'border-emerald-600 bg-emerald-600' : 'border-orange-500 bg-orange-500';
+  const offClasses =
+    accent === 'emerald' ? 'border-emerald-300 bg-white' : 'border-slate-300 bg-white';
   return (
-    <span className="relative mt-0.5 flex shrink-0 items-center">
+    <span
+      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${
+        checked ? onClasses : offClasses
+      } ${disabled ? 'opacity-50' : ''}`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={onChange}
         disabled={disabled}
-        className={`peer h-5 w-5 cursor-pointer appearance-none rounded-md border-2 bg-white outline-none transition focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50 ${theme}`}
+        className="sr-only"
       />
-      <Check
-        size={14}
-        strokeWidth={3.5}
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 transition peer-checked:opacity-100"
-      />
+      {checked && <Check size={14} strokeWidth={3.5} className="text-white" />}
     </span>
   );
 }
@@ -688,7 +692,13 @@ const SignatureStep = forwardRef(function SignatureStep(
       .filter(Boolean)
       .join(' — ');
 
-    onSubmit({ signerName: composedName, acceptReducedVat, signatureDataUrl });
+    // Toujours un booléen explicite : c'est cette valeur qui coche (ou non) la case
+    // TVA réduite sur le PDF officiel côté serveur. On ne laisse jamais d'ambiguïté.
+    onSubmit({
+      signerName: composedName,
+      acceptReducedVat: acceptReducedVat === true,
+      signatureDataUrl,
+    });
   };
 
   // Le bouton principal « Signer et valider » vit dans la barre d'action en bas : on
@@ -770,7 +780,7 @@ const SignatureStep = forwardRef(function SignatureStep(
                   }`}
                 >
                   {/* Case + intitulé restent toujours visibles. */}
-                  <label className="flex cursor-pointer gap-3">
+                  <label className="flex cursor-pointer items-start gap-3">
                     <CustomCheckbox
                       checked={acceptReducedVat}
                       onChange={(event) => setAcceptReducedVat(event.target.checked)}
@@ -1271,7 +1281,8 @@ export default function QuoteSignaturePage({ token }) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             signerName,
-            acceptReducedVat,
+            // Booléen garanti : pilote la case TVA réduite sur le PDF officiel.
+            acceptReducedVat: acceptReducedVat === true,
             signatureDataUrl,
             selectedVariantId: selectedVariantId || undefined,
             panelChoices,
@@ -1804,7 +1815,7 @@ export default function QuoteSignaturePage({ token }) {
                 </div>
 
                 <div className="grid grid-cols-1 gap-6">
-                  {panelSelections.map((selection) => {
+                  {panelSelections.map((selection, index) => {
                     const chosen = panelChoices[selection.lineId];
                     const showSelector = !chosen || Boolean(reopenedPanels[selection.lineId]);
                     const params = new URLSearchParams({ embed: 'true' });
@@ -1863,7 +1874,7 @@ export default function QuoteSignaturePage({ token }) {
                               <button
                                 type="button"
                                 onClick={() => setFullscreenPanelId(selection.lineId)}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/10"
+                                className="hidden items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 md:inline-flex dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/10"
                               >
                                 <Maximize2 size={14} />
                                 Agrandir
@@ -1872,34 +1883,61 @@ export default function QuoteSignaturePage({ token }) {
                           </div>
                         </div>
                         {showSelector ? (
-                          <div className={isFs ? 'fixed inset-0 z-[60] flex flex-col bg-slate-900' : 'flex flex-col'}>
+                          <>
+                            {/* MOBILE : pas d'iframe inline. Un bouton ouvre le catalogue
+                                en plein écran (par-dessus tout le site). */}
+                            {!isFs && (
+                              <div className="p-4 md:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => setFullscreenPanelId(selection.lineId)}
+                                  className="flex w-full items-center justify-center gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-slate-100 py-4 text-base font-semibold text-slate-700 transition-colors hover:bg-slate-200 dark:border-white/15 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+                                >
+                                  <Search size={20} className="text-orange-500" />
+                                  {panelSelections.length > 1
+                                    ? `Choisir le panneau — Porte ${index + 1}`
+                                    : 'Choisir son panneau de porte'}
+                                </button>
+                              </div>
+                            )}
+
+                            {/* DESKTOP : iframe inline (masquée en mobile) ET overlay plein
+                                écran partagé (déclenché par « Agrandir » ou le bouton mobile). */}
                             <div
                               className={
                                 isFs
-                                  ? 'flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white'
-                                  : 'hidden'
+                                  ? 'fixed inset-0 z-[100] flex flex-col bg-slate-900'
+                                  : 'hidden md:flex md:flex-col'
                               }
                             >
-                              <span className="truncate text-sm font-bold">{doorTitle}</span>
-                              <button
-                                type="button"
-                                onClick={() => setFullscreenPanelId(null)}
-                                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+                              <div
+                                className={
+                                  isFs
+                                    ? 'flex items-center justify-between gap-3 bg-slate-900 px-4 py-3 text-white'
+                                    : 'hidden'
+                                }
                               >
-                                Fermer
-                                <X size={16} />
-                              </button>
+                                <span className="truncate text-sm font-bold">{doorTitle}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setFullscreenPanelId(null)}
+                                  className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-white/20"
+                                >
+                                  Fermer
+                                  <X size={16} />
+                                </button>
+                              </div>
+                              <iframe
+                                ref={(el) => {
+                                  panelIframeRefs.current[selection.lineId] = el;
+                                }}
+                                src={iframeSrc}
+                                title={`Sélecteur de panneau — ${selection.productLabel}`}
+                                className={isFs ? 'w-full flex-1 border-0' : 'block h-[640px] w-full border-0'}
+                                loading="lazy"
+                              />
                             </div>
-                            <iframe
-                              ref={(el) => {
-                                panelIframeRefs.current[selection.lineId] = el;
-                              }}
-                              src={iframeSrc}
-                              title={`Sélecteur de panneau — ${selection.productLabel}`}
-                              className={isFs ? 'w-full flex-1 border-0' : 'block h-[640px] w-full border-0'}
-                              loading="lazy"
-                            />
-                          </div>
+                          </>
                         ) : (
                           <div className="flex flex-col items-center gap-3 px-5 py-8 text-center">
                             {chosen.image && (
