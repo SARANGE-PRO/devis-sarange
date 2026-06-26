@@ -18,7 +18,7 @@ import AppShell from '@/components/AppShell';
 // Domaine public de partage (les liens doivent toujours pointer vers la prod,
 // quel que soit le poste depuis lequel le commercial les copie).
 const PUBLIC_BASE = (
-  process.env.NEXT_PUBLIC_APP_URL || 'https://devis-sarange.vercel.app'
+  process.env.NEXT_PUBLIC_APP_URL || 'https://devis.sarange.fr'
 ).replace(/\/$/, '');
 
 // Les 3 vues du sélecteur de panneaux, classées du plus envoyé au plus rare.
@@ -109,7 +109,7 @@ function CatalogueLinkCard({ link }) {
       {/* Lien affiché (mono, tronqué) */}
       <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
         <Link2 size={14} className="shrink-0 text-slate-400" />
-        <span className="truncate font-mono text-xs text-slate-500">{fullUrl}</span>
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500">{fullUrl}</span>
       </div>
 
       {/* Actions */}
@@ -147,15 +147,15 @@ export default function ParametresPage() {
       title="Catalogues"
       subtitle="Les liens de catalogue à partager avec vos clients."
     >
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
         {/* Bandeau d'introduction */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-6 text-white shadow-sm sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-white/10 p-3 backdrop-blur">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-sm sm:p-8">
+          <div className="flex items-start gap-3 sm:gap-4">
+            <div className="shrink-0 rounded-2xl bg-white/10 p-2.5 backdrop-blur sm:p-3">
               <DoorOpen size={24} className="text-orange-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.24em] text-orange-400">
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-orange-400 sm:tracking-[0.24em]">
                 Catalogues panneaux de porte
               </p>
               <h3 className="mt-1 text-xl font-black sm:text-2xl">
@@ -184,7 +184,7 @@ export default function ParametresPage() {
             </div>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
             {CATALOGUE_LINKS.map((link) => (
               <CatalogueLinkCard key={link.id} link={link} />
             ))}
