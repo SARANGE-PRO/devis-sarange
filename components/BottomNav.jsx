@@ -2,13 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FilePlus, FolderOpen, Package, Users } from 'lucide-react';
+import { FilePlus, FolderOpen, Package, Settings, Users } from 'lucide-react';
 
 const NAV_ITEMS = [
   { icon: FilePlus,   label: 'Devis',     href: '/' },
   { icon: FolderOpen, label: 'Mes devis', href: '/devis' },
   { icon: Users,      label: 'Clients',   href: '/clients' },
   { icon: Package,    label: 'Catalogue', href: '/catalogue' },
+  { icon: Settings,   label: 'Réglages',  href: '/parametres' },
 ];
 
 export default function BottomNav() {
