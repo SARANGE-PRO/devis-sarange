@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ChevronDown,
   CreditCard,
+  Handshake,
 } from 'lucide-react';
 import {
   buildPaymentTermsSentence,
@@ -67,6 +68,11 @@ export default function QuoteCommercialTerms({
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
                 Délai {deliveryLabel}
               </span>
+              {settings.commissionPercent > 0 && (
+                <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-semibold text-orange-700">
+                  Commission {settings.commissionPercent}%
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -288,6 +294,54 @@ export default function QuoteCommercialTerms({
                     placeholder="Ex : Livraison prévue mi-juillet"
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                   />
+                )}
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-white p-2 text-slate-500 shadow-sm">
+                    <Handshake size={16} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      Commission / apporteur d&apos;affaires
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Répartie dans les menuiseries (hors pose). Invisible pour le client.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Pourcentage de commission
+                  </span>
+                  <div className="relative max-w-[180px]">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={settings.commissionPercent || 0}
+                      onChange={(event) =>
+                        updateSettings({
+                          commissionPercent: Number.parseFloat(event.target.value) || 0,
+                        })
+                      }
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      %
+                    </span>
+                  </div>
+                </label>
+
+                {settings.commissionPercent > 0 && (
+                  <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
+                    Commission de {settings.commissionPercent}% répartie au prorata dans le
+                    prix des menuiseries. Le total du devis augmente d&apos;autant ; la pose
+                    reste inchangée.
+                  </p>
                 )}
               </div>
             </div>

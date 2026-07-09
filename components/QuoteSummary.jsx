@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
 import PdfGenerationLoader from './PdfGenerationLoader';
 import {
+  applyCommissionToCartItems,
   calculateItemPrice,
   formatCompositeModules,
   getCompositeModuleCount,
@@ -146,7 +147,26 @@ export default function QuoteSummary({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
-  const totals = useMemo(() => computeQuoteTotals(cartItems, tvaRate), [cartItems, tvaRate]);
+  // Commission commerciale : on redistribue le % dans les menuiseries pour l'affichage
+  // ET les totaux (le champ `commissionUnitHT` est éphémère, jamais renvoyé au panier).
+  const commissionedItems = useMemo(
+    () => applyCommissionToCartItems(cartItems, quoteSettings?.commissionPercent),
+    [cartItems, quoteSettings?.commissionPercent]
+  );
+  const totals = useMemo(
+    () => computeQuoteTotals(commissionedItems, tvaRate),
+    [commissionedItems, tvaRate]
+  );
+
+  // Toute remontée vers le panier doit repartir SANS la majoration éphémère.
+  const updateItem = (next) => {
+    if (!next || typeof next !== 'object') {
+      onUpdateItem(next);
+      return;
+    }
+    const { commissionUnitHT, ...clean } = next;
+    onUpdateItem(clean);
+  };
   const billingName =
     clientData?.prenom || clientData?.nom
       ? `${clientData?.prenom || ''} ${clientData?.nom || ''}`.trim()
@@ -177,7 +197,7 @@ export default function QuoteSummary({
   };
 
   const handleSaveEdit = (item) => {
-    onUpdateItem({
+    updateItem({
       ...item,
       customDescription: tempDesignation,
       customDescriptionManual: true,
@@ -191,7 +211,7 @@ export default function QuoteSummary({
   };
 
   const handleSavePose = (item) => {
-    onUpdateItem({ ...item, poseLabel: tempPoseLabel.trim() });
+    updateItem({ ...item, poseLabel: tempPoseLabel.trim() });
     setEditingPoseId(null);
   };
 
@@ -297,7 +317,7 @@ export default function QuoteSummary({
 
           {/* ── Mobile: Card layout ──────────────────────────────── */}
           <div className="space-y-3 md:hidden">
-            {cartItems.map((item) => {
+            {commissionedItems.map((item) => {
               if (item.productId === 'text-only') {
                 return (
                   <div
@@ -428,7 +448,7 @@ export default function QuoteSummary({
                             <span className="font-bold text-slate-400">TVA</span>
                             <select
                               value={item.tvaRate ?? tvaRate}
-                              onChange={(e) => onUpdateItem({ ...item, tvaRate: Number(e.target.value) })}
+                              onChange={(e) => updateItem({ ...item, tvaRate: Number(e.target.value) })}
                               className="text-[10px] border border-slate-200 rounded px-1.5 py-1 bg-white font-bold text-slate-700 outline-none hover:border-orange-500 transition-colors cursor-pointer"
                             >
                               <option value={0}>0%</option>
@@ -542,7 +562,7 @@ export default function QuoteSummary({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {cartItems.map((item) => {
+                {commissionedItems.map((item) => {
                   if (item.productId === 'text-only') {
                     return (
                       <tr key={item.id} className="bg-amber-50/70">
@@ -746,7 +766,7 @@ export default function QuoteSummary({
                           <td className="py-4 px-4 text-center animate-in fade-in">
                             <select
                               value={item.tvaRate ?? tvaRate}
-                              onChange={(e) => onUpdateItem({ ...item, tvaRate: Number(e.target.value) })}
+                              onChange={(e) => updateItem({ ...item, tvaRate: Number(e.target.value) })}
                               className="w-full cursor-pointer text-xs font-bold text-slate-600 border border-slate-200 rounded-lg px-2 py-1.5 outline-none hover:border-orange-400 focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-colors bg-white shadow-sm"
                             >
                               <option value={0}>0%</option>
