@@ -459,13 +459,17 @@ export default function Cart({
     );
   }
 
+  // Badge « Panier » : total des PIÈCES (somme des quantités), pas le nombre de lignes.
+  // Ex. 1 fenêtre + 1 fenêtre en quantité 2 = 3.
+  const totalQuantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <ShoppingCart size={18} className="text-orange-500" />
         <h3 className="text-sm font-bold text-slate-900">Panier</h3>
         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white">
-          {items.length}
+          {totalQuantity}
         </span>
       </div>
 
