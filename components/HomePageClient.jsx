@@ -1203,7 +1203,7 @@ export default function HomePageClient() {
         pdfDocument = await buildQuotePdfDocument(
           savedQuote.payload?.clientData || clientData || null,
           mergedCartItems,
-          savedQuote.payload?.tvaRate || tvaRate || DEFAULT_TVA_RATE,
+          savedQuote.payload?.tvaRate ?? tvaRate ?? DEFAULT_TVA_RATE,
           savedQuote.payload?.quoteSettings || quoteSettings || null,
           getQuotePdfOptions(savedQuote)
         );

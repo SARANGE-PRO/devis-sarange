@@ -119,6 +119,13 @@ const getQuotePdfOptions = (quote) => {
     // historique (il peut rester sur l'ancien numéro après une modification).
     quoteNumber: quote.quoteNumber || workflow.quoteNumber || undefined,
     issueDate: quote.quoteIssuedAt || workflow.issueDate || undefined,
+    // Référence de devis (niveau devis depuis sa migration hors fiche client) : sans
+    // ce passage, le PDF téléchargé/envoyé depuis « Mes devis » n'affichait plus la réf.
+    reference:
+      quote.referenceDevis ||
+      quote.payload?.reference ||
+      quote.payload?.clientData?.referenceDevis ||
+      undefined,
   };
 };
 
@@ -612,7 +619,9 @@ export default function SavedQuotesPage() {
       await generateQuotePDF(
         quote.payload?.clientData || null,
         quote.payload?.cartItems || [],
-        quote.payload?.tvaRate || 10,
+        // `??` et non `||` : une TVA à 0 % (autoliquidation) est valide et ne doit
+        // pas retomber sur le taux par défaut (10 %).
+        quote.payload?.tvaRate ?? 10,
         quote.payload?.quoteSettings || null,
         getQuotePdfOptions(quote)
       );
@@ -639,7 +648,8 @@ export default function SavedQuotesPage() {
       const pdfDocument = await buildQuotePdfDocument(
         quote.payload?.clientData || null,
         quote.payload?.cartItems || [],
-        quote.payload?.tvaRate || 10,
+        // `??` et non `||` : une TVA à 0 % (autoliquidation) est valide.
+        quote.payload?.tvaRate ?? 10,
         quote.payload?.quoteSettings || null,
         getQuotePdfOptions(quote)
       );
