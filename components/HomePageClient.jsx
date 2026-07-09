@@ -1038,6 +1038,9 @@ export default function HomePageClient() {
         variants: materializedVariants,
         activeVariantId,
         currentStep: ['pdf', 'delivery'].includes(origin) ? 3 : currentStep,
+        // L'envoi (re)crée une session côté serveur juste après cette sauvegarde :
+        // ne pas invalider la signature ici (sinon « devis modifié » + lien inactif).
+        skipSignatureInvalidation: origin === 'delivery',
       });
 
       setActiveQuoteId(savedQuote.id);
