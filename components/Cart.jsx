@@ -459,9 +459,20 @@ export default function Cart({
     );
   }
 
-  // Badge « Panier » : total des PIÈCES (somme des quantités), pas le nombre de lignes.
-  // Ex. 1 fenêtre + 1 fenêtre en quantité 2 = 3.
-  const totalQuantity = items.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  // Badge « Panier » : total des PIÈCES (somme des quantités) des menuiseries et
+  // produits hors catalogue. On EXCLUT les lignes de service (gestion des déchets,
+  // métrage) et le texte seul. La pose n'est pas une ligne (option includePose),
+  // elle n'est donc jamais comptée. Ex. 1 fenêtre + 1 fenêtre en quantité 2 = 3.
+  const UNCOUNTED_PRODUCT_IDS = new Set([
+    'gestion-dechets',
+    'metrage-technique-validation',
+    'text-only',
+  ]);
+  const totalQuantity = items.reduce(
+    (sum, item) =>
+      UNCOUNTED_PRODUCT_IDS.has(item.productId) ? sum : sum + (Number(item.quantity) || 1),
+    0
+  );
 
   return (
     <div className="space-y-4">
