@@ -115,8 +115,10 @@ const getQuotePdfOptions = (quote) => {
   const workflow = getQuoteSignatureWorkflow(quote);
 
   return {
-    quoteNumber: workflow.quoteNumber || quote.quoteNumber || undefined,
-    issueDate: workflow.issueDate || quote.quoteIssuedAt || undefined,
+    // Le numéro figé sur le devis (racine) fait FOI ; le workflow n'est qu'un repli
+    // historique (il peut rester sur l'ancien numéro après une modification).
+    quoteNumber: quote.quoteNumber || workflow.quoteNumber || undefined,
+    issueDate: quote.quoteIssuedAt || workflow.issueDate || undefined,
   };
 };
 

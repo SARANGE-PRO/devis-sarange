@@ -614,8 +614,10 @@ export default function HomePageClient() {
     const workflow = quote?.signatureWorkflow || {};
 
     return {
-      quoteNumber: workflow.quoteNumber || quote?.quoteNumber || undefined,
-      issueDate: workflow.issueDate || quote?.quoteIssuedAt || undefined,
+      // Le numéro figé sur le devis (racine) fait FOI ; le workflow n'est qu'un repli
+      // historique (il peut rester sur l'ancien numéro après une modification).
+      quoteNumber: quote?.quoteNumber || workflow.quoteNumber || undefined,
+      issueDate: quote?.quoteIssuedAt || workflow.issueDate || undefined,
       reference:
         quote?.referenceDevis ||
         quote?.payload?.reference ||
@@ -1095,14 +1097,16 @@ export default function HomePageClient() {
         savedQuote = await persistQuoteToCloud({ origin: 'pdf' });
       }
 
+      // On réutilise le numéro FIGÉ du devis sauvegardé (numéro + date d'émission)
+      // pour que le PDF téléchargé porte le même numéro que celui envoyé au client.
+      const pdfOptions = savedQuote
+        ? getQuotePdfOptions(savedQuote)
+        : { reference: quoteReference };
+
       if (variantsMode && materializedVariants.length > 1) {
-        await generateMultiVariantQuotePDF(clientData, materializedVariants, {
-          reference: quoteReference,
-        });
+        await generateMultiVariantQuotePDF(clientData, materializedVariants, pdfOptions);
       } else {
-        await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, {
-          reference: quoteReference,
-        });
+        await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, pdfOptions);
       }
       setPdfGenerated(true);
       setGenerationSuccess({
