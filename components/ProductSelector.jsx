@@ -945,7 +945,9 @@ export default function ProductSelector({
     }
 
     if (isCompositeMode) {
-      if (!compositePricing.totalPrice || compositePricing.hasInvalidModule) return null;
+      // `totalPrice === 0` est VALIDE (grilles alu à 0 € : le prix vient de la
+      // marge nette souhaitée) — seul `null` (vide / hors grille) bloque.
+      if (compositePricing.totalPrice === null || compositePricing.hasInvalidModule) return null;
       const compositePreviewItem = {
         productId: 'composite-builder',
         productLabel: 'Châssis composé',
@@ -1245,7 +1247,7 @@ export default function ProductSelector({
 
   const handleAddToCart = () => {
     if (isCompositeMode) {
-      if (compositePricing.hasInvalidModule || !compositePricing.totalPrice) return;
+      if (compositePricing.hasInvalidModule || compositePricing.totalPrice === null) return;
 
       const frameModules = getCompositeFrameModules(compositeFrame).map((frameModule) => {
         const productDefinition = getProductById(frameModule.productId);
@@ -2678,7 +2680,7 @@ export default function ProductSelector({
               onClick={handleAddToCart}
               disabled={
                 (isCompositeMode &&
-                  (compositePricing.hasInvalidModule || !compositePricing.totalPrice)) ||
+                  (compositePricing.hasInvalidModule || compositePricing.totalPrice === null)) ||
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
@@ -2691,7 +2693,7 @@ export default function ProductSelector({
               }
               className={`inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-bold transition-all ${
                 (isCompositeMode &&
-                  (compositePricing.hasInvalidModule || !compositePricing.totalPrice)) ||
+                  (compositePricing.hasInvalidModule || compositePricing.totalPrice === null)) ||
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
