@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CreditCard,
   Handshake,
+  Hourglass,
 } from 'lucide-react';
 import {
   buildPaymentTermsSentence,
@@ -15,6 +16,8 @@ import {
   getPaymentMilestones,
   getPaymentScheduleValidation,
   getStandardDepositOptions,
+  getValidityLabel,
+  getValidityMonthsOptions,
   normalizeQuoteSettings,
 } from '@/lib/quote-settings.mjs';
 
@@ -34,8 +37,10 @@ export default function QuoteCommercialTerms({
   const milestones = getPaymentMilestones(settings, totalTTC);
   const deliveryDelayOptions = getDeliveryDelayOptions();
   const standardDepositOptions = getStandardDepositOptions();
+  const validityMonthsOptions = getValidityMonthsOptions();
   const paymentSentence = buildPaymentTermsSentence(settings);
   const deliveryLabel = getDeliveryDelayLabel(settings);
+  const validityLabel = getValidityLabel(settings);
   const paymentSummary =
     settings.paymentMode === 'schedule'
       ? `Échéancier ${settings.customSignaturePercent}% / ${settings.customOpeningPercent}% / ${settings.customBalancePercent}%`
@@ -67,6 +72,9 @@ export default function QuoteCommercialTerms({
               </span>
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
                 Délai {deliveryLabel}
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
+                Validité {validityLabel}
               </span>
               {settings.commissionPercent > 0 && (
                 <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-semibold text-orange-700">
@@ -300,6 +308,52 @@ export default function QuoteCommercialTerms({
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start gap-3">
                   <div className="rounded-xl bg-white p-2 text-slate-500 shadow-sm">
+                    <Hourglass size={16} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">
+                      Validité de l&apos;offre
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Durée pendant laquelle les prix du devis restent fermes.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {validityMonthsOptions.map((months) => {
+                    const isActive = settings.validityMonths === months;
+
+                    return (
+                      <button
+                        key={months}
+                        type="button"
+                        onClick={() => updateSettings({ validityMonths: months })}
+                        className={`rounded-xl border px-3 py-3 text-sm font-bold transition-all ${
+                          isActive
+                            ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300'
+                        }`}
+                      >
+                        <span className="block">{months} mois</span>
+                        {months === 1 && (
+                          <span
+                            className={`mt-1 block text-[10px] ${
+                              isActive ? 'text-orange-100' : 'text-slate-400'
+                            }`}
+                          >
+                            Par défaut
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-xl bg-white p-2 text-slate-500 shadow-sm">
                     <Handshake size={16} />
                   </div>
                   <div>
@@ -357,6 +411,10 @@ export default function QuoteCommercialTerms({
                 <p className="mt-2 text-sm text-slate-500">
                   Délai affiché :{' '}
                   <span className="font-bold text-slate-900">{deliveryLabel}</span>
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Validité de l&apos;offre :{' '}
+                  <span className="font-bold text-slate-900">{validityLabel}</span>
                 </p>
               </div>
 

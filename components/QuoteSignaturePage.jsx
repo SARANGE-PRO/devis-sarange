@@ -68,16 +68,20 @@ const formatDate = (value) => {
   return Number.isNaN(date.getTime()) ? '—' : dateFormatter.format(date);
 };
 
-// Calcule la validité du devis : date d'émission + 30 jours.
+// Calcule la validité du devis : date d'émission + durée de validité de l'offre
+// (1 mois par défaut, 2 ou 3 mois selon les conditions commerciales du devis).
 // Renvoie la date d'expiration ainsi que le nombre de jours restants
 // (arrondi au jour supérieur). Renvoie null si la date est invalide.
-const getQuoteValidity = (issueDate) => {
+const getQuoteValidity = (issueDate, validityMonths = 1) => {
   if (!issueDate) return null;
   const issued = new Date(issueDate);
   if (Number.isNaN(issued.getTime())) return null;
 
+  const months = Number.isFinite(Number(validityMonths))
+    ? Math.max(1, Math.round(Number(validityMonths)))
+    : 1;
   const expiry = new Date(issued);
-  expiry.setDate(expiry.getDate() + 30);
+  expiry.setMonth(expiry.getMonth() + months);
 
   const msParJour = 1000 * 60 * 60 * 24;
   const joursRestants = Math.ceil((expiry.getTime() - Date.now()) / msParJour);
@@ -1056,11 +1060,11 @@ function ContactModal({ onClose, waLink, telLink, emailLink }) {
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Badge de validité dynamique (devis émis + 30 jours)                       */
+/*  Badge de validité dynamique (devis émis + durée de validité de l'offre)   */
 /* -------------------------------------------------------------------------- */
 
-function ValidityBadge({ issueDate }) {
-  const validity = getQuoteValidity(issueDate);
+function ValidityBadge({ issueDate, validityMonths }) {
+  const validity = getQuoteValidity(issueDate, validityMonths);
   if (!validity) return null;
 
   const { expiry, joursRestants } = validity;
@@ -1783,7 +1787,12 @@ export default function QuoteSignaturePage({ token }) {
                   />
                 </div>
 
-                {canAct && <ValidityBadge issueDate={session.quote?.issueDate} />}
+                {canAct && (
+                  <ValidityBadge
+                    issueDate={session.quote?.issueDate}
+                    validityMonths={session.quote?.validityMonths}
+                  />
+                )}
               </div>
             )}
 

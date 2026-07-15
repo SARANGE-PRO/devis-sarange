@@ -4,6 +4,8 @@ import {
   getDeliveryDelayLabel,
   getPaymentMilestones,
   getPaymentScheduleValidation,
+  getValidityLabel,
+  getValidityMonthsOptions,
   normalizeQuoteSettings,
 } from '../lib/quote-settings.mjs';
 
@@ -23,6 +25,25 @@ run('normalise les reglages par defaut', () => {
   assert.equal(settings.paymentMode, 'standard');
   assert.equal(settings.standardDepositPercent, 50);
   assert.equal(settings.deliveryDelayPreset, '4/6 semaines');
+  assert.equal(settings.validityMonths, 1);
+});
+
+run("propose les durees de validite 1, 2 et 3 mois", () => {
+  assert.deepEqual(getValidityMonthsOptions(), [1, 2, 3]);
+});
+
+run('normalise la duree de validite de l offre', () => {
+  assert.equal(normalizeQuoteSettings({ validityMonths: 2 }).validityMonths, 2);
+  assert.equal(normalizeQuoteSettings({ validityMonths: 3 }).validityMonths, 3);
+  // Valeurs hors options (anciennes donnees, saisies invalides) -> defaut 1 mois.
+  assert.equal(normalizeQuoteSettings({ validityMonths: 0 }).validityMonths, 1);
+  assert.equal(normalizeQuoteSettings({ validityMonths: 12 }).validityMonths, 1);
+  assert.equal(normalizeQuoteSettings({ validityMonths: 'abc' }).validityMonths, 1);
+});
+
+run("genere le libelle de validite affiche sur le devis", () => {
+  assert.equal(getValidityLabel(), '1 mois');
+  assert.equal(getValidityLabel({ validityMonths: 3 }), '3 mois');
 });
 
 run("valide un echeancier personnalise dont la somme est egale a 100", () => {
