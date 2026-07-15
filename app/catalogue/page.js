@@ -17,6 +17,7 @@ import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getCurrentCataloguePayload } from '@/lib/catalogue-cloud';
 import {
   CATEGORIES,
+  getProductById,
 } from '@/lib/products';
 import {
   PANEL_SANDWICH_GLAZING_ID,
@@ -1064,7 +1065,14 @@ export default function CataloguePage() {
 
             <div className="grid gap-4 lg:grid-cols-2">
               {category.products.map((product) => {
-                const coefficient = currentCoefficients[product.id] || 1;
+                // Produit à coefficient hérité (ex. PF 3V alignée sur la
+                // 2V+1F) : on affiche le coefficient du produit de référence,
+                // sans permettre de le modifier ici.
+                const coefficientSourceProduct = product.coefficientSource
+                  ? getProductById(product.coefficientSource)
+                  : null;
+                const coefficient =
+                  currentCoefficients[product.coefficientSource || product.id] || 1;
                 const inputValue =
                   draftInputs[product.id] ?? formatCoefficientInput(coefficient);
 
@@ -1091,41 +1099,51 @@ export default function CataloguePage() {
                       </div>
 
                       <div className="w-full max-w-[220px] space-y-2">
-                        <label className="block">
-                          <span className="mb-1.5 block text-sm font-semibold text-slate-700">
-                            Coefficient
-                          </span>
-                          <input
-                            type="number"
-                            min="0.1"
-                            step="0.01"
-                            inputMode="decimal"
-                            value={inputValue}
-                            onChange={(event) =>
-                              handleCoefficientChange(product.id, event.target.value)
-                            }
-                            onBlur={() => void handleCoefficientBlur(product.id)}
-                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </label>
+                        {coefficientSourceProduct ? (
+                          <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold leading-relaxed text-slate-500">
+                            Coefficient hérité de «&nbsp;
+                            {coefficientSourceProduct.label}&nbsp;» (grille
+                            tarifaire dérivée : 2V+1F&nbsp;+7&nbsp;%).
+                          </p>
+                        ) : (
+                          <>
+                            <label className="block">
+                              <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+                                Coefficient
+                              </span>
+                              <input
+                                type="number"
+                                min="0.1"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={inputValue}
+                                onChange={(event) =>
+                                  handleCoefficientChange(product.id, event.target.value)
+                                }
+                                onBlur={() => void handleCoefficientBlur(product.id)}
+                                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                              />
+                            </label>
 
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => void handleCoefficientBlur(product.id)}
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-600"
-                          >
-                            <Save size={15} />
-                            Appliquer
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleResetProduct(product.id)}
-                            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
-                          >
-                            1
-                          </button>
-                        </div>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleCoefficientBlur(product.id)}
+                                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-600"
+                              >
+                                <Save size={15} />
+                                Appliquer
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleResetProduct(product.id)}
+                                className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                              >
+                                1
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
