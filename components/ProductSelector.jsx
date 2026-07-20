@@ -62,6 +62,7 @@ import {
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import CompositeFrameEditor from '@/components/CompositeFrameEditor';
+import VeluxConfigurator from '@/components/VeluxConfigurator';
 import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
@@ -725,6 +726,7 @@ export default function ProductSelector({
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
   const isRemiseCommerciale = product?.id === 'remise-commerciale';
+  const isVeluxConfigurator = product?.id === 'velux-configurateur';
   const isTextOnlyProduct = product?.id === 'text-only';
   const isCatalogService = product?.pricingMode === 'service';
   const parsedServicePrice = Number.parseFloat(servicePrice);
@@ -1150,6 +1152,37 @@ export default function ProductSelector({
       setServicePriceMode(nextProduct.serviceBillingDefault === 'paid' ? 'paid' : 'free');
       setServicePrice('');
     }
+  };
+
+  // Validation du configurateur Velux : reporte la configuration dans le
+  // formulaire « Produit/Service » (hors catalogue) — désignation, détail,
+  // photo et dimensions pré-remplis — où le prix HT est saisi manuellement,
+  // puis ajout au panier par le circuit custom-product standard.
+  const handleVeluxValidate = (configuration) => {
+    const { labels } = configuration;
+    // La référence en 1re ligne : le PDF n'imprime que la description des
+    // produits hors catalogue (1re ligne rendue en gras dans le tableau).
+    const detailLines = [
+      configuration.designation,
+      `Type d'ouverture : ${labels.opening}`,
+      `Finition intérieure : ${labels.finish} (${labels.finishCommercialName})`,
+      `Dimensions : ${labels.size}`,
+      `Gamme : ${labels.range}`,
+      `Raccord d'étanchéité : ${labels.flashing}`,
+    ];
+    if (configuration.accessory !== 'aucun') {
+      detailLines.push(`Équipement : ${labels.accessory}`);
+    }
+
+    setSelectedProduct('custom-product');
+    setCustomLabel(configuration.designation);
+    setCustomDescription(detailLines.join('\n'));
+    setCustomPrice('');
+    setCustomImage(configuration.imageSrc);
+    // Dimensions hors-tout (mm) pré-remplies pour la gestion des déchets.
+    setCustomHasDimensions(true);
+    setCustomWidthMm(String(configuration.widthCm * 10));
+    setCustomHeightMm(String(configuration.heightCm * 10));
   };
 
   const handleMaterialChange = (material) => {
@@ -2260,7 +2293,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isTextOnlyProduct && !isCatalogService && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isTextOnlyProduct && !isCatalogService && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           {isFixedPriceProduct && (selectedProductVariant || defaultProductVariant) ? (
             <div className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
@@ -2513,6 +2546,18 @@ export default function ProductSelector({
         </div>
       )}
 
+      {isVeluxConfigurator && (
+        <div className="p-4 md:p-6">
+          <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-relaxed text-blue-800">
+            Configurez la fenêtre de toit selon les standards Velux. À la
+            validation, la référence, le détail et la photo sont reportés dans
+            le formulaire « Produit/Service » où vous saisissez le prix HT
+            avant l&apos;ajout au panier.
+          </div>
+          <VeluxConfigurator onValidate={handleVeluxValidate} />
+        </div>
+      )}
+
       {isRemiseCommerciale && (
         <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_260px] gap-4 md:gap-6 p-4 md:p-6">
           <div className="space-y-4">
@@ -2598,7 +2643,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isCatalogService && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isCatalogService && !isTextOnlyProduct && (
         <div className="space-y-6 p-4 md:p-6">
           {isFixedPriceProduct && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
