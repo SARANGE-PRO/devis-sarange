@@ -45,6 +45,7 @@ import {
   createCatalogServiceCartItem,
   normalizeCompositeComposition,
   formatCompositeModules,
+  COMMERCIAL_DISCOUNT_DEFAULT_DESCRIPTION,
   WASTE_PRICE_PER_KG,
 } from '@/lib/products';
 import {
@@ -66,6 +67,7 @@ import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-fra
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import CustomProductIcon from '@/components/icons/CustomProductIcon';
+import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
 
 const ICONS = {
@@ -691,6 +693,10 @@ export default function ProductSelector({
   const [customWidthMm, setCustomWidthMm] = useState('');
   const [customHeightMm, setCustomHeightMm] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
+  // Services catalogue (métrage, forfait déplacement) : offert (0 €) ou facturé
+  // au prix saisi. Le défaut vient de `serviceBillingDefault` du produit.
+  const [servicePriceMode, setServicePriceMode] = useState('free');
+  const [servicePrice, setServicePrice] = useState('');
   // Modèle « ossature » v2 : source de vérité du nouveau constructeur.
   const [compositeFrame, setCompositeFrame] = useState(() => createDefaultFrame(1080, 2150, 0, 0));
   // Ouverture sélectionnée dans l'éditeur composé : pilote le formulaire de config réutilisé.
@@ -718,8 +724,14 @@ export default function ProductSelector({
 
   const isWasteManagement = product?.id === 'gestion-dechets';
   const isCustomProduct = product?.id === 'custom-product';
+  const isRemiseCommerciale = product?.id === 'remise-commerciale';
   const isTextOnlyProduct = product?.id === 'text-only';
   const isCatalogService = product?.pricingMode === 'service';
+  const parsedServicePrice = Number.parseFloat(servicePrice);
+  const isServicePaid = isCatalogService && servicePriceMode === 'paid';
+  const isServicePriceValid = !isServicePaid || parsedServicePrice > 0;
+  const effectiveServicePriceHt =
+    isServicePaid && parsedServicePrice > 0 ? parsedServicePrice : 0;
   const isFixedPriceProduct = product?.pricingMode === 'fixed';
   const selectedProductVariant = isFixedPriceProduct
     ? getProductVariant(product, simpleConfig.productVariantId)
@@ -867,6 +879,8 @@ export default function ProductSelector({
   const addButtonLabel = editingItem
     ? isTextOnlyProduct
       ? 'Mettre à jour le texte'
+      : isRemiseCommerciale
+        ? 'Mettre à jour la remise'
       : isCatalogService
         ? 'Mettre à jour le service'
       : 'Mettre à jour le produit'
@@ -874,6 +888,8 @@ export default function ProductSelector({
       ? 'Ajouter le châssis composé'
       : isTextOnlyProduct
         ? 'Insérer le texte'
+        : isRemiseCommerciale
+          ? 'Ajouter la remise'
         : isCatalogService
           ? 'Ajouter le service'
           : 'Ajouter au panier';
@@ -936,12 +952,24 @@ export default function ProductSelector({
       };
     }
 
+    if (isRemiseCommerciale) {
+      const parsedAmount = Number.parseFloat(customPrice);
+      if (!(parsedAmount > 0)) return null;
+      return {
+        productId: 'remise-commerciale',
+        customPrice: parsedAmount,
+        quantity: 1,
+      };
+    }
+
     if (isTextOnlyProduct) {
       return null;
     }
 
     if (isCatalogService) {
-      return createCatalogServiceCartItem(product?.id);
+      return createCatalogServiceCartItem(product?.id, {
+        priceHt: effectiveServicePriceHt,
+      });
     }
 
     if (isCompositeMode) {
@@ -1085,6 +1113,8 @@ export default function ProductSelector({
     setCustomWidthMm('');
     setCustomHeightMm('');
     setTextOnlyContent('');
+    setServicePriceMode('free');
+    setServicePrice('');
   };
 
   const resetCompositeSelection = () => {
@@ -1114,6 +1144,12 @@ export default function ProductSelector({
   const handleProductChange = (productId) => {
     setSelectedProduct(productId);
     resetSimpleSelection({ preserveConfiguration: true });
+    // Services catalogue : mode de facturation par défaut du produit.
+    const nextProduct = getProductById(productId);
+    if (nextProduct?.pricingMode === 'service') {
+      setServicePriceMode(nextProduct.serviceBillingDefault === 'paid' ? 'paid' : 'free');
+      setServicePrice('');
+    }
   };
 
   const handleMaterialChange = (material) => {
@@ -1209,6 +1245,23 @@ export default function ProductSelector({
       setCustomHasDimensions(Boolean(editingItem.customHasDimensions));
       setCustomWidthMm(editingItem.customHasDimensions ? (editingItem.widthMm?.toString() || '') : '');
       setCustomHeightMm(editingItem.customHasDimensions ? (editingItem.heightMm?.toString() || '') : '');
+      return;
+    }
+
+    if (editingItem.productId === 'remise-commerciale') {
+      setCustomLabel(editingItem.productLabel || '');
+      setCustomDescription(editingItem.customDescription || '');
+      setCustomPrice(
+        editingItem.customPrice != null ? Math.abs(editingItem.customPrice).toString() : ''
+      );
+      return;
+    }
+
+    // Services catalogue : recharger le mode de facturation et le prix.
+    if (getProductById(editingItem.productId)?.pricingMode === 'service') {
+      const servicePriceHt = Number(editingItem.unitPrice || 0);
+      setServicePriceMode(servicePriceHt > 0 ? 'paid' : 'free');
+      setServicePrice(servicePriceHt > 0 ? String(servicePriceHt) : '');
       return;
     }
 
@@ -1336,8 +1389,10 @@ export default function ProductSelector({
     }
 
     if (isCatalogService) {
+      if (!isServicePriceValid) return;
       const serviceItem = createCatalogServiceCartItem(product.id, {
         id: editingItem ? editingItem.id : createCartItemId(),
+        priceHt: effectiveServicePriceHt,
       });
       if (!serviceItem) return;
 
@@ -1372,6 +1427,35 @@ export default function ProductSelector({
         remise: 0,
         netMarginWanted: 0,
         netDiscountWanted: 0,
+      });
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (isRemiseCommerciale) {
+      const parsedAmount = Number.parseFloat(customPrice);
+      if (!(parsedAmount > 0)) return;
+      // Montant arrondi au centime : la ligne vaut exactement -montant (qté 1).
+      const amount = Math.round(parsedAmount * 100) / 100;
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: 'remise-commerciale',
+        productLabel: customLabel.trim() || product.label,
+        customDescription:
+          customDescription.trim() || COMMERCIAL_DISCOUNT_DEFAULT_DESCRIPTION,
+        customPrice: amount,
+        quantity: 1,
+        unitPrice: -amount,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+        netDiscountWanted: 0,
+        hasDimensions: false,
+        dimensionLabel: 'Remise',
+        showThermalData: false,
       });
 
       resetSimpleSelection();
@@ -2058,6 +2142,10 @@ export default function ProductSelector({
                   <div className="flex h-full w-full items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-500">
                     <CustomProductIcon size={32} />
                   </div>
+                ) : entry.id === 'remise-commerciale' ? (
+                  <div className="flex h-full w-full items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-500">
+                    <RemiseCommercialeIcon size={32} />
+                  </div>
                 ) : entry.id === 'text-only' ? (
                   <div className="flex h-full w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-500">
                     <TextOnlyIcon size={32} />
@@ -2095,17 +2183,67 @@ export default function ProductSelector({
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
             <div className="min-w-0 space-y-3">
               <p className="text-xs font-black uppercase tracking-widest text-slate-400">
-                Service offert
+                {isServicePaid ? 'Service facturé' : 'Service offert'}
               </p>
               <h3 className="break-words text-2xl font-black leading-tight text-slate-900">
-                {product.label}
+                {isServicePaid ? product.paidLabel || product.label : product.label}
               </h3>
               <p className="text-sm leading-relaxed text-slate-600">
-                {product.designation}
+                {isServicePaid
+                  ? product.paidDesignation || product.designation
+                  : product.designation}
               </p>
-              <p className="text-sm font-black text-green-700">
-                {Number(product.servicePriceHt || 0).toFixed(2)} EUR HT
-              </p>
+
+              <div className="grid max-w-[320px] grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setServicePriceMode('free')}
+                  className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition-all ${
+                    !isServicePaid
+                      ? 'border-green-500 bg-green-500 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-green-300'
+                  }`}
+                >
+                  Offert
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServicePriceMode('paid')}
+                  className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition-all ${
+                    isServicePaid
+                      ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300'
+                  }`}
+                >
+                  Facturé
+                </button>
+              </div>
+
+              {isServicePaid ? (
+                <div className="max-w-[220px]">
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Prix HT du service
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      {...DECIMAL_INPUT_PROPS}
+                      min={0}
+                      value={servicePrice}
+                      onChange={(event) => setServicePrice(event.target.value)}
+                      placeholder="0.00"
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                      €
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm font-black text-green-700">
+                  {Number(product.servicePriceHt || 0).toFixed(2)} EUR HT
+                </p>
+              )}
             </div>
             {product.previewImageSrc && (
               <div className="relative mx-auto h-40 w-full max-w-[220px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
@@ -2122,7 +2260,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isTextOnlyProduct && !isCatalogService && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isTextOnlyProduct && !isCatalogService && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           {isFixedPriceProduct && (selectedProductVariant || defaultProductVariant) ? (
             <div className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
@@ -2182,7 +2320,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCatalogService && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCatalogService && !isTextOnlyProduct && !isRemiseCommerciale && (
         <div className="border-b border-slate-100 bg-orange-50/30 p-4 md:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
             Repère (ex : SDB, Chambre 1, Cuisine)
@@ -2375,6 +2513,71 @@ export default function ProductSelector({
         </div>
       )}
 
+      {isRemiseCommerciale && (
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_260px] gap-4 md:gap-6 p-4 md:p-6">
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Libellé de la remise
+              </label>
+              <input
+                type="text"
+                value={customLabel}
+                onChange={(event) => setCustomLabel(event.target.value)}
+                placeholder="Remise commerciale supplémentaire"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Description (affichée sur le devis)
+              </label>
+              <textarea
+                rows={3}
+                value={customDescription}
+                onChange={(event) => setCustomDescription(event.target.value)}
+                placeholder={COMMERCIAL_DISCOUNT_DEFAULT_DESCRIPTION}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div className="max-w-[260px]">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Montant de la remise HT
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  {...DECIMAL_INPUT_PROPS}
+                  min={0}
+                  value={customPrice}
+                  onChange={(event) => setCustomPrice(event.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-12 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                  €
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-slate-400">
+                Saisi en positif, déduit du total HT du devis.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-rose-100 bg-rose-50/60 p-6 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-rose-500 shadow-sm">
+              <RemiseCommercialeIcon size={44} />
+            </div>
+            <p className="text-sm font-bold text-slate-900">Remise commerciale</p>
+            <p className="text-xs leading-relaxed text-slate-500">
+              La ligne apparaît en négatif dans le devis et alimente la ligne
+              « Remise » de la synthèse. Elle n&apos;est pas comptée comme une
+              menuiserie.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isTextOnlyProduct && (
         <div className="p-4 md:p-6">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 md:p-6">
@@ -2395,7 +2598,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isCatalogService && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isCatalogService && !isTextOnlyProduct && (
         <div className="space-y-6 p-4 md:p-6">
           {isFixedPriceProduct && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
@@ -2603,6 +2806,20 @@ export default function ProductSelector({
         )}
       </div>
 
+      {/* Repère du châssis composé (localisation sur le devis, comme en simple) */}
+      <div className="border-t border-slate-100 bg-orange-50/30 p-4 md:p-6">
+        <label className="mb-1.5 block text-sm font-bold text-slate-700">
+          Repère (ex : SDB, Chambre 1, Cuisine)
+        </label>
+        <input
+          type="text"
+          value={repere}
+          onChange={(event) => setRepere(event.target.value)}
+          placeholder="Localisation de la menuiserie..."
+          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+        />
+      </div>
+
       <div className="space-y-4 border-t border-slate-100 p-4 md:p-6">
         {commercialControls}
       </div>
@@ -2645,19 +2862,32 @@ export default function ProductSelector({
         </div>
       )}
 
-      {(previewCalc || isWasteManagement || isCustomProduct || isTextOnlyProduct || isCompositeMode || isCatalogService) && (
+      {(previewCalc || isWasteManagement || isCustomProduct || isRemiseCommerciale || isTextOnlyProduct || isCompositeMode || isCatalogService) && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-widest text-slate-400">
                 {isTextOnlyProduct
                   ? 'Bloc libre'
+                  : isRemiseCommerciale
+                    ? 'Remise déduite (HT)'
                   : isCatalogService
-                    ? 'Service offert'
+                    ? isServicePaid
+                      ? 'Service facturé (HT)'
+                      : 'Service offert'
                     : 'Estimation HT'}
               </p>
-              <p className="mt-2 text-3xl font-black tracking-tight text-slate-900">
-                {previewCalc
+              <p
+                className={`mt-2 text-3xl font-black tracking-tight ${
+                  isRemiseCommerciale ? 'text-rose-500' : 'text-slate-900'
+                }`}
+              >
+                {isRemiseCommerciale
+                  ? `- ${(Number.parseFloat(customPrice) > 0
+                      ? Number.parseFloat(customPrice)
+                      : 0
+                    ).toFixed(2)} EUR`
+                  : previewCalc
                   ? `${previewCalc.totalLine.toFixed(2)} EUR`
                   : isWasteManagement
                     ? `${wasteCalculation.totalWastePrice.toFixed(2)} EUR`
@@ -2684,11 +2914,14 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isRemiseCommerciale &&
                   !isCatalogService &&
                   !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&
                   (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
+                (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
+                (isCatalogService && !isServicePriceValid) ||
                 (isTextOnlyProduct && !textOnlyContent.trim())
               }
               className={`inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-bold transition-all ${
@@ -2697,11 +2930,14 @@ export default function ProductSelector({
                 (!isCompositeMode &&
                   !isWasteManagement &&
                   !isCustomProduct &&
+                  !isRemiseCommerciale &&
                   !isCatalogService &&
                   !isTextOnlyProduct &&
                   !simplePriceData) ||
                 (isCustomProduct &&
                   (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
+                (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
+                (isCatalogService && !isServicePriceValid) ||
                 (isTextOnlyProduct && !textOnlyContent.trim())
                   ? 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
                   : 'bg-orange-500 text-white shadow-xl shadow-orange-500/30 hover:bg-orange-600'

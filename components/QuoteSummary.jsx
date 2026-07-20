@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import QuoteCommercialTerms from '@/components/QuoteCommercialTerms';
 import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
 import { getClientJobSiteFullName } from '@/lib/client-cloud';
@@ -80,7 +81,10 @@ const PriceStack = ({
   emphasis = 'regular',
   className = '',
 }) => {
+  // `originalValue == null` = pas de prix barré (Number(null) vaudrait 0 et
+  // afficherait un « 0.00 € » barré au-dessus des montants négatifs).
   const showOriginal =
+    originalValue != null &&
     Number.isFinite(Number(originalValue)) &&
     Number(originalValue) > Number(finalValue);
   const alignClass = align === 'left' ? 'items-start text-left' : 'items-end text-right';
@@ -353,6 +357,10 @@ export default function QuoteSummary({
                         <div className="w-12 h-12 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center">
                           <WasteRecycleIcon size={20} className="text-green-600" />
                         </div>
+                      ) : item.productId === 'remise-commerciale' ? (
+                        <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-xl flex items-center justify-center">
+                          <RemiseCommercialeIcon size={20} className="text-rose-500" />
+                        </div>
                       ) : item.customImage ? (
                         <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                           {item.customImage ? (
@@ -410,6 +418,7 @@ export default function QuoteSummary({
                       <div className="flex items-start justify-between gap-3">
                         <p className="font-bold text-slate-900 text-sm flex min-w-0 flex-wrap items-center gap-1.5">
                           {item.productId === 'gestion-dechets' && <WasteRecycleIcon size={12} className="text-green-500 shrink-0" />}
+                          {item.productId === 'remise-commerciale' && <RemiseCommercialeIcon size={12} className="text-rose-500 shrink-0" />}
                           <span className="truncate">{getDisplayProductLabel(item.productLabel)}</span>
                           
                           {item.repere && (
@@ -597,6 +606,10 @@ export default function QuoteSummary({
                               <div className="w-14 h-14 shrink-0 bg-green-50 border border-green-100 rounded-xl flex items-center justify-center">
                                 <WasteRecycleIcon size={24} className="text-green-600" />
                               </div>
+                            ) : item.productId === 'remise-commerciale' ? (
+                              <div className="w-14 h-14 shrink-0 bg-rose-50 border border-rose-100 rounded-xl flex items-center justify-center">
+                                <RemiseCommercialeIcon size={24} className="text-rose-500" />
+                              </div>
                             ) : item.customImage ? (
                               <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                                 {item.customImage ? (
@@ -651,6 +664,9 @@ export default function QuoteSummary({
                               <p className="flex min-w-0 items-center gap-1.5 text-sm font-bold text-slate-900">
                                 {item.productId === 'gestion-dechets' && (
                                   <WasteRecycleIcon size={14} className="text-green-500 shrink-0" />
+                                )}
+                                {item.productId === 'remise-commerciale' && (
+                                  <RemiseCommercialeIcon size={14} className="text-rose-500 shrink-0" />
                                 )}
                                 <span className="min-w-0 truncate">{getDisplayProductLabel(item.productLabel)}</span>
                                 
@@ -942,6 +958,22 @@ export default function QuoteSummary({
 
           {/* Totals Section */}
           <div className="w-full lg:w-80 space-y-3">
+            {totals.hasDiscount && (
+              <>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-400 font-semibold">Total HT avant remise</span>
+                  <span className="font-bold text-slate-400 line-through">
+                    {totals.originalTotalHT.toFixed(2)} €
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-orange-500 font-semibold">Remise</span>
+                  <span className="font-bold text-orange-500">
+                    - {totals.discountTotal.toFixed(2)} €
+                  </span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between items-center text-sm">
               <span className="text-slate-500 font-semibold">Total HT</span>
               <span className="font-bold text-slate-900">{totals.totalHT.toFixed(2)} €</span>

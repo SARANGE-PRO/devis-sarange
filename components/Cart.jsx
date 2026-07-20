@@ -40,6 +40,7 @@ import {
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
+import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
@@ -68,7 +69,10 @@ const PriceStack = ({
   emphasis = 'regular',
   className = '',
 }) => {
+  // `originalValue == null` = pas de prix barré (Number(null) vaudrait 0 et
+  // afficherait un « 0.00 € » barré au-dessus des montants négatifs).
   const showOriginal =
+    originalValue != null &&
     Number.isFinite(Number(originalValue)) &&
     Number(originalValue) > Number(finalValue);
   const finalClass =
@@ -214,6 +218,10 @@ function SortableCartItem({
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-green-100 bg-green-50">
             <WasteRecycleIcon size={28} className="text-green-600" />
           </div>
+        ) : item.productId === 'remise-commerciale' ? (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border border-rose-100 bg-rose-50">
+            <RemiseCommercialeIcon size={28} className="text-rose-500" />
+          </div>
         ) : item.customImage ? (
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -262,6 +270,8 @@ function SortableCartItem({
             <div className="flex min-w-0 items-center gap-2">
               {item.productId === 'gestion-dechets' ? (
                 <WasteRecycleIcon size={14} className="shrink-0 text-green-500" />
+              ) : item.productId === 'remise-commerciale' ? (
+                <RemiseCommercialeIcon size={14} className="shrink-0 text-rose-500" />
               ) : (
                 <Package size={14} className="shrink-0 text-slate-400" />
               )}
@@ -307,6 +317,17 @@ function SortableCartItem({
             {item.productId === 'gestion-dechets' ? (
               <>
                 Surface : {item.totalSurface?.toFixed(2)} m2 · {calc.weight?.toFixed(0)} kg estime
+              </>
+            ) : item.productId === 'remise-commerciale' ? (
+              <>
+                {item.customDescription && (
+                  <span className="mb-0.5 block italic text-slate-500">
+                    {item.customDescription}
+                  </span>
+                )}
+                <span className="font-bold text-rose-500">
+                  Déduite du total HT · hors décompte menuiseries
+                </span>
               </>
             ) : item.productId === 'custom-product' ? (
               <>
@@ -369,23 +390,29 @@ function SortableCartItem({
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 sm:h-8 sm:w-8"
-          >
-            <Minus size={14} />
-          </button>
-          <span className="w-8 text-center text-base font-bold text-slate-700 sm:text-sm">
-            {item.quantity}
+        {item.productId === 'remise-commerciale' ? (
+          <span className="rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-rose-500">
+            Montant fixe
           </span>
-          <button
-            onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 sm:h-8 sm:w-8"
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onUpdateQuantity(item.id, Math.max(1, item.quantity - 1))}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 sm:h-8 sm:w-8"
+            >
+              <Minus size={14} />
+            </button>
+            <span className="w-8 text-center text-base font-bold text-slate-700 sm:text-sm">
+              {item.quantity}
+            </span>
+            <button
+              onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 sm:h-8 sm:w-8"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        )}
 
         <div className="text-right">
           <PriceStack
@@ -461,12 +488,15 @@ export default function Cart({
 
   // Badge « Panier » : total des PIÈCES (somme des quantités) des menuiseries et
   // produits hors catalogue. On EXCLUT les lignes de service (gestion des déchets,
-  // métrage) et le texte seul. La pose n'est pas une ligne (option includePose),
-  // elle n'est donc jamais comptée. Ex. 1 fenêtre + 1 fenêtre en quantité 2 = 3.
+  // métrage), le texte seul et la remise commerciale. La pose n'est pas une ligne
+  // (option includePose), elle n'est donc jamais comptée. Ex. 1 fenêtre + 1
+  // fenêtre en quantité 2 = 3.
   const UNCOUNTED_PRODUCT_IDS = new Set([
     'gestion-dechets',
     'metrage-technique-validation',
+    'forfait-deplacement',
     'text-only',
+    'remise-commerciale',
   ]);
   const totalQuantity = items.reduce(
     (sum, item) =>

@@ -114,7 +114,11 @@ const normalizeCartItemsForQuote = (items = []) => {
   if (existingMeasurement) {
     const measurementItem = createCatalogServiceCartItem(
       TECHNICAL_MEASUREMENT_PRODUCT_ID,
-      { id: existingMeasurement.id || createCartItemId('metrage') }
+      {
+        id: existingMeasurement.id || createCartItemId('metrage'),
+        // Métrage FACTURÉ : on préserve le prix saisi (0 = offert, historique).
+        priceHt: Number(existingMeasurement.unitPrice || 0),
+      }
     );
 
     if (measurementItem) {
