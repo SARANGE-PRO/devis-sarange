@@ -124,7 +124,7 @@ run("createVeluxConfiguration retourne l'objet complet (sans aucun prix)", () =>
     prefix: 'GGU',
     designation:
       "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles)",
-    imageSrc: '/fenetre-de-toit-velux-rotation.webp',
+    imageSrc: '/fenetre-de-toit-velux-rotation.webp?v=2',
     labels: {
       opening: 'Rotation',
       finish: 'Polyuréthane blanc',
