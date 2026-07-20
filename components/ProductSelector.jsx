@@ -693,6 +693,10 @@ export default function ProductSelector({
   const [customHasDimensions, setCustomHasDimensions] = useState(false);
   const [customWidthMm, setCustomWidthMm] = useState('');
   const [customHeightMm, setCustomHeightMm] = useState('');
+  // Pose optionnelle à prix libre sur produit hors catalogue (ex. Velux).
+  const [customIncludePose, setCustomIncludePose] = useState(false);
+  const [customPoseHt, setCustomPoseHt] = useState('');
+  const [customPoseLabel, setCustomPoseLabel] = useState('');
   const [textOnlyContent, setTextOnlyContent] = useState('');
   // Services catalogue (métrage, forfait déplacement) : offert (0 €) ou facturé
   // au prix saisi. Le défaut vient de `serviceBillingDefault` du produit.
@@ -947,9 +951,12 @@ export default function ProductSelector({
     if (isCustomProduct) {
       const parsedCustomPrice = Number.parseFloat(customPrice);
       if (!customLabel || !Number.isFinite(parsedCustomPrice)) return null;
+      const parsedPose = Number.parseFloat(customPoseHt);
       return {
         productId: 'custom-product',
         customPrice: parsedCustomPrice,
+        includePose: customIncludePose && Number.isFinite(parsedPose),
+        customPoseHt: Number.isFinite(parsedPose) ? parsedPose : 0,
         quantity,
       };
     }
@@ -1114,6 +1121,9 @@ export default function ProductSelector({
     setCustomHasDimensions(false);
     setCustomWidthMm('');
     setCustomHeightMm('');
+    setCustomIncludePose(false);
+    setCustomPoseHt('');
+    setCustomPoseLabel('');
     setTextOnlyContent('');
     setServicePriceMode('free');
     setServicePrice('');
@@ -1183,6 +1193,11 @@ export default function ProductSelector({
     setCustomHasDimensions(true);
     setCustomWidthMm(String(configuration.widthCm * 10));
     setCustomHeightMm(String(configuration.heightCm * 10));
+    // Pose choisie à l'étape 7 du configurateur (prix HT libre).
+    const poseIncluded = Boolean(configuration.pose?.included);
+    setCustomIncludePose(poseIncluded);
+    setCustomPoseHt(poseIncluded ? String(configuration.pose.priceHt) : '');
+    setCustomPoseLabel(poseIncluded ? 'Pose fenêtre de toit Velux' : '');
   };
 
   const handleMaterialChange = (material) => {
@@ -1278,6 +1293,13 @@ export default function ProductSelector({
       setCustomHasDimensions(Boolean(editingItem.customHasDimensions));
       setCustomWidthMm(editingItem.customHasDimensions ? (editingItem.widthMm?.toString() || '') : '');
       setCustomHeightMm(editingItem.customHasDimensions ? (editingItem.heightMm?.toString() || '') : '');
+      setCustomIncludePose(Boolean(editingItem.includePose));
+      setCustomPoseHt(
+        editingItem.includePose && editingItem.customPoseHt != null
+          ? String(editingItem.customPoseHt)
+          : ''
+      );
+      setCustomPoseLabel(editingItem.poseLabel || '');
       return;
     }
 
@@ -1442,6 +1464,8 @@ export default function ProductSelector({
 
       const parsedWidthMm = Math.max(0, Number.parseInt(customWidthMm, 10) || 0);
       const parsedHeightMm = Math.max(0, Number.parseInt(customHeightMm, 10) || 0);
+      const parsedPoseHt = Number.parseFloat(customPoseHt);
+      const includeCustomPose = customIncludePose && Number.isFinite(parsedPoseHt) && parsedPoseHt >= 0;
 
       onAddToCart({
         id: editingItem ? editingItem.id : createCartItemId(),
@@ -1456,7 +1480,11 @@ export default function ProductSelector({
         repere,
         quantity,
         unitPrice: parsedCustomPrice,
-        includePose: false,
+        includePose: includeCustomPose,
+        customPoseHt: includeCustomPose ? Math.round(parsedPoseHt * 100) / 100 : 0,
+        ...(includeCustomPose
+          ? { poseLabel: customPoseLabel.trim() || `Pose ${customLabel}` }
+          : {}),
         remise: 0,
         netMarginWanted: 0,
         netDiscountWanted: 0,
@@ -2451,6 +2479,57 @@ export default function ProductSelector({
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                 />
               </div>
+            </div>
+
+            {/* Pose optionnelle à prix libre : sous-ligne « Pose » du devis,
+                comme pour les menuiseries (pré-remplie par le configurateur Velux). */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={customIncludePose}
+                  onChange={(event) => setCustomIncludePose(event.target.checked)}
+                  className="h-4 w-4 rounded accent-orange-500"
+                />
+                <span className="text-sm font-bold text-slate-700">Inclure la pose</span>
+                <span className="text-xs text-slate-400">(prix HT libre, × quantité)</span>
+              </label>
+
+              {customIncludePose && (
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                      Prix HT de la pose (par unité)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        {...DECIMAL_INPUT_PROPS}
+                        min={0}
+                        value={customPoseHt}
+                        onChange={(event) => setCustomPoseHt(event.target.value)}
+                        placeholder="0.00"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 pr-9 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                        €
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">
+                      Libellé de la ligne pose
+                    </label>
+                    <input
+                      type="text"
+                      value={customPoseLabel}
+                      onChange={(event) => setCustomPoseLabel(event.target.value)}
+                      placeholder={customLabel ? `Pose ${customLabel}` : 'Pose'}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
