@@ -549,6 +549,7 @@ Cette section documente tous les fichiers utiles du depot versionne hors `node_m
 | `app/devis/page.js` | Route `/devis`. Liste, filtre et pilote les devis cloud. |
 | `app/clients/page.js` | Route `/clients`. CRUD des fiches clients. |
 | `app/catalogue/page.js` | Route `/catalogue`. Edition des coefficients, prix et vitrages personnalises, avec synchronisation Firestore si la session Firebase est active. |
+| `app/compta/page.js` | Route `/compta`. Onglet Compta : preparation, controle, generation et suivi des exports CSV vers Sage 50 (voir `COMPTA.md`). |
 | `app/signature/[token]/page.js` | Route publique de signature d'un devis. |
 | `app/api/quote-signatures/send/route.js` | `POST` authentifie pour envoyer un devis par email ou signature. |
 | `app/api/quote-signatures/remind/route.js` | `POST` authentifie pour les relances J+3/J+10/J+30. |
@@ -604,6 +605,9 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/catalogue-coefficients.js` | Store navigateur pour coefficients produit (`localStorage`). |
 | `lib/catalogue-pricing.js` | Store navigateur pour prix/options/poses (`localStorage`), hydrate depuis Firebase. |
 | `lib/api-route-errors.js` | Helper commun pour reponses JSON d'erreur dans les routes API. |
+| `lib/sage-export.mjs` | Moteur PUR d'export Sage 50 (onglet Compta) : parametres, mapping TVA→article, modele d'export, validations, CSV, nommage, empreinte anti-doublon, encodage. Dependances injectees (testable Node). |
+| `lib/sage-export-service.js` | Liaison du moteur Sage avec le vrai moteur de calcul (products, quote-totals, designations, variantes) : les montants exportes sont ceux du devis/PDF. |
+| `lib/compta-local.mjs` | Persistance LOCALE de l'onglet Compta (source de verite) : parametres Sage et historique des exports en localStorage (cles versionnees par uid), export/import JSON de la configuration. Stockage injectable (testable Node). |
 
 ### 8.5 `lib/firebase/` - acces Firebase
 
@@ -614,6 +618,7 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/firebase/catalogue.js` | Lecture, ecriture et abonnement sur `users/{uid}/catalogue/config`. |
 | `lib/firebase/clients.js` | CRUD et abonnement sur `users/{uid}/clients`. |
 | `lib/firebase/quotes.js` | CRUD et abonnement sur `users/{uid}/quotes`, avec invalidation de session de signature si devis modifie. |
+| `lib/firebase/compta.js` | Miroir Firestore FACULTATIF de l'onglet Compta (desactive par defaut) : recopie best-effort des parametres (`users/{uid}/compta/settings`), des exports (`users/{uid}/comptaExports`) et du resume `comptaExport` sur le devis. Jamais requis pour generer/telecharger un CSV. |
 
 ### 8.6 `data/`
 
@@ -641,6 +646,8 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `tests/quote-settings.test.mjs` | Valide la normalisation et les phrases de conditions commerciales. |
 | `tests/quote-signature.test.mjs` | Valide les helpers de statut et de relance de signature. |
 | `tests/pdf-page-utils.test.mjs` | Valide les utilitaires de pagination PDF et dedup image. |
+| `tests/sage-export.test.mjs` | Valide le moteur d'export Sage : regimes de TVA, remises nettes, lignes gratuites, multi-taux, anti-doublon, controles de coherence, rendu CSV et encodage. |
+| `tests/compta-local.test.mjs` | Valide la persistance locale Compta : cles par uid, defauts, remplacement versionne, statuts, borne d'historique, export/import JSON de configuration. |
 
 ### 8.9 `SignatureDevisAPI/` - ancien systeme, conserve comme reference
 

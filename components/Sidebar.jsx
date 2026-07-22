@@ -4,6 +4,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Calculator,
   ChevronRight,
   DoorOpen,
   FilePlus,
@@ -14,6 +15,9 @@ import {
 } from 'lucide-react';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 
+// La Compta (export Sage) est volontairement absente du menu principal :
+// fonctionnalité de niche réservée au poste comptable, accessible par le lien
+// discret du pied de sidebar (ou l'URL /compta).
 const menuItems = [
   { icon: FilePlus,   label: 'Nouveau devis',      href: '/' },
   { icon: FolderOpen, label: 'Mes devis',           href: '/devis' },
@@ -95,7 +99,23 @@ export default function Sidebar() {
               : 'Connexion cloud indisponible.'}
           </div>
         )}
-        <p className="mt-3 text-center text-[10px] text-slate-300">v1.0 — Sarange 2026</p>
+        {/* Accès discret à l'export Sage : poste comptable uniquement. */}
+        <div className="mt-3 flex items-center justify-center gap-2 text-[10px]">
+          <span className="text-slate-300">v1.0 — Sarange 2026</span>
+          <span className="text-slate-200">·</span>
+          <Link
+            href="/compta"
+            title="Export des devis vers Sage 50 (poste comptable)"
+            className={`flex items-center gap-1 transition-colors ${
+              pathname === '/compta'
+                ? 'font-semibold text-orange-500'
+                : 'text-slate-300 hover:text-slate-500'
+            }`}
+          >
+            <Calculator size={10} />
+            Compta
+          </Link>
+        </div>
       </div>
     </aside>
   );

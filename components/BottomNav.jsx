@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { DoorOpen, FilePlus, FolderOpen, Settings, Users } from 'lucide-react';
 
+// La Compta (export Sage) n'apparaît volontairement PAS ici : réservée au
+// poste où Sage 50 est installé, accessible via le pied de la sidebar desktop
+// ou l'URL /compta.
 const NAV_ITEMS = [
   { icon: FilePlus,   label: 'Devis',      href: '/' },
   { icon: FolderOpen, label: 'Mes devis',  href: '/devis' },

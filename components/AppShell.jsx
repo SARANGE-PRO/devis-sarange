@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   '/':          'Nouveau devis',
   '/devis':     'Mes devis',
   '/clients':   'Clients',
+  '/compta':    'Compta',
   '/catalogue': 'Paramètres',
 };
 
