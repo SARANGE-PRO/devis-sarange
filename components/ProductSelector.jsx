@@ -2633,7 +2633,11 @@ export default function ProductSelector({
             le formulaire « Produit/Service » où vous saisissez le prix HT
             avant l&apos;ajout au panier.
           </div>
-          <VeluxConfigurator onValidate={handleVeluxValidate} />
+          <VeluxConfigurator
+            onValidate={handleVeluxValidate}
+            repere={repere}
+            onRepereChange={setRepere}
+          />
         </div>
       )}
 

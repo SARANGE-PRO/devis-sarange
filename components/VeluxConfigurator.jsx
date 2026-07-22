@@ -63,9 +63,14 @@ function SectionTitle({ step, title, hint }) {
  * strictement sans prix. Au clic « Valider cette configuration », appelle
  * `onValidate` avec l'objet {@link import('@/lib/velux-config').VeluxConfiguration}.
  *
- * @param {{ onValidate?: (configuration: import('@/lib/velux-config').VeluxConfiguration) => void, initialSelection?: object }} props
+ * @param {{ onValidate?: (configuration: import('@/lib/velux-config').VeluxConfiguration) => void, initialSelection?: object, repere?: string, onRepereChange?: (value: string) => void }} props
  */
-export default function VeluxConfigurator({ onValidate, initialSelection = {} }) {
+export default function VeluxConfigurator({
+  onValidate,
+  initialSelection = {},
+  repere = '',
+  onRepereChange,
+}) {
   const [opening, setOpening] = useState(initialSelection.opening || null);
   const [finish, setFinish] = useState(initialSelection.finish || null);
   const [sizeCode, setSizeCode] = useState(initialSelection.sizeCode || null);
@@ -398,6 +403,23 @@ export default function VeluxConfigurator({ onValidate, initialSelection = {} })
                 </div>
               ))}
             </dl>
+
+            {/* Repère (localisation) : saisi ICI, avant validation, pour être
+                sûr qu'il parte avec l'article (affiché sur le devis PDF). */}
+            {onRepereChange && (
+              <div className="border-t border-slate-100 pt-4">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                  Repère (ex : SDB, Chambre 1, Cuisine)
+                </label>
+                <input
+                  type="text"
+                  value={repere}
+                  onChange={(event) => onRepereChange(event.target.value)}
+                  placeholder="Localisation de la fenêtre de toit..."
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+            )}
 
             {!configuration && (
               <p className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-blue-700">
