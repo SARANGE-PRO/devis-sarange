@@ -1,40 +1,69 @@
 rules_version = '2';
 
+// ============================================================================
+// FICHIER DE RÈGLES UNIQUE du projet Firebase `sarange-pro`.
+// Couvre les trois apps qui partagent ce projet :
+//   - devis-sarange   (users/{uid}/quotes|clients|catalogue|compta|comptaExports)
+//   - sarange-métrage (users/{uid}/metrageDossiers)
+//   - sarange-suivi   (commandes, commandes_corbeille)
+// Ne déployer les règles QUE depuis ce dépôt :
+//   firebase deploy --only firestore:rules
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Compte Google du domaine @sarange.fr, email vérifié.
+    function isSarange() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.matches('(?i)^.+@sarange[.]fr$');
+    }
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // ---- devis-sarange : données cloisonnées par compte ----
     match /users/{userId}/quotes/{quoteId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
     match /users/{userId}/clients/{clientId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
     match /users/{userId}/catalogue/{documentId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
     // Onglet Compta : paramètres d'export Sage et historique des exports CSV.
     match /users/{userId}/compta/{documentId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
     match /users/{userId}/comptaExports/{exportId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
 
-    // Sessions de signature des devis - accessible par utilisateurs authentifiés
-    // Le serveur (Admin SDK) peut créer/lire/mettre à jour les sessions
+    // ---- sarange-métrage : dossiers de métrage, cloisonnés par compte ----
+    match /users/{userId}/metrageDossiers/{dossierId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // ---- Sessions de signature : SERVEUR UNIQUEMENT ----
+    // Toutes les lectures/écritures passent par les routes API (Admin SDK,
+    // qui ignore les règles). Aucun accès client n'est légitime.
     match /quoteSignatureSessions/{sessionId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
 
-    // Collection appartenant à l'AUTRE application (pas l'app devis).
-    // Restreinte à votre seul compte pour qu'un autre utilisateur connecté
-    // (ex. un collègue de l'app devis) ne puisse pas la lire/écrire.
+    // ---- sarange-suivi : collections partagées par toute l'équipe ----
     match /commandes/{commandeId} {
-      allow read, write: if request.auth != null
-        && request.auth.uid == 'LKoM5xake1Z1iGJLTHEAh5hXE1n2';
+      allow read, write: if isSarange();
+    }
+
+    match /commandes_corbeille/{trashId} {
+      allow read, write: if isSarange();
     }
   }
 }
