@@ -65,5 +65,25 @@ service cloud.firestore {
     match /commandes_corbeille/{trashId} {
       allow read, write: if isSarange();
     }
+
+    // ---- sarange-prodoutil : production atelier ----
+    // Tablettes atelier en connexion ANONYME (fournisseur Anonyme activé,
+    // aucun login opérateur) : lecture + création + mise à jour. Les actions
+    // DESTRUCTRICES (suppression d'OF/dossier) exigent un compte Google
+    // @sarange.fr — c'est aussi la condition du mode admin dans l'app.
+    match /Chantiers/{chantierId} {
+      allow read, create, update: if request.auth != null;
+      allow delete: if isSarange();
+
+      match /Unites/{uniteId} {
+        allow read, create, update: if request.auth != null;
+        allow delete: if isSarange();
+      }
+    }
+
+    // Écoute globale des unités (collectionGroup) utilisée par prodoutil.
+    match /{path=**}/Unites/{uniteId} {
+      allow read: if request.auth != null;
+    }
   }
 }
