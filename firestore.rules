@@ -50,6 +50,13 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // Lecture transverse des dossiers de métrage (collectionGroup) pour le
+    // mode admin de prodoutil : « Importer les volets d'un métrage ».
+    // Réservée aux comptes Google @sarange.fr — jamais aux tablettes anonymes.
+    match /{path=**}/metrageDossiers/{dossierId} {
+      allow read: if isSarange();
+    }
+
     // ---- Sessions de signature : SERVEUR UNIQUEMENT ----
     // Toutes les lectures/écritures passent par les routes API (Admin SDK,
     // qui ignore les règles). Aucun accès client n'est légitime.
