@@ -560,7 +560,7 @@ export default function ClientForm({
                 id="siret"
                 name="siret"
                 type="text"
-                placeholder="820 001 014 00027"
+                placeholder="820 001 014 00035"
                 value={formData.siret}
                 onChange={handleChange}
                 className={inputClasses}

@@ -52,7 +52,7 @@ run('type de client : AUCUN defaut, INCONNU tant que non choisi explicitement', 
   assert.equal(isKnownClientType(''), false);
   assert.equal(isKnownClientType(undefined), false);
   // Le type n'est jamais deduit du SIRET : normaliser un SIRET ne change rien.
-  assert.equal(normalizeSiret('820 001 014 00027'), '82000101400027');
+  assert.equal(normalizeSiret('820 001 014 00035'), '82000101400035');
   assert.equal(isKnownClientType(''), false);
 });
 
