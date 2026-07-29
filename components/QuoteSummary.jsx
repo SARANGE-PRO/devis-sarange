@@ -11,7 +11,10 @@ import {
   getPoseLabel,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
-import { getPaymentScheduleValidation } from '@/lib/quote-settings.mjs';
+import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
+import { isKnownClientType } from '@/lib/client-type.mjs';
+import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
+import { getInsuranceStatus } from '@/lib/company-insurance.mjs';
 import {
   User,
   MapPin,
@@ -142,6 +145,7 @@ export default function QuoteSummary({
   poseSafety = null,
   onAddMissingPoseServices,
   onDismissPoseSafety,
+  companyInsurance = null,
 }) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
@@ -182,12 +186,25 @@ export default function QuoteSummary({
   const jobSiteCity = clientData?.memeAdresseChantier === false
     ? [clientData?.codePostalChantier, clientData?.villeChantier].filter(Boolean).join(' ').trim()
     : [clientData?.codePostal, clientData?.ville].filter(Boolean).join(' ').trim();
+  // Validation COMPLÈTE du plan de règlement (100 %, déclencheurs précis,
+  // échéance 2 fabrication/pose non négative) : bloque la génération du PDF.
   const paymentValidation = useMemo(
-    () => getPaymentScheduleValidation(quoteSettings),
-    [quoteSettings]
+    () => getPaymentPlanValidation(quoteSettings, totals),
+    [quoteSettings, totals]
   );
+  // Type de client : choix EXPLICITE obligatoire (jamais deduit du SIRET, du
+  // nom ou de l'adresse). Tant qu'il est inconnu, generation et envoi bloques.
+  const clientTypeKnown = isKnownClientType(clientData?.clientType);
+  const contractType = resolveContractType(cartItems, quoteSettings?.contractTypeOverride);
+  const insuranceStatus = useMemo(
+    () => getInsuranceStatus(companyInsurance || {}),
+    [companyInsurance]
+  );
+  const showInsuranceAlert =
+    contractType === CONTRACT_TYPES.AVEC_POSE &&
+    (insuranceStatus.isExpired || insuranceStatus.expiresSoon);
   const isGenerateDisabled =
-    (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
+    !clientTypeKnown || (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
   const isDirectSendDisabled = isGenerateDisabled || isGeneratingPdf || isSendingDelivery || !canSendQuoteDirectly;
 
   const handleStartEdit = (item) => {
@@ -866,10 +883,70 @@ export default function QuoteSummary({
           </div>
         </div>
 
+        {!clientTypeKnown && (
+          <div className="mx-5 mt-5 rounded-2xl border-2 border-red-200 bg-red-50 p-4 sm:mx-8">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-bold text-red-700">Type de client à confirmer</p>
+                <p className="mt-1 text-xs leading-relaxed text-red-600">
+                  Choisissez <strong>Particulier</strong> ou <strong>Professionnel</strong>{' '}
+                  à l&apos;étape « Client » : les CGV du devis en dépendent. La génération
+                  du PDF, l&apos;envoi et la signature restent bloqués tant que ce choix
+                  n&apos;est pas fait.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showInsuranceAlert && (
+          <div
+            className={`mx-5 mt-5 rounded-2xl border-2 p-4 sm:mx-8 ${
+              insuranceStatus.isExpired
+                ? 'border-red-200 bg-red-50'
+                : 'border-amber-200 bg-amber-50'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <AlertTriangle
+                size={18}
+                className={`mt-0.5 shrink-0 ${
+                  insuranceStatus.isExpired ? 'text-red-500' : 'text-amber-500'
+                }`}
+              />
+              <div>
+                <p
+                  className={`text-sm font-bold ${
+                    insuranceStatus.isExpired ? 'text-red-700' : 'text-amber-700'
+                  }`}
+                >
+                  {insuranceStatus.isExpired
+                    ? 'Attestation décennale EXPIRÉE'
+                    : `Attestation décennale : expiration le ${insuranceStatus.endDateLabel}`}
+                </p>
+                <p
+                  className={`mt-1 text-xs leading-relaxed ${
+                    insuranceStatus.isExpired ? 'text-red-600' : 'text-amber-600'
+                  }`}
+                >
+                  Ce devis comprend une pose : l&apos;attestation décennale mentionnée sur
+                  le devis {insuranceStatus.isExpired ? 'est expirée' : 'expire bientôt'}.
+                  Mettez à jour la période du contrat dans l&apos;onglet Paramètres après
+                  renouvellement auprès de l&apos;assureur.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <QuoteCommercialTerms
           quoteSettings={quoteSettings}
           onChange={setQuoteSettings}
+          totals={totals}
           totalTTC={totals.totalTTC}
+          cartItems={cartItems}
+          onUpdateItem={updateItem}
         />
 
         {/* TVA Selection & Totals Section */}

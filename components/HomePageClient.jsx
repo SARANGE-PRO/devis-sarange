@@ -27,6 +27,9 @@ import {
 } from '@/lib/pdf-generator';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
+import { buildCgvSnapshot } from '@/lib/cgv-templates.mjs';
+import { resolveContractType } from '@/lib/line-nature.mjs';
+import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import { buildPanelSelections } from '@/lib/panel-selections.mjs';
 import { MAX_VARIANTS } from '@/lib/quote-cloud';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
@@ -367,6 +370,9 @@ export default function HomePageClient() {
   const cartRef = useRef(null);
   const [cartVisible, setCartVisible] = useState(true);
   const [dismissedPoseSafetyKey, setDismissedPoseSafetyKey] = useState('');
+  // Assurance décennale (paramètres société, localStorage) : injectée dans la
+  // carte « Garanties et assurances » du PDF et l'article 6 des CGV.
+  const [companyInsurance] = useState(() => loadCompanyInsurance());
 
   // Floating cart bar totals
   const cartBarTotals = useMemo(() => {
@@ -627,6 +633,10 @@ export default function HomePageClient() {
         quote?.payload?.reference ||
         quoteReference ||
         undefined,
+      // Snapshot figé des CGV (régénéré juste avant par persistQuoteToCloud) :
+      // le PDF rendu correspond exactement aux textes enregistrés avec le devis.
+      cgvSnapshot: quote?.payload?.cgvSnapshot || undefined,
+      insurance: companyInsurance,
     };
   };
 
@@ -1031,6 +1041,32 @@ export default function HomePageClient() {
 
       setClientData(nextClientData);
 
+      // FIGEMENT des CGV/conditions de règlement : à chaque finalisation
+      // (génération du PDF ou envoi), la version exacte des textes générés est
+      // enregistrée dans le payload — la réouverture d'un devis finalisé rend
+      // ce snapshot, jamais les templates courants. Les sauvegardes simples ne
+      // touchent pas au snapshot déjà stocké.
+      const shouldFreezeCgv = ['pdf', 'delivery'].includes(origin);
+      const snapshotSources =
+        variantsMode && materializedVariants.length > 0
+          ? materializedVariants
+          : [{ id: 'mono', cartItems, quoteSettings }];
+      const cgvSnapshot = shouldFreezeCgv
+        ? buildCgvSnapshot({
+            clientType: nextClientData?.clientType,
+            generatedAt: new Date().toISOString(),
+            insurance: companyInsurance,
+            entries: snapshotSources.map((variant) => ({
+              variantId: variant.id,
+              contractType: resolveContractType(
+                variant.cartItems,
+                variant.quoteSettings?.contractTypeOverride
+              ),
+              quoteSettings: variant.quoteSettings,
+            })),
+          }) || undefined
+        : undefined;
+
       const savedQuote = await saveQuoteDraft({
         userId: user.uid,
         quoteId: activeQuoteId,
@@ -1043,6 +1079,7 @@ export default function HomePageClient() {
         variantsMode,
         variants: materializedVariants,
         activeVariantId,
+        cgvSnapshot,
         currentStep: ['pdf', 'delivery'].includes(origin) ? 3 : currentStep,
         // L'envoi (re)crée une session côté serveur juste après cette sauvegarde :
         // ne pas invalider la signature ici (sinon « devis modifié » + lien inactif).
@@ -1105,7 +1142,7 @@ export default function HomePageClient() {
       // pour que le PDF téléchargé porte le même numéro que celui envoyé au client.
       const pdfOptions = savedQuote
         ? getQuotePdfOptions(savedQuote)
-        : { reference: quoteReference };
+        : { reference: quoteReference, insurance: companyInsurance };
 
       if (variantsMode && materializedVariants.length > 1) {
         await generateMultiVariantQuotePDF(clientData, materializedVariants, pdfOptions);
@@ -1180,6 +1217,9 @@ export default function HomePageClient() {
               name: variant.name,
               totalHT: variant.totalHT,
               totalTTC: variant.totalTTC,
+              // Échéancier complet de la variante (celui du PDF) : affiché tel
+              // quel par le service de signature, sans recalcul serveur.
+              paymentMilestones: variant.paymentMilestones || null,
               tvaRate: source.tvaRate,
               quoteSettings: source.quoteSettings,
               hasMeasurementVisit:
@@ -1232,6 +1272,7 @@ export default function HomePageClient() {
             totalTTC: pdfDocument.totals?.totalTTC || 0,
             quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
             tvaRate: pdfDocument.tvaRate,
+            paymentMilestones: pdfDocument.paymentMilestones || null,
             signatureAnchors: pdfDocument.signatureAnchors,
           },
           ...(variantsPayload ? { variants: variantsPayload } : {}),
@@ -1572,6 +1613,7 @@ export default function HomePageClient() {
           poseSafety={shouldShowPoseSafety ? poseSafety : null}
           onAddMissingPoseServices={handleAddMissingPoseServices}
           onDismissPoseSafety={handleDismissPoseSafety}
+          companyInsurance={companyInsurance}
         />
         </>
       )}

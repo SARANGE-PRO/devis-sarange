@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  Building2,
   CheckCircle2,
   Loader2,
   Mail,
@@ -19,6 +20,12 @@ import {
   getClientFullLocation,
   sanitizeClientData,
 } from '@/lib/client-cloud';
+import {
+  CLIENT_TYPES,
+  formatSiret,
+  isKnownClientType,
+  isProfessionalClient,
+} from '@/lib/client-type.mjs';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 
 export default function ClientForm({
@@ -42,6 +49,20 @@ export default function ClientForm({
   const [savedClients, setSavedClients] = useState([]);
   const [loadingClients, setLoadingClients] = useState(false);
   const [clientDirectoryError, setClientDirectoryError] = useState('');
+  // Recherche d'entreprise (mode PROFESSIONNEL) via l'annuaire public
+  // recherche-entreprises.api.gouv.fr — autoremplit raison sociale, SIRET et
+  // adresse du siège pour accélérer les devis B2B.
+  const [companyQuery, setCompanyQuery] = useState('');
+  const [companySuggestions, setCompanySuggestions] = useState([]);
+  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
+  const [isCompanyLoading, setIsCompanyLoading] = useState(false);
+
+  // Choix EXPLICITE obligatoire : tant qu'aucun des deux types n'est
+  // sélectionné (fiches historiques comprises), le devis reste bloqué à
+  // l'étape récapitulatif — jamais de défaut, jamais de déduction du SIRET.
+  const isProfessional = isProfessionalClient(formData.clientType);
+  const isParticulier = formData.clientType === CLIENT_TYPES.PARTICULIER;
+  const clientTypeKnown = isKnownClientType(formData.clientType);
 
   useEffect(() => {
     const query =
@@ -104,6 +125,102 @@ export default function ClientForm({
       console.error('Error fetching address suggestions:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Debounce de la recherche d'entreprise (même pattern que l'API adresse).
+  // Les fiches clients déjà enregistrées matchent dès 2 caractères (sans appel
+  // réseau) ; l'annuaire entreprises est interrogé à partir de 3.
+  useEffect(() => {
+    const term = companyQuery.trim();
+
+    if (!isProfessional || term.length < 2) {
+      setCompanySuggestions([]);
+      setShowCompanySuggestions(false);
+      return undefined;
+    }
+
+    setShowCompanySuggestions(true);
+
+    if (term.length < 3) {
+      setCompanySuggestions([]);
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      void fetchCompanySuggestions(term);
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [companyQuery, isProfessional]);
+
+  const fetchCompanySuggestions = async (query) => {
+    setIsCompanyLoading(true);
+    try {
+      const response = await fetch(
+        `https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(query)}&page=1&per_page=5`
+      );
+      const data = await response.json();
+      setCompanySuggestions(Array.isArray(data?.results) ? data.results : []);
+      setShowCompanySuggestions(true);
+    } catch (error) {
+      console.error('Error fetching company suggestions:', error);
+    } finally {
+      setIsCompanyLoading(false);
+    }
+  };
+
+  // Adresse du siège : composition depuis les champs structurés, repli sur
+  // geo_adresse (dont on retire « CP Ville » déjà portés par leurs champs).
+  const buildCompanyStreet = (siege) => {
+    const numero = [siege?.numero_voie, siege?.indice_repetition]
+      .filter(Boolean)
+      .join(' ');
+    const voie = [siege?.type_voie, siege?.libelle_voie].filter(Boolean).join(' ');
+    const street = [numero, voie].filter(Boolean).join(' ').trim();
+    if (street) return street;
+
+    const geoAdresse = typeof siege?.geo_adresse === 'string' ? siege.geo_adresse : '';
+    const tail = [siege?.code_postal, siege?.libelle_commune].filter(Boolean).join(' ');
+    return tail && geoAdresse.endsWith(tail)
+      ? geoAdresse.slice(0, geoAdresse.length - tail.length).trim()
+      : geoAdresse;
+  };
+
+  const handleSelectCompany = (company) => {
+    const siege = company?.siege || {};
+
+    setFormData((prev) => ({
+      ...prev,
+      clientType: CLIENT_TYPES.PROFESSIONNEL,
+      nom: company?.nom_complet || company?.nom_raison_sociale || prev.nom,
+      siret: siege.siret || '',
+      adresse: buildCompanyStreet(siege) || prev.adresse,
+      codePostal: siege.code_postal || prev.codePostal,
+      ville: siege.libelle_commune || prev.ville,
+    }));
+    setCompanyQuery('');
+    setCompanySuggestions([]);
+    setShowCompanySuggestions(false);
+  };
+
+  const handleSelectSavedCompany = (client) => {
+    handleApplySavedClient(client);
+    setCompanyQuery('');
+    setCompanySuggestions([]);
+    setShowCompanySuggestions(false);
+  };
+
+  const handleSelectClientType = (clientType) => {
+    setFormData((prev) => ({
+      ...prev,
+      clientType,
+      // Retour en PARTICULIER : le SIRET n'a plus de sens sur la fiche.
+      ...(clientType === CLIENT_TYPES.PARTICULIER ? { siret: '' } : {}),
+    }));
+    if (clientType === CLIENT_TYPES.PARTICULIER) {
+      setCompanyQuery('');
+      setCompanySuggestions([]);
+      setShowCompanySuggestions(false);
     }
   };
 
@@ -202,16 +319,22 @@ export default function ClientForm({
     .trim()
     .toLowerCase();
 
-  const matchedClients =
-    clientLookupTerm.length < 2
+  const searchSavedClients = (term, limit) =>
+    term.length < 2
       ? []
       : savedClients
           .filter((client) => {
             const haystack =
               client.searchText || buildClientSearchText(client.payload) || client.displayName || '';
-            return haystack.includes(clientLookupTerm);
+            return haystack.includes(term);
           })
-          .slice(0, 4);
+          .slice(0, limit);
+
+  const matchedClients = searchSavedClients(clientLookupTerm, 4);
+  // Autocomplétion des clients ENREGISTRÉS dans la recherche d'entreprise :
+  // une fiche existante (raison sociale, SIRET…) se propose avant l'annuaire.
+  const companyQueryTerm = companyQuery.trim().toLowerCase();
+  const matchedSavedCompanies = searchSavedClients(companyQueryTerm, 3);
 
   const showClientSuggestions =
     firebaseConfigured && user && clientLookupTerm.length >= 2 && matchedClients.length > 0;
@@ -247,16 +370,160 @@ export default function ClientForm({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Type de client : seule information juridique demandée. Pilote les
+              CGV adaptatives du devis (B2C / B2B). */}
+          <div>
+            <p className={labelClasses}>Type de client</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleSelectClientType(CLIENT_TYPES.PARTICULIER)}
+                className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3.5 text-sm font-bold transition-all ${
+                  isParticulier
+                    ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                }`}
+              >
+                <User size={16} />
+                Particulier
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSelectClientType(CLIENT_TYPES.PROFESSIONNEL)}
+                className={`flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-3.5 text-sm font-bold transition-all ${
+                  isProfessional
+                    ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                }`}
+              >
+                <Building2 size={16} />
+                Professionnel
+              </button>
+            </div>
+            {!clientTypeKnown && (
+              <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                Type de client à confirmer — ce choix est obligatoire : la génération,
+                l&apos;envoi et la signature du devis restent bloqués tant qu&apos;il
+                n&apos;est pas fait.
+              </p>
+            )}
+          </div>
+
+          {isProfessional && (
+            <div className="animate-in fade-in slide-in-from-top-2 relative rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <label htmlFor="companySearch" className={labelClasses}>
+                <Building2 size={14} className="mr-1 inline text-slate-400" />
+                Rechercher l&apos;entreprise (nom, SIREN ou SIRET)
+              </label>
+              <div className="relative flex items-center">
+                <input
+                  id="companySearch"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Ex : SARANGE, 820001014…"
+                  value={companyQuery}
+                  onChange={(event) => setCompanyQuery(event.target.value)}
+                  onBlur={() => setTimeout(() => setShowCompanySuggestions(false), 200)}
+                  onFocus={() => {
+                    if (companySuggestions.length > 0 || matchedSavedCompanies.length > 0) {
+                      setShowCompanySuggestions(true);
+                    }
+                  }}
+                  className={`${inputClasses} pr-10`}
+                />
+                {isCompanyLoading && (
+                  <div className="absolute right-4 animate-spin text-orange-500">
+                    <Loader2 size={18} />
+                  </div>
+                )}
+              </div>
+
+              {showCompanySuggestions &&
+                (companySuggestions.length > 0 || matchedSavedCompanies.length > 0) && (
+                <div className="animate-in fade-in zoom-in-95 absolute z-[100] mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl duration-100">
+                  {matchedSavedCompanies.length > 0 && (
+                    <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Clients enregistrés
+                    </p>
+                  )}
+                  {matchedSavedCompanies.map((client) => (
+                    <div
+                      key={`saved-${client.id}`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        handleSelectSavedCompany(client);
+                      }}
+                      className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50 hover:text-orange-500"
+                    >
+                      <User size={14} className="shrink-0 text-slate-300" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold">
+                          {client.displayName || getClientDisplayName(client.payload)}
+                        </p>
+                        <p className="truncate text-xs text-slate-400">
+                          {[
+                            client.payload?.siret
+                              ? `SIRET ${formatSiret(client.payload.siret)}`
+                              : '',
+                            client.email ||
+                              client.telephone ||
+                              getClientFullLocation(client.payload),
+                          ]
+                            .filter(Boolean)
+                            .join(' - ')}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
+                        Remplir
+                      </span>
+                    </div>
+                  ))}
+
+                  {matchedSavedCompanies.length > 0 && companySuggestions.length > 0 && (
+                    <p className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Annuaire entreprises
+                    </p>
+                  )}
+                  {companySuggestions.map((company) => (
+                    <div
+                      key={company.siren}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        handleSelectCompany(company);
+                      }}
+                      className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm text-slate-700 transition-colors last:border-0 hover:bg-slate-50 hover:text-orange-500"
+                    >
+                      <Building2 size={14} className="shrink-0 text-slate-300" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-bold">{company.nom_complet}</p>
+                        <p className="truncate text-xs text-slate-400">
+                          {[
+                            company.siege?.siret ? `SIRET ${formatSiret(company.siege.siret)}` : '',
+                            [company.siege?.code_postal, company.siege?.libelle_commune]
+                              .filter(Boolean)
+                              .join(' '),
+                          ]
+                            .filter(Boolean)
+                            .join(' - ')}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid gap-5 md:grid-cols-2">
             <div>
               <label htmlFor="nom" className={labelClasses}>
-                Nom
+                {isProfessional ? 'Raison sociale' : 'Nom'}
               </label>
               <input
                 id="nom"
                 name="nom"
                 type="text"
-                placeholder="Dupont"
+                placeholder={isProfessional ? 'SARL Exemple' : 'Dupont'}
                 value={formData.nom}
                 onChange={handleChange}
                 className={`${inputClasses} ${
@@ -267,13 +534,13 @@ export default function ClientForm({
             </div>
             <div>
               <label htmlFor="prenom" className={labelClasses}>
-                Prenom
+                {isProfessional ? 'Contact (optionnel)' : 'Prenom'}
               </label>
               <input
                 id="prenom"
                 name="prenom"
                 type="text"
-                placeholder="Jean"
+                placeholder={isProfessional ? 'Interlocuteur' : 'Jean'}
                 value={formData.prenom}
                 onChange={handleChange}
                 className={`${inputClasses} ${
@@ -283,6 +550,23 @@ export default function ClientForm({
               {errors.prenom && <p className="mt-1 text-xs text-red-500">{errors.prenom}</p>}
             </div>
           </div>
+
+          {isProfessional && (
+            <div className="animate-in fade-in slide-in-from-top-2">
+              <label htmlFor="siret" className={labelClasses}>
+                SIRET (optionnel)
+              </label>
+              <input
+                id="siret"
+                name="siret"
+                type="text"
+                placeholder="820 001 014 00027"
+                value={formData.siret}
+                onChange={handleChange}
+                className={inputClasses}
+              />
+            </div>
+          )}
 
           {(activeSavedClient ||
             showClientSuggestions ||

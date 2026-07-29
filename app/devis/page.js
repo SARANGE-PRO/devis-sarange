@@ -9,6 +9,8 @@ import { subscribeToUserClients } from '@/lib/firebase/clients';
 import { deleteQuoteById, saveQuoteDraft, subscribeToUserQuotes } from '@/lib/firebase/quotes';
 import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
+import { isKnownClientType } from '@/lib/client-type.mjs';
+import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import {
   buildSignatureDocumentHref,
   canQuoteBeSent,
@@ -126,8 +128,20 @@ const getQuotePdfOptions = (quote) => {
       quote.payload?.reference ||
       quote.payload?.clientData?.referenceDevis ||
       undefined,
+    // Réouverture d'un devis finalisé/signé : les CGV et conditions de
+    // règlement rendues sont celles FIGÉES avec le devis, pas les templates
+    // courants (les anciens devis ne changent jamais).
+    cgvSnapshot: quote.payload?.cgvSnapshot || undefined,
+    // Attestation décennale des paramètres société (repli si pas de snapshot).
+    insurance: loadCompanyInsurance(),
   };
 };
+
+// Type de client explicitement choisi ? Les anciens devis sans clientType
+// affichent « Type de client à confirmer » et restent bloqués (sauf re-rendu
+// fidèle d'un devis déjà figé par son snapshot CGV).
+const quoteHasKnownClientType = (quote) =>
+  isKnownClientType(quote?.payload?.clientData?.clientType);
 
 const arrayBufferToBase64 = (arrayBuffer) => {
   const bytes = new Uint8Array(arrayBuffer);
@@ -614,6 +628,15 @@ export default function SavedQuotesPage() {
   };
 
   const handleDownloadPdf = async (quote) => {
+    // Sans snapshot figé ET sans type de client choisi, impossible de savoir
+    // quelles CGV rendre : la génération est bloquée (comme dans le devis).
+    if (!quote.payload?.cgvSnapshot && !quoteHasKnownClientType(quote)) {
+      setActionError(
+        'Type de client à confirmer : ouvrez ce devis et choisissez Particulier ou Professionnel avant de générer le PDF.'
+      );
+      return;
+    }
+
     setActionId(quote.id); setActionKind('pdf'); setActionError(''); setActionMessage('');
     try {
       await generateQuotePDF(
@@ -636,6 +659,15 @@ export default function SavedQuotesPage() {
 
     if (!recipientEmail) {
       setActionError("Ajoutez un email client avant d'envoyer ce devis.");
+      return;
+    }
+
+    // L'envoi (et donc la signature) est un acte nouveau : il exige un type de
+    // client explicitement choisi, même sur un ancien devis.
+    if (!quoteHasKnownClientType(quote)) {
+      setActionError(
+        "Type de client à confirmer : ouvrez ce devis et choisissez Particulier ou Professionnel avant l'envoi."
+      );
       return;
     }
 
@@ -672,6 +704,7 @@ export default function SavedQuotesPage() {
             totalTTC: pdfDocument.totals?.totalTTC || 0,
             quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
             tvaRate: pdfDocument.tvaRate,
+            paymentMilestones: pdfDocument.paymentMilestones || null,
             signatureAnchors: pdfDocument.signatureAnchors,
           },
         }),
