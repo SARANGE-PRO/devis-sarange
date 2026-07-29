@@ -33,6 +33,7 @@ import {
   getCompositePricing,
   getDefaultProductVariant,
   getPriceForMm,
+  getFallbackPriceForMm,
   getProductById,
   getProductCategory,
   getMaterialVariantId,
@@ -686,6 +687,10 @@ export default function ProductSelector({
   const [netDiscountWanted, setNetDiscountWanted] = useState(0);
   const [repere, setRepere] = useState('');
   const [showThermalData, setShowThermalData] = useState(true);
+  // Première validation de l'ajout hors grille : mémorise la configuration
+  // exacte validée (produit + dimensions), pour que toute modification
+  // ultérieure redemande la validation.
+  const [outOfGridAck, setOutOfGridAck] = useState(null);
   const [customLabel, setCustomLabel] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
@@ -882,6 +887,110 @@ export default function ProductSelector({
           : null
       : null;
 
+  // ── Hors grille tarifaire ───────────────────────────────────────────────
+  // Une mesure hors grille reste BLOQUANTE par défaut, mais l'ajout redevient
+  // possible sur DOUBLE VALIDATION : (1) la case « je valide » cochée dans
+  // l'alerte, puis (2) la confirmation au clic. Le prix est alors calculé
+  // automatiquement (cf. getFallbackPriceForMm) : tarif le plus élevé de la
+  // ligne/colonne concernée + hausse au €/cm marginal de fin de grille. La
+  // marge nette souhaitée reste disponible, mais n'est plus obligatoire.
+  const isDimensionedCatalogProduct =
+    Boolean(product) &&
+    !isCompositeMode &&
+    !isWasteManagement &&
+    !isCustomProduct &&
+    !isRemiseCommerciale &&
+    !isCatalogService &&
+    !isTextOnlyProduct &&
+    !isFixedPriceProduct;
+  const isSimpleOutOfGrid =
+    isDimensionedCatalogProduct &&
+    Boolean(simpleConfig.widthMm && simpleConfig.heightMm) &&
+    !simplePriceData;
+  // Tarif hors grille de la menuiserie simple (tarif de référence + hausse
+  // automatique proportionnelle au dépassement).
+  const simpleFallbackPriceData = isSimpleOutOfGrid
+    ? getFallbackPriceForMm(
+        product.sheet,
+        parsePositiveInt(simpleConfig.heightMm),
+        parsePositiveInt(simpleConfig.widthMm)
+      )
+    : null;
+  // Données tarifaires effectivement retenues (grille normale, ou repli).
+  const effectiveSimplePriceData = simplePriceData ?? simpleFallbackPriceData;
+  // Composé : seul un châssis hors grille est forçable. Une ossature vide ou
+  // irrésoluble n'a rien à chiffrer et reste bloquée.
+  const isCompositeOutOfGrid =
+    isCompositeMode &&
+    compositePricing.hasOutOfGrid &&
+    compositePricing.isGeometryValid &&
+    !compositePricing.isEmpty;
+  const isOutOfGrid = isSimpleOutOfGrid || isCompositeOutOfGrid;
+  // La validation ne vaut QUE pour la configuration validée : changer de
+  // produit, de dimension ou de châssis hors grille la redemande.
+  const outOfGridKey = isSimpleOutOfGrid
+    ? `simple|${product?.id}|${simpleConfig.widthMm}x${simpleConfig.heightMm}`
+    : isCompositeOutOfGrid
+      ? `composite|${compositePricing.modules
+          .filter((module) => module.unitPrice === null)
+          .map((module) => `${module.productId}:${module.widthMm}x${module.heightMm}`)
+          .join(',')}`
+      : null;
+  const isOutOfGridAcknowledged = Boolean(outOfGridKey) && outOfGridAck === outOfGridKey;
+  // Sans tarif calculable (feuille absente), rien à forcer.
+  const hasOutOfGridFallback = isSimpleOutOfGrid
+    ? Boolean(simpleFallbackPriceData)
+    : isCompositeOutOfGrid && compositePricing.forcedTotalPrice !== null;
+  const canForceOutOfGrid = isOutOfGrid && hasOutOfGridFallback && isOutOfGridAcknowledged;
+  // Prix hors grille calculé, affiché dans l'alerte et la confirmation.
+  const outOfGridPrice = isSimpleOutOfGrid
+    ? simpleFallbackPriceData?.price ?? 0
+    : compositePricing.forcedTotalPrice ?? 0;
+  const outOfGridCompositeModules = isCompositeOutOfGrid
+    ? compositePricing.modules.filter((module) => module.unitPrice === null)
+    : [];
+  // Détail du calcul : tarif de référence + hausse par cote dépassée.
+  const describeOutOfGridPricing = (priceData) => {
+    if (!priceData) return '';
+    const parts = [
+      `${priceData.gridPrice.toFixed(2)} € (${priceData.billedWidth} × ${priceData.billedHeight} cm)`,
+    ];
+    if (priceData.widthOverflowCm > 0) {
+      parts.push(
+        `+ ${priceData.widthOverflowCm} cm de largeur × ${priceData.widthRatePerCm.toFixed(2)} €/cm`
+      );
+    }
+    if (priceData.heightOverflowCm > 0) {
+      parts.push(
+        `+ ${priceData.heightOverflowCm} cm de hauteur × ${priceData.heightRatePerCm.toFixed(2)} €/cm`
+      );
+    }
+    return `${parts.join(' ')} = ${priceData.price.toFixed(2)} € HT`;
+  };
+  // Prix du composé retenu : total normal, ou total forcé (châssis hors grille
+  // au tarif calculé) quand l'ajout hors grille est validé.
+  const compositeUnitPrice =
+    canForceOutOfGrid && isCompositeOutOfGrid
+      ? compositePricing.forcedTotalPrice
+      : compositePricing.totalPrice;
+
+  const isAddDisabled =
+    (isOutOfGrid && !canForceOutOfGrid) ||
+    (isCompositeMode && compositeUnitPrice === null) ||
+    (!isCompositeMode &&
+      !isWasteManagement &&
+      !isCustomProduct &&
+      !isRemiseCommerciale &&
+      !isCatalogService &&
+      !isTextOnlyProduct &&
+      !simplePriceData &&
+      !canForceOutOfGrid) ||
+    (isCustomProduct &&
+      (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
+    (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
+    (isCatalogService && !isServicePriceValid) ||
+    (isTextOnlyProduct && !textOnlyContent.trim());
+
   const addButtonLabel = editingItem
     ? isTextOnlyProduct
       ? 'Mettre à jour le texte'
@@ -899,6 +1008,11 @@ export default function ProductSelector({
         : isCatalogService
           ? 'Ajouter le service'
           : 'Ajouter au panier';
+
+  // Ajout forcé : le bouton rappelle l'exception jusqu'au dernier clic.
+  const effectiveAddButtonLabel = canForceOutOfGrid
+    ? `${addButtonLabel} (hors grille)`
+    : addButtonLabel;
 
   const handleImageUpload = (event) => {
     const file = event.target.files?.[0];
@@ -983,15 +1097,17 @@ export default function ProductSelector({
 
     if (isCompositeMode) {
       // `totalPrice === 0` est VALIDE (grilles alu à 0 € : le prix vient de la
-      // marge nette souhaitée) — seul `null` (vide / hors grille) bloque.
-      if (compositePricing.totalPrice === null || compositePricing.hasInvalidModule) return null;
+      // marge nette souhaitée) — seul `null` (vide / hors grille non validé)
+      // bloque. Hors grille validé : `compositeUnitPrice` = total forcé.
+      if (compositeUnitPrice === null) return null;
       const compositePreviewItem = {
         productId: 'composite-builder',
         productLabel: 'Châssis composé',
         sheetName: 'Châssis composé',
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
-        unitPrice: compositePricing.totalPrice,
+        unitPrice: compositeUnitPrice,
+        outOfGridPricing: canForceOutOfGrid,
         quantity,
         includePose,
         remise,
@@ -1036,7 +1152,9 @@ export default function ProductSelector({
       };
     }
 
-    if (!product || !simplePriceData) return null;
+    // Hors grille validé : on chiffre sur le tarif de repli (cote ramenée au
+    // maximum de la grille), la marge nette venant compenser le hors-format.
+    if (!product || (!effectiveSimplePriceData && !canForceOutOfGrid)) return null;
 
     const simplePreviewItem = {
       productId: product.id,
@@ -1044,7 +1162,8 @@ export default function ProductSelector({
       material: product.material ?? null,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
       heightMm: parsePositiveInt(simpleConfig.heightMm),
-      unitPrice: simplePriceData.price,
+      unitPrice: effectiveSimplePriceData?.price ?? 0,
+      outOfGridPricing: !simplePriceData,
       quantity,
       includePose,
       remise,
@@ -1141,6 +1260,7 @@ export default function ProductSelector({
     setNetAdjustmentMode('margin');
     setNetMarginWanted(0);
     setNetDiscountWanted(0);
+    setOutOfGridAck(null);
     setRepere('');
     // L'aluminium repart avec les données thermiques décochées.
     const activeMaterial = isCompositeMode ? compositeMaterial : selectedMaterial;
@@ -1353,9 +1473,20 @@ export default function ProductSelector({
     setIsCompositeMode(nextMode === 'composite');
   };
 
+  // Deuxième validation de l'ajout hors grille (la première est la case cochée
+  // dans l'alerte) : sans confirmation explicite au clic, rien n'est ajouté.
+  const confirmOutOfGrid = () =>
+    window.confirm(
+      'Hors grille tarifaire : la mesure depasse la grille du fournisseur.\n\n' +
+        `Prix calcule automatiquement : ${outOfGridPrice.toFixed(2)} EUR HT ` +
+        '(tarif le plus eleve de la grille + hausse au prorata du depassement).\n\n' +
+        "Ce prix est une ESTIMATION : a confirmer aupres du fournisseur avant engagement.\n\nConfirmer l'ajout au devis ?"
+    );
+
   const handleAddToCart = () => {
     if (isCompositeMode) {
-      if (compositePricing.hasInvalidModule || compositePricing.totalPrice === null) return;
+      if (compositeUnitPrice === null) return;
+      if (canForceOutOfGrid && !confirmOutOfGrid()) return;
 
       const frameModules = getCompositeFrameModules(compositeFrame).map((frameModule) => {
         const productDefinition = getProductById(frameModule.productId);
@@ -1394,7 +1525,8 @@ export default function ProductSelector({
         widthMm: compositePricing.totalWidth,
         heightMm: compositePricing.totalHeight,
         quantity,
-        unitPrice: compositePricing.totalPrice,
+        unitPrice: compositeUnitPrice,
+        outOfGridPricing: canForceOutOfGrid,
         includePose,
         remise,
         netAdjustmentMode,
@@ -1581,7 +1713,8 @@ export default function ProductSelector({
       return;
     }
 
-    if (!simplePriceData) return;
+    if (!effectiveSimplePriceData && !canForceOutOfGrid) return;
+    if (canForceOutOfGrid && !confirmOutOfGrid()) return;
 
     const nextSimpleItem = {
       id: editingItem ? editingItem.id : createCartItemId(),
@@ -1591,10 +1724,13 @@ export default function ProductSelector({
       material: product.material ?? null,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
       heightMm: parsePositiveInt(simpleConfig.heightMm),
-      billedHeightCm: simplePriceData.billedHeight,
-      billedWidthCm: simplePriceData.billedWidth,
+      // Hors grille : cotes facturées et prix de base viennent du tarif de
+      // repli (cote débordante ramenée au maximum de la grille).
+      billedHeightCm: effectiveSimplePriceData?.billedHeight ?? null,
+      billedWidthCm: effectiveSimplePriceData?.billedWidth ?? null,
       quantity,
-      unitPrice: simplePriceData.price,
+      unitPrice: effectiveSimplePriceData?.price ?? 0,
+      outOfGridPricing: !simplePriceData,
       colorOption: workingColorOption,
       ...(workingIsVolet
         ? { petitsBoisH: 0, petitsBoisV: 0 }
@@ -2958,8 +3094,8 @@ export default function ProductSelector({
             {compositeFrame.overallWidthMm} × {compositeFrame.overallHeightMm} mm · {compositeModuleCount} châssis
           </p>
           <p className="text-2xl font-black text-slate-900">
-            {compositePricing.totalPrice != null
-              ? `${compositePricing.totalPrice.toFixed(2)} €`
+            {compositeUnitPrice != null
+              ? `${compositeUnitPrice.toFixed(2)} €`
               : compositePricing.hasInvalidModule
                 ? 'Hors grille tarifaire'
                 : 'À compléter — placez au moins un châssis'}
@@ -2970,23 +3106,67 @@ export default function ProductSelector({
   );
   const summaryContent = (
     <>
-      {product &&
-        !isCompositeMode &&
-        !isWasteManagement &&
-        !isCustomProduct &&
-        !isCatalogService &&
-        !isTextOnlyProduct &&
-        simpleConfig.widthMm &&
-        simpleConfig.heightMm &&
-        !simplePriceData && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-            Les dimensions saisies sont hors de la grille tarifaire pour ce produit.
-          </div>
-        )}
-
-      {isCompositeMode && compositePricing.hasInvalidModule && (
+      {/* Ossature irrésoluble ou vide : rien à chiffrer, blocage sans dérogation. */}
+      {isCompositeMode && compositePricing.hasInvalidModule && !isCompositeOutOfGrid && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
           Au moins un module du composé est hors de la grille tarifaire. Ajustez ses dimensions ou son type.
+        </div>
+      )}
+
+      {/* Hors grille tarifaire : blocage maintenu, mais levable sur double
+          validation (case ci-dessous + confirmation au clic). Le prix est
+          calculé automatiquement à partir de la grille. */}
+      {isOutOfGrid && (
+        <div className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <p className="font-semibold">
+            {isCompositeOutOfGrid
+              ? 'Au moins un châssis du composé est hors de la grille tarifaire.'
+              : 'Les dimensions saisies sont hors de la grille tarifaire pour ce produit.'}
+          </p>
+          <p className="text-red-600">
+            Le prix est <strong>estimé automatiquement</strong> : tarif le plus élevé de
+            la grille pour la cote qui tient, majoré du dépassement facturé au €/cm de
+            fin de grille. À confirmer auprès du fournisseur avant engagement.
+          </p>
+
+          {isSimpleOutOfGrid && simpleFallbackPriceData && (
+            <p className="rounded-lg bg-white/70 px-3 py-2 font-semibold text-red-800">
+              {describeOutOfGridPricing(simpleFallbackPriceData)}
+            </p>
+          )}
+
+          {isCompositeOutOfGrid && outOfGridCompositeModules.length > 0 && (
+            <ul className="space-y-1 rounded-lg bg-white/70 px-3 py-2 font-semibold text-red-800">
+              {outOfGridCompositeModules.map((module) => (
+                <li key={module.leafId || module.id}>
+                  {module.shortLabel || module.productLabel} {module.widthMm}×
+                  {module.heightMm} mm →{' '}
+                  {module.fallbackPriceData
+                    ? `${describeOutOfGridPricing(module.fallbackPriceData)}${
+                        Math.abs(module.fallbackUnitPrice - module.fallbackPriceData.price) > 0.01
+                          ? ` · châssis complet ${module.fallbackUnitPrice.toFixed(2)} €`
+                          : ''
+                      }`
+                    : 'non tarifable'}
+                </li>
+              ))}
+            </ul>
+          )}
+          <label className="flex items-start gap-3 rounded-lg border border-red-300 bg-white/70 p-3 font-semibold">
+            <input
+              type="checkbox"
+              checked={isOutOfGridAcknowledged}
+              onChange={(event) => setOutOfGridAck(event.target.checked ? outOfGridKey : null)}
+              className="mt-0.5 h-4 w-4 accent-red-600"
+            />
+            Je valide l&apos;ajout hors grille tarifaire pour cette configuration.
+          </label>
+          {canForceOutOfGrid && (
+            <p className="font-semibold text-red-800">
+              Dernière étape : cliquez sur « {effectiveAddButtonLabel} », puis confirmez.
+              Vous pouvez ajouter une marge nette souhaitée par-dessus ce tarif.
+            </p>
+          )}
         </div>
       )}
 
@@ -3023,8 +3203,8 @@ export default function ProductSelector({
                       ? `${((Number.parseFloat(customPrice) || 0) * quantity).toFixed(2)} EUR`
                       : isTextOnlyProduct
                         ? 'Element non chiffre'
-                      : compositePricing.totalPrice !== null
-                        ? `${(compositePricing.totalPrice * quantity).toFixed(2)} EUR`
+                      : compositeUnitPrice !== null
+                        ? `${(compositeUnitPrice * quantity).toFixed(2)} EUR`
                         : 'A definir'}
               </p>
               {previewCalc?.posePrice ? (
@@ -3036,43 +3216,17 @@ export default function ProductSelector({
 
             <button
               onClick={handleAddToCart}
-              disabled={
-                (isCompositeMode &&
-                  (compositePricing.hasInvalidModule || compositePricing.totalPrice === null)) ||
-                (!isCompositeMode &&
-                  !isWasteManagement &&
-                  !isCustomProduct &&
-                  !isRemiseCommerciale &&
-                  !isCatalogService &&
-                  !isTextOnlyProduct &&
-                  !simplePriceData) ||
-                (isCustomProduct &&
-                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
-                (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
-                (isCatalogService && !isServicePriceValid) ||
-                (isTextOnlyProduct && !textOnlyContent.trim())
-              }
+              disabled={isAddDisabled}
               className={`inline-flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-bold transition-all ${
-                (isCompositeMode &&
-                  (compositePricing.hasInvalidModule || compositePricing.totalPrice === null)) ||
-                (!isCompositeMode &&
-                  !isWasteManagement &&
-                  !isCustomProduct &&
-                  !isRemiseCommerciale &&
-                  !isCatalogService &&
-                  !isTextOnlyProduct &&
-                  !simplePriceData) ||
-                (isCustomProduct &&
-                  (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
-                (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
-                (isCatalogService && !isServicePriceValid) ||
-                (isTextOnlyProduct && !textOnlyContent.trim())
+                isAddDisabled
                   ? 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
-                  : 'bg-orange-500 text-white shadow-xl shadow-orange-500/30 hover:bg-orange-600'
+                  : canForceOutOfGrid
+                    ? 'bg-red-600 text-white shadow-xl shadow-red-600/30 hover:bg-red-700'
+                    : 'bg-orange-500 text-white shadow-xl shadow-orange-500/30 hover:bg-orange-600'
               }`}
             >
               <ShoppingCart size={18} />
-              {addButtonLabel}
+              {effectiveAddButtonLabel}
             </button>
           </div>
         </div>
