@@ -6,8 +6,13 @@
  * déploiement. À lancer :
  *   npm run check-dgfip-vat-index
  *
+ * Deux modes, choisis automatiquement :
+ *   - PRODUCTION : index publié sur Vercel Blob (DGFIP_BLOB_BASE_URL défini) ;
+ *   - LOCAL      : index de développement construit par
+ *                  `npm run update-dgfip-vat-index`.
+ *
  * Contrôles (code de sortie 1 dès qu'un seul échoue) :
- *   - index présent et lisible (producteur DGFiP vérifié par le lecteur) ;
+ *   - index présent et lisible (producteur DGFiP vérifié) ;
  *   - index actualisé depuis moins de sept jours ;
  *   - volume d'entrées cohérent (~4,8 millions attendus) ;
  *   - sonde fonctionnelle : SIREN 820001014 -> FR22820001014 ;
@@ -34,8 +39,33 @@ process.env.TVA_DGFIP_INDEX_PATH = isAbsolute(CONFIGURED_INDEX_PATH)
 const { getDgfipIndexStatus, lookupVatNumberInDgfipIndex } = await import(
   '../lib/dgfip-vat-index.js'
 );
+const { getDgfipBlobStatus, isDgfipBlobConfigured, lookupVatNumberInDgfipBlob } = await import(
+  '../lib/dgfip-vat-blob.js'
+);
 const { getDgfipIndexHealth } = await import('../lib/dgfip-vat-index-builder.mjs');
 const { VAT_LOOKUP_OUTCOMES } = await import('../lib/vat-verification.mjs');
+
+// Mode PRODUCTION dès que le magasin Vercel Blob est configuré.
+const useBlob = isDgfipBlobConfigured();
+
+const loadStatus = async () => {
+  if (!useBlob) {
+    const status = await getDgfipIndexStatus();
+    return { metadata: status.metadata, lookup: lookupVatNumberInDgfipIndex };
+  }
+
+  const status = await getDgfipBlobStatus();
+  const manifest = status.manifest;
+
+  return {
+    // getDgfipIndexHealth attend `refreshedAt` : le manifeste porte la date de
+    // génération de la version publiée.
+    metadata: manifest
+      ? { ...manifest, refreshedAt: manifest.generatedAt }
+      : null,
+    lookup: lookupVatNumberInDgfipBlob,
+  };
+};
 
 // Sondes fonctionnelles : SARANGE d'une part, SIREN inexistant d'autre part.
 const PROBE_SIREN = '820001014';
@@ -48,20 +78,24 @@ const report = (label, ok, detail = '') => {
   if (!ok) problems.push(label);
 };
 
-const status = await getDgfipIndexStatus();
-const health = getDgfipIndexHealth(status.metadata);
+const { metadata, lookup } = await loadStatus();
+const health = getDgfipIndexHealth(metadata);
 
-console.log(`Index : ${process.env.TVA_DGFIP_INDEX_PATH}`);
+console.log(
+  useBlob
+    ? `Mode PRODUCTION — Vercel Blob : ${process.env.DGFIP_BLOB_BASE_URL}`
+    : `Mode LOCAL — ${process.env.TVA_DGFIP_INDEX_PATH}`
+);
 
-report('Index présent et lisible', Boolean(status.metadata));
+report('Index présent et lisible', Boolean(metadata));
 
-if (status.metadata) {
+if (metadata) {
   console.log(
     [
-      `  producteur : ${status.metadata.producer}`,
-      `publication : ${status.metadata.publishedAt || 'inconnue'}`,
-      `actualisé : ${status.metadata.refreshedAt}`,
-      `entrées : ${status.metadata.entryCount}`,
+      `  producteur : ${metadata.producer}`,
+      `publication : ${metadata.publishedAt || 'inconnue'}`,
+      `actualisé : ${metadata.refreshedAt}`,
+      `entrées : ${metadata.entryCount}`,
     ].join(' | ')
   );
 
@@ -76,14 +110,14 @@ if (status.metadata) {
     `${health.entryCount} entrées`
   );
 
-  const probe = await lookupVatNumberInDgfipIndex(PROBE_SIREN);
+  const probe = await lookup(PROBE_SIREN);
   report(
     `Sonde ${PROBE_SIREN} -> ${PROBE_EXPECTED_VAT}`,
     probe.outcome === VAT_LOOKUP_OUTCOMES.VERIFIED && probe.vatNumber === PROBE_EXPECTED_VAT,
     probe.vatNumber || probe.outcome
   );
 
-  const unknown = await lookupVatNumberInDgfipIndex(UNKNOWN_SIREN);
+  const unknown = await lookup(UNKNOWN_SIREN);
   report(
     `Sonde négative ${UNKNOWN_SIREN} -> NOT_FOUND_DGFIP`,
     unknown.outcome === VAT_LOOKUP_OUTCOMES.NOT_FOUND_DGFIP && !unknown.vatNumber,

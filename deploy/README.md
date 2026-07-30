@@ -1,158 +1,166 @@
-# Déploiement de l'index DGFiP des numéros de TVA
+# Index DGFiP des numéros de TVA — production Vercel
 
-L'index local permet de vérifier un numéro de TVA intracommunautaire auprès de
-la source officielle (jeu de données DGFiP publié sur data.gouv.fr), sans
-appeler une API à chaque devis. Il alimente le statut `VERIFIED_DGFIP`.
+L'index permet de vérifier un numéro de TVA intracommunautaire auprès de la
+source officielle (jeu de données DGFiP publié sur data.gouv.fr) et produit le
+statut `VERIFIED_DGFIP`.
 
-**Sans cet index**, l'application reste fonctionnelle : la vérification se
-replie sur API Entreprise (si habilitée), puis sur VIES, puis sur la
-confirmation manuelle documentée. Un numéro non vérifié bloque uniquement la
-facturation en autoliquidation, jamais le devis.
+**Architecture** : l'extraction complète (~4,8 millions d'entrées, 128 Mo) est
+découpée en fichiers par préfixe des **trois premiers chiffres du SIREN**,
+compressés et publiés sur **Vercel Blob**. Une vérification ne télécharge
+qu'**un seul fichier** (~40 Ko) : l'index complet n'est jamais chargé dans une
+fonction Vercel, dont le système de fichiers est en lecture seule et `/tmp`
+éphémère.
 
----
-
-## 1. Prérequis : un système de fichiers persistant
-
-L'index pèse environ **130 Mo** pour **~4,8 millions d'entrées**. Il lui faut
-un répertoire :
-
-- **persistant** — il survit aux redéploiements ;
-- **accessible en lecture** par le processus applicatif ;
-- **accessible en écriture** par le compte qui exécute la tâche planifiée.
-
-> ⚠️ **Hébergement sans disque persistant (Vercel, Netlify, Cloud Run par
-> défaut…)** : ces plateformes ont un système de fichiers en lecture seule, et
-> leur répertoire `/tmp` est éphémère et non partagé entre les invocations.
-> L'index ne peut pas y être déployé. Deux options :
-> 1. habiliter **API Entreprise** (`API_ENTREPRISE_TOKEN`, `_CONTEXT`,
->    `_OBJECT`, `_RECIPIENT`) : la vérification DGFiP se fait alors par SIREN,
->    sans index, et aucune des étapes ci-dessous n'est nécessaire ;
-> 2. héberger l'application sur une machine ou un conteneur disposant d'un
->    volume persistant, et appliquer la procédure ci-dessous.
-
-Emplacement recommandé sur une machine dédiée :
-
-```bash
-sudo mkdir -p /var/lib/sarange/dgfip
-sudo chown sarange:sarange /var/lib/sarange/dgfip
-sudo chmod 750 /var/lib/sarange/dgfip
+```
+dgfip-vat/{version}/000.json.gz … 999.json.gz   correspondances SIREN → TVA
+dgfip-vat/current.json                          manifeste de la version active
 ```
 
-Le répertoire est volontairement **hors du répertoire de déploiement** : une
-mise en production ne doit pas effacer l'index.
+Le manifeste est publié **en dernier** : tant qu'il pointe l'ancienne version,
+l'application lit des données cohérentes. La bascule est donc atomique.
+
+**Sans index**, l'application reste fonctionnelle : la vérification se replie
+sur VIES puis sur la confirmation manuelle documentée. Un numéro non vérifié
+bloque uniquement la facturation en autoliquidation, jamais le devis.
 
 ---
 
-## 2. Configuration
+## 1. Actions manuelles dans les tableaux de bord
 
-| Variable | Rôle | Valeur |
+Trois actions, à faire une seule fois. **Aucun jeton ne doit être écrit dans le
+dépôt.**
+
+### a. Créer le Blob Store (tableau de bord Vercel)
+
+1. Projet **devis-sarange** → onglet **Storage** → **Create Database** →
+   **Blob** ;
+2. nommer par exemple `dgfip-vat-index`, puis **Connect** au projet ;
+3. accès **public** : acceptable ici, le magasin ne contient que des données
+   publiques DGFiP — **n'y déposer aucune donnée interne ou client** ;
+4. relever l'URL publique de base, de la forme
+   `https://<identifiant>.public.blob.vercel-storage.com` ;
+5. relever le jeton `BLOB_READ_WRITE_TOKEN` (onglet **.env.local** du magasin).
+
+### b. Ajouter le secret dans GitHub
+
+Dépôt **SARANGE-PRO/devis-sarange** → **Settings** → **Secrets and variables**
+→ **Actions** :
+
+| Type | Nom | Valeur |
 |---|---|---|
-| `TVA_DGFIP_INDEX_PATH` | chemin de l'index | `/var/lib/sarange/dgfip/dgfip-vat-index.json` |
-| `TVA_DGFIP_DATASET_ID` | jeu de données data.gouv.fr | `6a2b4e2393218f1e63d7389b` *(défaut)* |
-| `TVA_DGFIP_MIN_ENTRIES` | seuil minimal d'acceptation d'un index | `1` *(défaut)* |
-| `NODE_OPTIONS` | mémoire pour la construction | `--max-old-space-size=4096` |
+| **Secret** | `BLOB_READ_WRITE_TOKEN` | le jeton relevé en (a) |
+| **Variable** | `DGFIP_BLOB_BASE_URL` | l'URL publique de base relevée en (a) |
 
-Un chemin relatif est résolu depuis la racine du projet — jamais depuis le
-répertoire courant. La même variable doit être visible **par l'application** et
-**par la tâche planifiée**.
-
-L'identifiant du jeu de données est l'identifiant **technique permanent**
-(le slug, lui, peut changer). Le script refuse toute mise à jour si le
-producteur ou l'éditeur déclaré n'est pas la DGFiP.
-
----
-
-## 3. Premier lancement, au déploiement
+En ligne de commande, sans afficher la valeur :
 
 ```bash
-cd /srv/devis-sarange
-npm run update-dgfip-vat-index
+gh secret set BLOB_READ_WRITE_TOKEN          # saisie masquée
+gh variable set DGFIP_BLOB_BASE_URL --body "https://<identifiant>.public.blob.vercel-storage.com"
 ```
 
-Durée constatée : **~40 s** (téléchargement + construction). Compte rendu
-attendu :
+### c. Ajouter la variable d'environnement Vercel
 
-```
-Index DGFiP actualisé : 4826845 entrées (extraction publiée le 2026-07-29…).
-Lignes lues : 4826846 | acceptées : 4826845 | rejetées : 1 | motif principal : … | code de sortie : 0
-```
+Projet **devis-sarange** → **Settings** → **Environment Variables** :
 
-Puis la vérification post-déploiement (§5).
+| Nom | Valeur | Environnements |
+|---|---|---|
+| `DGFIP_BLOB_BASE_URL` | l'URL publique de base | Production, Preview |
+
+La connexion du magasin au projet ajoute automatiquement `BLOB_READ_WRITE_TOKEN`
+côté Vercel : **l'application n'en a pas besoin**, elle lit par URL publique.
+
+Redéployer ensuite pour que la variable soit prise en compte.
 
 ---
 
-## 4. Mise à jour quotidienne
+## 2. Première publication
 
-Le jeu de données est actualisé quotidiennement par la DGFiP.
+Depuis GitHub : onglet **Actions** → **Index DGFiP des numéros de TVA** →
+**Run workflow**. Durée constatée : environ **une minute** pour le
+téléchargement et le découpage, plus le temps d'envoi des fichiers.
 
-### systemd (recommandé)
+Journal attendu :
+
+```
+Découpage de 4826845 entrées par préfixe de SIREN…
+  891 fichiers de préfixe à publier (version 20260730T143946Z)
+Envoi des fichiers de préfixe…
+Sondes de validation sur les fichiers publiés…
+  sonde 820001014 -> FR22820001014 : OK
+  sonde négative 999999999 -> NOT_FOUND_DGFIP : OK
+Publication du manifeste (bascule atomique)…
+Index publié : 4826845 entrées (extraction du 2026-07-29…).
+```
+
+> Tous les préfixes n'existent pas : environ 891 fichiers sur 1000, les autres
+> ne correspondant à aucune entreprise. Le lecteur traite une absence de
+> fichier comme un SIREN inconnu (`NOT_FOUND_DGFIP`).
+
+---
+
+## 3. Mise à jour quotidienne
+
+Le workflow [`.github/workflows/dgfip-vat-index.yml`](../.github/workflows/dgfip-vat-index.yml)
+s'exécute :
+
+- **automatiquement** à 02h30 UTC (04h30 à Paris en heure d'été, 03h30 en heure
+  d'hiver) — le jeu DGFiP est publié quotidiennement ;
+- **manuellement** via **Run workflow**.
+
+`concurrency: dgfip-vat-index` empêche deux publications simultanées.
+L'exécution est idempotente : si l'empreinte de la ressource n'a pas changé,
+rien n'est téléchargé ni publié, et le workflow réussit.
+
+### Élagage
+
+Après chaque bascule réussie, les versions au-delà des **deux plus récentes**
+sont supprimées. La version active est toujours conservée.
+
+---
+
+## 4. Supervision et alertes
+
+### Échec de publication
+
+Le script sort en **code non nul** et le workflow est marqué **en échec** si :
+métadonnées injoignables, producteur non DGFiP, téléchargement interrompu,
+index refusé (vide, trop de lignes illisibles, effondrement du volume, formats
+invalides), sonde en échec, ou envoi impossible.
+
+Dans tous ces cas, **`current.json` n'est pas republié** : la version
+précédente reste active et l'application continue de fonctionner.
+
+Activez les notifications GitHub sur les échecs de workflow
+(**Settings** → **Notifications** → *Actions*), ou branchez votre supervision
+sur l'API des exécutions.
+
+### Contrôle de l'index publié
 
 ```bash
-sudo cp deploy/systemd/dgfip-vat-index-*.service /etc/systemd/system/
-sudo cp deploy/systemd/dgfip-vat-index-*.timer   /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now dgfip-vat-index-update.timer
-sudo systemctl enable --now dgfip-vat-index-check.timer
-sudo systemctl list-timers 'dgfip-vat-index-*'
+DGFIP_BLOB_BASE_URL="https://<identifiant>.public.blob.vercel-storage.com" \
+  npm run check-dgfip-vat-index
 ```
 
-`Persistent=true` rattrape une exécution manquée (machine éteinte). Adaptez
-`User`, `WorkingDirectory` et `TVA_DGFIP_INDEX_PATH` dans les unités.
+Sortie en code 1 — et alerte sur la sortie d'erreur — si :
 
-### cron (alternative)
-
-```cron
-30 4 * * * cd /srv/devis-sarange && TVA_DGFIP_INDEX_PATH=/var/lib/sarange/dgfip/dgfip-vat-index.json npm run update-dgfip-vat-index >> /var/log/sarange/dgfip-update.log 2>&1
-0  6 * * * cd /srv/devis-sarange && TVA_DGFIP_INDEX_PATH=/var/lib/sarange/dgfip/dgfip-vat-index.json npm run check-dgfip-vat-index  >> /var/log/sarange/dgfip-check.log  2>&1
-```
-
-### Verrou d'exécution
-
-Le script pose un verrou `<index>.lock` : une seconde exécution simultanée
-(tâche planifiée + lancement manuel) s'interrompt immédiatement avec le
-message « Mise à jour déjà en cours ». Un verrou abandonné par un processus
-interrompu est repris automatiquement au bout d'une heure. Aucune
-configuration n'est nécessaire.
-
----
-
-## 5. Supervision
-
-### Codes de sortie de `update-dgfip-vat-index`
-
-| Code | Situation |
-|---|---|
-| `0` | index actualisé, **ou** extraction inchangée (aucun téléchargement), **ou** exécution ignorée car déjà en cours |
-| `1` | métadonnées injoignables, producteur non DGFiP, téléchargement interrompu, index refusé (vide, trop de lignes illisibles, effondrement du volume, formats invalides), écriture impossible |
-
-Dans tous les cas d'échec, **le dernier index valide est conservé** : la
-vérification continue de fonctionner avec les données précédentes.
-
-### Alertes
-
-`npm run check-dgfip-vat-index` sort en code `1` et écrit l'alerte sur la
-sortie d'erreur dans les cas suivants :
-
-- **la mise à jour a échoué** → unité systemd en `failed`
-  (`systemctl is-failed dgfip-vat-index-update.service`) ou code `1` en cron ;
+- **l'index est absent** ou le manifeste illisible ;
 - **l'index a plus de sept jours** ;
-- **l'index est absent** ou illisible (producteur non conforme compris) ;
-- **le nombre d'entrées est anormalement faible** (seuil : 1 000 000).
-
-Branchez la supervision sur ces deux codes de sortie, ou sur les journaux
-(`journalctl -u dgfip-vat-index-update.service`).
+- **le nombre d'entrées est anormalement faible** (seuil : 1 000 000) ;
+- **une sonde échoue**.
 
 ---
 
-## 6. Vérification après déploiement
+## 5. Vérification après déploiement
 
 ```bash
-npm run check-dgfip-vat-index
+DGFIP_BLOB_BASE_URL="https://<identifiant>.public.blob.vercel-storage.com" \
+  npm run check-dgfip-vat-index
 ```
 
 Résultat attendu :
 
 ```
+Mode PRODUCTION — Vercel Blob : https://…
 OK   Index présent et lisible
   producteur : DGFIP | publication : … | actualisé : … | entrées : 4826845
 OK   Index actualisé depuis moins de sept jours — 0 jour(s)
@@ -163,13 +171,27 @@ OK   Sonde négative 999999999 -> NOT_FOUND_DGFIP — not-found-dgfip
 0 contrôle(s) en échec | code de sortie : 0
 ```
 
-Les deux sondes vérifient qu'une correspondance connue est bien trouvée, et
-qu'un SIREN inconnu ne produit **jamais** un faux `VERIFIED_DGFIP`.
+Contrôlez enfin dans l'application : ouvrez une fiche client professionnelle,
+lancez **Vérifier** — le statut doit passer à **Vérifié (DGFiP)** avec la date
+de publication de l'extraction.
 
 ---
 
-## 7. Rotation et sauvegarde
+## 6. Développement local
 
-L'index est **régénérable à tout moment** depuis la source officielle : il n'a
-pas besoin d'être sauvegardé. Il n'est pas versionné (voir `.gitignore`).
-Prévoir ~300 Mo d'espace libre (index + fichier temporaire d'écriture).
+Le constructeur d'index local reste disponible pour les tests, **sans Vercel
+Blob** :
+
+```bash
+npm run update-dgfip-vat-index   # construit data/dgfip-vat-index.json (128 Mo)
+npm run check-dgfip-vat-index    # mode LOCAL si DGFIP_BLOB_BASE_URL est absent
+```
+
+Le fichier n'est pas versionné (`.gitignore`). Sans `DGFIP_BLOB_BASE_URL`,
+l'application utilise cet index local ; c'est le mode de développement.
+
+Pour tester la publication sans rien envoyer :
+
+```bash
+npm run publish-dgfip-vat-index -- --dry-run
+```
