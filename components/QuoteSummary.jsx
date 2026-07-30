@@ -12,7 +12,8 @@ import {
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
-import { isKnownClientType } from '@/lib/client-type.mjs';
+import ClientTypeDialog from '@/components/ClientTypeDialog';
+import { CLIENT_TYPES, isKnownClientType } from '@/lib/client-type.mjs';
 import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
 import { getInsuranceStatus } from '@/lib/company-insurance.mjs';
 import {
@@ -146,6 +147,7 @@ export default function QuoteSummary({
   onAddMissingPoseServices,
   onDismissPoseSafety,
   companyInsurance = null,
+  onClientTypeChange,
 }) {
   const [editingDesignationId, setEditingDesignationId] = useState(null);
   const [tempDesignation, setTempDesignation] = useState('');
@@ -153,6 +155,9 @@ export default function QuoteSummary({
   const [tempPoseLabel, setTempPoseLabel] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  // Action demandée alors que le type de client manque : mémorisée le temps du
+  // choix, puis relancée automatiquement.
+  const [pendingActionKey, setPendingActionKey] = useState(null);
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
   // Commission commerciale : on redistribue le % dans les menuiseries pour l'affichage
@@ -203,8 +208,10 @@ export default function QuoteSummary({
   const showInsuranceAlert =
     contractType === CONTRACT_TYPES.AVEC_POSE &&
     (insuranceStatus.isExpired || insuranceStatus.expiresSoon);
+  // Le type de client ne grise PAS les boutons : il est demandé au clic, dans
+  // une modale qui relance ensuite l'action (évite un aller-retour à l'étape 1).
   const isGenerateDisabled =
-    !clientTypeKnown || (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
+    (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
   const isDirectSendDisabled = isGenerateDisabled || isGeneratingPdf || isSendingDelivery || !canSendQuoteDirectly;
 
   const handleStartEdit = (item) => {
@@ -251,8 +258,48 @@ export default function QuoteSummary({
     }
   };
 
+  const QUOTE_ACTIONS = {
+    pdf: { label: 'Génération du PDF', run: (type) => runPdfAction(() => onGeneratePdf?.(type)) },
+    again: {
+      label: 'Nouveau téléchargement',
+      run: (type) => runPdfAction(() => onDownloadAgain?.(type)),
+    },
+    email: { label: 'Envoi par email', run: (type) => onSendQuote?.(type) },
+    signature: {
+      label: 'Envoi pour signature',
+      run: (type) => onSendQuoteForSignature?.(type),
+    },
+  };
+
+  // Le type de client choisi est transmis À L'ACTION (et pas seulement remonté
+  // au parent) : l'état React du parent n'est pas encore rafraîchi au moment
+  // où l'action repart.
+  const requestQuoteAction = (actionKey) => {
+    if (!clientTypeKnown) {
+      setPendingActionKey(actionKey);
+      return;
+    }
+    void QUOTE_ACTIONS[actionKey]?.run();
+  };
+
+  const handleChooseClientType = (clientType) => {
+    onClientTypeChange?.(clientType);
+    const actionKey = pendingActionKey;
+    setPendingActionKey(null);
+    if (actionKey) {
+      void QUOTE_ACTIONS[actionKey]?.run(clientType);
+    }
+  };
+
   return (
     <>
+      <ClientTypeDialog
+        open={Boolean(pendingActionKey)}
+        actionLabel={QUOTE_ACTIONS[pendingActionKey]?.label || ''}
+        onChoose={handleChooseClientType}
+        onCancel={() => setPendingActionKey(null)}
+      />
+
       {isGeneratingPdf && (
         <PdfGenerationLoader title="Creation du devis" messages={['Veuillez patienter...']} />
       )}
@@ -884,17 +931,26 @@ export default function QuoteSummary({
         </div>
 
         {!clientTypeKnown && (
-          <div className="mx-5 mt-5 rounded-2xl border-2 border-red-200 bg-red-50 p-4 sm:mx-8">
-            <div className="flex items-start gap-3">
-              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-500" />
-              <div>
-                <p className="text-sm font-bold text-red-700">Type de client à confirmer</p>
-                <p className="mt-1 text-xs leading-relaxed text-red-600">
-                  Choisissez <strong>Particulier</strong> ou <strong>Professionnel</strong>{' '}
-                  à l&apos;étape « Client » : les CGV du devis en dépendent. La génération
-                  du PDF, l&apos;envoi et la signature restent bloqués tant que ce choix
-                  n&apos;est pas fait.
-                </p>
+          <div className="mx-5 mt-5 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 sm:mx-8">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle size={18} className="shrink-0 text-amber-500" />
+                <p className="text-sm font-bold text-amber-800">Type de client à confirmer</p>
+              </div>
+              <div className="flex gap-2">
+                {[
+                  { value: CLIENT_TYPES.PARTICULIER, label: 'Particulier' },
+                  { value: CLIENT_TYPES.PROFESSIONNEL, label: 'Professionnel' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleChooseClientType(option.value)}
+                    className="flex-1 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-bold text-amber-800 transition-all hover:border-orange-500 hover:text-orange-600 sm:flex-none"
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
@@ -1152,7 +1208,7 @@ export default function QuoteSummary({
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
             {pdfGenerated && (
               <button
-                onClick={() => void runPdfAction(onDownloadAgain)}
+                onClick={() => requestQuoteAction('again')}
                 disabled={isGenerateDisabled || isGeneratingPdf}
                 className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold rounded-full transition-all duration-200 border ${
                   isGenerateDisabled || isGeneratingPdf
@@ -1165,7 +1221,7 @@ export default function QuoteSummary({
               </button>
             )}
             <button
-              onClick={() => void runPdfAction(onGeneratePdf)}
+              onClick={() => requestQuoteAction('pdf')}
               disabled={isGenerateDisabled || isGeneratingPdf}
               className={`w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-3 text-sm font-bold rounded-full transition-all duration-200 shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 ${
                 isGenerateDisabled || isGeneratingPdf
@@ -1200,7 +1256,7 @@ export default function QuoteSummary({
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
-              onClick={onSendQuote}
+              onClick={() => requestQuoteAction('email')}
               disabled={isDirectSendDisabled}
               className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
                 isDirectSendDisabled
@@ -1217,7 +1273,7 @@ export default function QuoteSummary({
             </button>
             <button
               type="button"
-              onClick={onSendQuoteForSignature}
+              onClick={() => requestQuoteAction('signature')}
               disabled={isDirectSendDisabled}
               className={`inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition ${
                 isDirectSendDisabled

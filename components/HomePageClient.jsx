@@ -1004,7 +1004,19 @@ export default function HomePageClient() {
     resetGenerationState();
   };
 
-  const persistQuoteToCloud = async ({ origin = 'manual' } = {}) => {
+  // Type de client choisi à la dernière seconde (modale du récapitulatif) :
+  // transmis EXPLICITEMENT aux actions, l'état React n'étant pas encore
+  // rafraîchi au moment où l'action interrompue repart.
+  const handleClientTypeChange = (clientType) => {
+    setClientData((current) => ({ ...(current || {}), clientType }));
+  };
+
+  const applyClientTypeOverride = (clientTypeOverride) =>
+    clientTypeOverride
+      ? { ...(clientData || {}), clientType: clientTypeOverride }
+      : clientData;
+
+  const persistQuoteToCloud = async ({ origin = 'manual', clientTypeOverride = '' } = {}) => {
     if (!firebaseConfigured) {
       if (origin === 'manual') {
         setSaveError('Connexion cloud indisponible pour le moment.');
@@ -1033,11 +1045,12 @@ export default function HomePageClient() {
     }
 
     try {
+      const clientDataToSave = applyClientTypeOverride(clientTypeOverride);
       const savedClient = await saveClientProfile({
         userId: user.uid,
-        clientData,
+        clientData: clientDataToSave,
       });
-      const nextClientData = savedClient?.payload || clientData;
+      const nextClientData = savedClient?.payload || clientDataToSave;
 
       setClientData(nextClientData);
 
@@ -1129,13 +1142,14 @@ export default function HomePageClient() {
     await persistQuoteToCloud({ origin: 'manual' });
   };
 
-  const handleGeneratePdf = async () => {
+  const handleGeneratePdf = async (clientTypeOverride = '') => {
     setSaveError('');
+    const effectiveClientData = applyClientTypeOverride(clientTypeOverride);
 
     try {
       let savedQuote = null;
       if (firebaseConfigured && user && canSaveCloudQuote) {
-        savedQuote = await persistQuoteToCloud({ origin: 'pdf' });
+        savedQuote = await persistQuoteToCloud({ origin: 'pdf', clientTypeOverride });
       }
 
       // On réutilise le numéro FIGÉ du devis sauvegardé (numéro + date d'émission)
@@ -1145,9 +1159,9 @@ export default function HomePageClient() {
         : { reference: quoteReference, insurance: companyInsurance };
 
       if (variantsMode && materializedVariants.length > 1) {
-        await generateMultiVariantQuotePDF(clientData, materializedVariants, pdfOptions);
+        await generateMultiVariantQuotePDF(effectiveClientData, materializedVariants, pdfOptions);
       } else {
-        await generateQuotePDF(clientData, cartItems, tvaRate, quoteSettings, pdfOptions);
+        await generateQuotePDF(effectiveClientData, cartItems, tvaRate, quoteSettings, pdfOptions);
       }
       setPdfGenerated(true);
       setGenerationSuccess({
@@ -1161,10 +1175,11 @@ export default function HomePageClient() {
     }
   };
 
-  const handleSendQuoteDelivery = async (deliveryMode) => {
+  const handleSendQuoteDelivery = async (deliveryMode, clientTypeOverride = '') => {
     setSaveError('');
     setDeliveryError('');
     setDeliveryMessage('');
+    const effectiveClientData = applyClientTypeOverride(clientTypeOverride);
 
     if (!firebaseConfigured) {
       setDeliveryError('Connexion cloud indisponible pour le moment.');
@@ -1190,7 +1205,7 @@ export default function HomePageClient() {
     setDeliveryAction(deliveryMode);
 
     try {
-      const savedQuote = await persistQuoteToCloud({ origin: 'delivery' });
+      const savedQuote = await persistQuoteToCloud({ origin: 'delivery', clientTypeOverride });
       if (!savedQuote?.id) {
         throw new Error("Impossible d'enregistrer le devis avant l'envoi.");
       }
@@ -1202,7 +1217,7 @@ export default function HomePageClient() {
         // Multi-variantes : PDF comparatif (vue client) + PDF mono signable par variante,
         // générés depuis l'état LOCAL complet (images incluses).
         pdfDocument = await buildMultiVariantQuotePdfDocument(
-          savedQuote.payload?.clientData || clientData || null,
+          savedQuote.payload?.clientData || effectiveClientData || null,
           materializedVariants,
           getQuotePdfOptions(savedQuote)
         );
@@ -1245,7 +1260,7 @@ export default function HomePageClient() {
         });
 
         pdfDocument = await buildQuotePdfDocument(
-          savedQuote.payload?.clientData || clientData || null,
+          savedQuote.payload?.clientData || effectiveClientData || null,
           mergedCartItems,
           savedQuote.payload?.tvaRate ?? tvaRate ?? DEFAULT_TVA_RATE,
           savedQuote.payload?.quoteSettings || quoteSettings || null,
@@ -1602,8 +1617,13 @@ export default function HomePageClient() {
           onGeneratePdf={handleGeneratePdf}
           onDownloadAgain={handleGeneratePdf}
           pdfGenerated={pdfGenerated}
-          onSendQuote={() => void handleSendQuoteDelivery('email')}
-          onSendQuoteForSignature={() => void handleSendQuoteDelivery('signature')}
+          onSendQuote={(clientTypeOverride) =>
+            void handleSendQuoteDelivery('email', clientTypeOverride)
+          }
+          onSendQuoteForSignature={(clientTypeOverride) =>
+            void handleSendQuoteDelivery('signature', clientTypeOverride)
+          }
+          onClientTypeChange={handleClientTypeChange}
           isSendingDelivery={Boolean(deliveryAction)}
           activeDeliveryMode={deliveryAction}
           deliveryMessage={deliveryMessage}
