@@ -73,7 +73,7 @@ bloquent pas.
 | TVA 5,5 % | `IMP055` |
 | TVA 10 % | `IMP100` |
 | TVA 20 % | `IMP200` |
-| Autoliquidation (art. 283-2 CGI) | `IMPAUTO` |
+| Autoliquidation BTP — article 283, 2 nonies du CGI | `IMPAUTO` |
 | Exonération / vrai 0 % | *(à configurer si utilisé)* |
 
 Le taux 0 de l'application est interprété par défaut comme **autoliquidation**

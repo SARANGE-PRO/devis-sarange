@@ -41,6 +41,11 @@ yarn-error.log*
 # seuls les artefacts servis sous public/selecteur-panneaux/ sont versionnés.
 /Outils Panneaux décoratifs/
 
+# Index local des numéros de TVA (extraction DGFiP) : volumineux et régénéré
+# par `npm run update-dgfip-vat-index`. Jamais versionné.
+/data/dgfip-vat-index.json
+/data/dgfip-vat-index.json.tmp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -321,7 +321,9 @@ function ComptaSettingsPanel({ settings, onSave, isSaving }) {
             onChange={(e) => update({ zeroRateRegime: e.target.value })}
             className={selectClass}
           >
-            <option value="autoliquidation">Autoliquidation (art. 283-2 CGI)</option>
+            <option value="autoliquidation">
+              Autoliquidation BTP — article 283, 2 nonies du CGI
+            </option>
             <option value="exoneration">Exonération / vrai taux 0 %</option>
           </select>
         )}

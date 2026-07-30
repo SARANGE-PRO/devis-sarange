@@ -10,6 +10,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  ShieldCheck,
   User,
 } from 'lucide-react';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
@@ -22,10 +23,24 @@ import {
 } from '@/lib/client-cloud';
 import {
   CLIENT_TYPES,
+  computeFrenchVatNumber,
   formatSiret,
+  getSirenFromSiret,
   isKnownClientType,
   isProfessionalClient,
+  normalizeVatNumber,
 } from '@/lib/client-type.mjs';
+import {
+  CALCULATED_UNVERIFIED_ALERT,
+  NOT_FOUND_DGFIP_ALERT,
+  VAT_LOOKUP_OUTCOMES,
+  buildManualVatConfirmation,
+  buildVatPatchFromLookup,
+  getTvaVerificationLabel,
+  getVatSourceLabel,
+  resolveClientVatState,
+} from '@/lib/vat-verification.mjs';
+import VatConfirmationDialog from '@/components/VatConfirmationDialog';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 
 export default function ClientForm({
@@ -56,6 +71,12 @@ export default function ClientForm({
   const [companySuggestions, setCompanySuggestions] = useState([]);
   const [showCompanySuggestions, setShowCompanySuggestions] = useState(false);
   const [isCompanyLoading, setIsCompanyLoading] = useState(false);
+  // Entreprise choisie dans l'annuaire : on cesse alors toute proposition
+  // approximative par raison sociale, jusqu'à une nouvelle saisie du nom.
+  const [companyLocked, setCompanyLocked] = useState(false);
+  const [isVerifyingVat, setIsVerifyingVat] = useState(false);
+  const [isConfirmingVat, setIsConfirmingVat] = useState(false);
+  const [vatLookupNotice, setVatLookupNotice] = useState('');
 
   // Choix EXPLICITE obligatoire : tant qu'aucun des deux types n'est
   // sélectionné (fiches historiques comprises), le devis reste bloqué à
@@ -63,6 +84,19 @@ export default function ClientForm({
   const isProfessional = isProfessionalClient(formData.clientType);
   const isParticulier = formData.clientType === CLIENT_TYPES.PARTICULIER;
   const clientTypeKnown = isKnownClientType(formData.clientType);
+  // Statut EFFECTIF du n° de TVA : un numéro reconstitué depuis le SIREN, ou
+  // modifié après vérification, reste « non vérifié ».
+  const vatState = resolveClientVatState(formData);
+  const vatVerifiedDate = vatState.verifiedAt ? new Date(vatState.verifiedAt) : null;
+  const vatVerifiedLabel =
+    vatVerifiedDate && !Number.isNaN(vatVerifiedDate.getTime())
+      ? [
+          `le ${new Intl.DateTimeFormat('fr-FR', { dateStyle: 'short' }).format(vatVerifiedDate)}`,
+          vatState.verifiedBy ? `par ${vatState.verifiedBy}` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : '';
 
   useEffect(() => {
     const query =
@@ -186,14 +220,91 @@ export default function ClientForm({
       : geoAdresse;
   };
 
+  /**
+   * Vérification du n° de TVA auprès des sources OFFICIELLES (DGFiP puis VIES).
+   * Un numéro déjà communiqué par le client — y compris étranger — est soumis
+   * tel quel ; sinon la recherche part du SIREN, DGFiP en priorité.
+   */
+  const runVatVerification = async ({ siren, vatNumber } = {}) => {
+    if (!user) return;
+
+    const effectiveSiren = siren || formData.siren || getSirenFromSiret(formData.siret);
+    const declaredNumber = normalizeVatNumber(vatNumber ?? formData.tvaIntra);
+    const calculatedCandidate = computeFrenchVatNumber(effectiveSiren);
+    // Le numéro simplement reconstitué par la formule n'est pas un numéro
+    // « communiqué » : on laisse alors la DGFiP répondre depuis le SIREN.
+    const declaredIsClientProvided =
+      Boolean(declaredNumber) && declaredNumber !== calculatedCandidate;
+
+    if (!effectiveSiren && !declaredIsClientProvided) return;
+
+    setIsVerifyingVat(true);
+    setVatLookupNotice('');
+
+    try {
+      const params = new URLSearchParams();
+      if (effectiveSiren) params.set('siren', effectiveSiren);
+      if (declaredIsClientProvided) params.set('vatNumber', declaredNumber);
+
+      const idToken = await user.getIdToken();
+      const response = await fetch(`/api/tva/verify?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data?.patch) {
+        setVatLookupNotice('Vérification indisponible pour le moment.');
+        return;
+      }
+
+      setFormData((prev) => ({ ...prev, ...data.patch }));
+
+      if (data.outcome === VAT_LOOKUP_OUTCOMES.NOT_FOUND_DGFIP) {
+        setVatLookupNotice(NOT_FOUND_DGFIP_ALERT);
+      } else if (data.outcome === VAT_LOOKUP_OUTCOMES.UNAVAILABLE) {
+        setVatLookupNotice(
+          'Sources officielles injoignables : le numéro reste à vérifier ou à confirmer.'
+        );
+      }
+    } catch (error) {
+      console.error('Error verifying VAT number:', error);
+      setVatLookupNotice('Vérification indisponible pour le moment.');
+    } finally {
+      setIsVerifyingVat(false);
+    }
+  };
+
+  const handleConfirmVatManually = ({ source, comment, attachment }) => {
+    const patch = buildManualVatConfirmation({
+      vatNumber: formData.tvaIntra,
+      confirmedBy: user?.email || user?.uid || '',
+      confirmedAt: new Date().toISOString(),
+      source,
+      comment,
+      attachment,
+    });
+
+    if (patch) {
+      setFormData((prev) => ({ ...prev, ...patch }));
+      setVatLookupNotice('');
+      setIsConfirmingVat(false);
+    }
+  };
+
   const handleSelectCompany = (company) => {
     const siege = company?.siege || {};
+    // Identité fiscale du donneur d'ordre : SIREN et SIRET issus de l'annuaire.
+    // Le n° de TVA est d'abord PRÉREMPLI depuis le SIREN (statut « non
+    // vérifié »), puis soumis aux sources officielles juste après.
+    const siren = company?.siren || getSirenFromSiret(siege.siret);
 
     setFormData((prev) => ({
       ...prev,
       clientType: CLIENT_TYPES.PROFESSIONNEL,
       nom: company?.nom_complet || company?.nom_raison_sociale || prev.nom,
       siret: siege.siret || '',
+      siren: siren || '',
+      ...buildVatPatchFromLookup({ outcome: VAT_LOOKUP_OUTCOMES.UNAVAILABLE, siren }),
       adresse: buildCompanyStreet(siege) || prev.adresse,
       codePostal: siege.code_postal || prev.codePostal,
       ville: siege.libelle_commune || prev.ville,
@@ -201,6 +312,9 @@ export default function ClientForm({
     setCompanyQuery('');
     setCompanySuggestions([]);
     setShowCompanySuggestions(false);
+    setCompanyLocked(true);
+
+    void runVatVerification({ siren, vatNumber: '' });
   };
 
   const handleSelectSavedCompany = (client) => {
@@ -208,6 +322,7 @@ export default function ClientForm({
     setCompanyQuery('');
     setCompanySuggestions([]);
     setShowCompanySuggestions(false);
+    setCompanyLocked(true);
   };
 
   const handleSelectClientType = (clientType) => {
@@ -251,6 +366,21 @@ export default function ClientForm({
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;
     const finalValue = type === 'checkbox' ? checked : value;
+
+    // Saisie manuelle du SIRET (repli si l'annuaire est indisponible) : le
+    // SIREN en est déduit, ce qui permet de reconstituer le n° de TVA.
+    if (name === 'siret') {
+      setFormData((prev) => ({
+        ...prev,
+        siret: value,
+        siren: getSirenFromSiret(value),
+      }));
+      return;
+    }
+
+    if (name === 'nom') {
+      setCompanyLocked(false);
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -337,10 +467,22 @@ export default function ClientForm({
   const matchedSavedCompanies = searchSavedClients(companyQueryTerm, 3);
 
   const showClientSuggestions =
-    firebaseConfigured && user && clientLookupTerm.length >= 2 && matchedClients.length > 0;
+    firebaseConfigured &&
+    user &&
+    !companyLocked &&
+    clientLookupTerm.length >= 2 &&
+    matchedClients.length > 0;
 
   return (
     <div className="mx-auto max-w-3xl">
+      <VatConfirmationDialog
+        key={isConfirmingVat ? 'vat-dialog-open' : 'vat-dialog-closed'}
+        open={isConfirmingVat}
+        vatNumber={formData.tvaIntra}
+        onConfirm={handleConfirmVatManually}
+        onCancel={() => setIsConfirmingVat(false)}
+      />
+
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8 md:p-10">
         <div className="mb-5 flex items-center gap-3 sm:mb-8">
           <div className="rounded-xl bg-orange-100 p-2.5">
@@ -552,19 +694,103 @@ export default function ClientForm({
           </div>
 
           {isProfessional && (
-            <div className="animate-in fade-in slide-in-from-top-2">
-              <label htmlFor="siret" className={labelClasses}>
-                SIRET (optionnel)
-              </label>
-              <input
-                id="siret"
-                name="siret"
-                type="text"
-                placeholder="820 001 014 00035"
-                value={formData.siret}
-                onChange={handleChange}
-                className={inputClasses}
-              />
+            <div className="animate-in fade-in slide-in-from-top-2 grid gap-5 md:grid-cols-2">
+              <div>
+                <label htmlFor="siret" className={labelClasses}>
+                  SIRET
+                </label>
+                <input
+                  id="siret"
+                  name="siret"
+                  type="text"
+                  placeholder="820 001 014 00035"
+                  value={formData.siret}
+                  onChange={handleChange}
+                  className={inputClasses}
+                />
+              </div>
+              <div>
+                <label htmlFor="tvaIntra" className={labelClasses}>
+                  TVA intracommunautaire
+                </label>
+                <input
+                  id="tvaIntra"
+                  name="tvaIntra"
+                  type="text"
+                  placeholder={
+                    computeFrenchVatNumber(formData.siren || getSirenFromSiret(formData.siret)) ||
+                    'FR22820001014'
+                  }
+                  value={formData.tvaIntra}
+                  onChange={handleChange}
+                  className={inputClasses}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold ${
+                      vatState.isVerified
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : vatState.vatNumber
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {getTvaVerificationLabel(vatState.status)}
+                  </span>
+
+                  {vatState.isVerified && vatVerifiedLabel && (
+                    <span className="text-xs text-slate-400">{vatVerifiedLabel}</span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => void runVatVerification()}
+                    disabled={isVerifyingVat || !user}
+                    className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
+                      isVerifyingVat || !user
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                    }`}
+                  >
+                    {isVerifyingVat ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <ShieldCheck size={13} />
+                    )}
+                    Vérifier
+                  </button>
+
+                  {!vatState.isVerified && vatState.vatNumber && (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingVat(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-600"
+                    >
+                      <CheckCircle2 size={13} />
+                      Confirmer ce numéro
+                    </button>
+                  )}
+                </div>
+
+                {!vatState.isVerified && vatState.vatNumber && (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+                    {CALCULATED_UNVERIFIED_ALERT}
+                  </p>
+                )}
+
+                {vatState.isVerified && vatState.comment && (
+                  <p className="mt-2 text-xs text-slate-500">
+                    {getVatSourceLabel(vatState.source)} — {vatState.comment}
+                  </p>
+                )}
+
+                {vatLookupNotice && (
+                  <p className="mt-2 text-xs font-semibold text-slate-500">{vatLookupNotice}</p>
+                )}
+              </div>
             </div>
           )}
 

@@ -17,6 +17,13 @@ import { CLIENT_TYPES, isKnownClientType } from '@/lib/client-type.mjs';
 import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
 import { getInsuranceStatus } from '@/lib/company-insurance.mjs';
 import {
+  AUTOLIQUIDATION_MENTION,
+  AUTOLIQUIDATION_TOTAL_LABEL,
+  AUTOLIQUIDATION_VAT_VALUE,
+  getTaxRegimeValidation,
+  isAutoliquidation,
+} from '@/lib/tax-regime.mjs';
+import {
   User,
   MapPin,
   Phone,
@@ -208,10 +215,28 @@ export default function QuoteSummary({
   const showInsuranceAlert =
     contractType === CONTRACT_TYPES.AVEC_POSE &&
     (insuranceStatus.isExpired || insuranceStatus.expiresSoon);
+  // Régime fiscal : autoliquidation BTP déduite du client professionnel, du
+  // taux 0 % et de la présence d'une pose. Les erreurs bloquent la finalisation
+  // (taux 0 % hors périmètre, identité fiscale du donneur d'ordre incomplète).
+  const taxValidation = useMemo(
+    () =>
+      getTaxRegimeValidation({
+        clientType: clientData?.clientType,
+        tvaRate,
+        cartItems,
+        contractType,
+        clientData,
+      }),
+    [clientData, tvaRate, cartItems, contractType]
+  );
+  const autoliquidation = isAutoliquidation(taxValidation.taxRegime);
+
   // Le type de client ne grise PAS les boutons : il est demandé au clic, dans
   // une modale qui relance ensuite l'action (évite un aller-retour à l'étape 1).
   const isGenerateDisabled =
-    (totals.hasReducedVat && !certifyTva) || !paymentValidation.isValid;
+    (totals.hasReducedVat && !certifyTva) ||
+    !paymentValidation.isValid ||
+    !taxValidation.isValid;
   const isDirectSendDisabled = isGenerateDisabled || isGeneratingPdf || isSendingDelivery || !canSendQuoteDirectly;
 
   const handleStartEdit = (item) => {
@@ -956,6 +981,40 @@ export default function QuoteSummary({
           </div>
         )}
 
+        {!taxValidation.isValid && (
+          <div className="mx-5 mt-5 rounded-2xl border-2 border-red-200 bg-red-50 p-4 sm:mx-8">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-red-500" />
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-red-700">Régime de TVA à corriger</p>
+                {taxValidation.errors.map((error) => (
+                  <p key={error} className="text-xs leading-relaxed text-red-600">
+                    {error}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {taxValidation.warnings?.length > 0 && (
+          <div className="mx-5 mt-5 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4 sm:mx-8">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-500" />
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-amber-800">
+                  Numéro de TVA du donneur d&apos;ordre à vérifier
+                </p>
+                {taxValidation.warnings.map((warning) => (
+                  <p key={warning} className="text-xs leading-relaxed text-amber-700">
+                    {warning}
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {showInsuranceAlert && (
           <div
             className={`mx-5 mt-5 rounded-2xl border-2 p-4 sm:mx-8 ${
@@ -1035,7 +1094,7 @@ export default function QuoteSummary({
             {!isMultiTva && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
                 {[
-                  { value: 0, label: '0%', sub: 'Exonéré' },
+                  { value: 0, label: '0%', sub: 'Autoliquidation' },
                   { value: 5.5, label: '5.5%', sub: 'Réduit' },
                   { value: 10, label: '10%', sub: 'Rénovation' },
                   { value: 20, label: '20%', sub: 'Normal' }
@@ -1059,7 +1118,7 @@ export default function QuoteSummary({
             {totals.hasZeroVat && (
               <div className="p-4 bg-orange-100/50 border border-orange-200 rounded-xl animate-in fade-in duration-300">
                 <p className="text-xs text-orange-700 font-bold leading-relaxed italic">
-                  &quot;Autoliquidation de la TVA – Article 283-2 du Code Général des Impôts. TVA due par le preneur.&quot;
+                  &quot;{AUTOLIQUIDATION_MENTION}&quot;
                 </p>
                 <p className="text-[10px] text-orange-600 mt-1 uppercase font-bold tracking-tight">Mention légale obligatoire (Sous-traitance)</p>
               </div>
@@ -1135,12 +1194,20 @@ export default function QuoteSummary({
 
             <div className="flex justify-between items-end pt-1">
               <div className="space-y-0.5">
-                <span className="block text-sm font-bold text-slate-900">Net à payer TTC</span>
+                <span className="block text-sm font-bold text-slate-900">
+                  {autoliquidation ? AUTOLIQUIDATION_TOTAL_LABEL : 'Net à payer TTC'}
+                </span>
                 <span className="block text-[10px] text-slate-400 uppercase tracking-wider">
-                  {totals.hasZeroVat && totals.activeVatBuckets?.length === 1 ? 'Exonération de TVA' : (totals.activeVatBuckets?.length > 1 ? 'TVA Mixte' : `TVA à ${tvaRate}%`)}
+                  {autoliquidation
+                    ? AUTOLIQUIDATION_VAT_VALUE
+                    : totals.activeVatBuckets?.length > 1
+                      ? 'TVA Mixte'
+                      : `TVA à ${tvaRate}%`}
                 </span>
               </div>
-              <span className="text-2xl font-black text-orange-500">{totals.totalTTC.toFixed(2)} €</span>
+              <span className="text-2xl font-black text-orange-500">
+                {(autoliquidation ? totals.totalHT : totals.totalTTC).toFixed(2)} €
+              </span>
             </div>
           </div>
         </div>

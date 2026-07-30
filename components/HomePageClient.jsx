@@ -29,6 +29,7 @@ import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
 import { buildCgvSnapshot } from '@/lib/cgv-templates.mjs';
 import { resolveContractType } from '@/lib/line-nature.mjs';
+import { resolveTaxRegime } from '@/lib/tax-regime.mjs';
 import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import { buildPanelSelections } from '@/lib/panel-selections.mjs';
 import { MAX_VARIANTS } from '@/lib/quote-cloud';
@@ -1063,20 +1064,31 @@ export default function HomePageClient() {
       const snapshotSources =
         variantsMode && materializedVariants.length > 0
           ? materializedVariants
-          : [{ id: 'mono', cartItems, quoteSettings }];
+          : [{ id: 'mono', cartItems, tvaRate, quoteSettings }];
       const cgvSnapshot = shouldFreezeCgv
         ? buildCgvSnapshot({
             clientType: nextClientData?.clientType,
             generatedAt: new Date().toISOString(),
             insurance: companyInsurance,
-            entries: snapshotSources.map((variant) => ({
-              variantId: variant.id,
-              contractType: resolveContractType(
+            entries: snapshotSources.map((variant) => {
+              const variantContractType = resolveContractType(
                 variant.cartItems,
                 variant.quoteSettings?.contractTypeOverride
-              ),
-              quoteSettings: variant.quoteSettings,
-            })),
+              );
+
+              return {
+                variantId: variant.id,
+                contractType: variantContractType,
+                // Régime fiscal figé avec le devis : la clause de
+                // sous-traitance BTP suit la variante concernée.
+                taxRegime: resolveTaxRegime({
+                  clientType: nextClientData?.clientType,
+                  tvaRate: variant.tvaRate,
+                  contractType: variantContractType,
+                }),
+                quoteSettings: variant.quoteSettings,
+              };
+            }),
           }) || undefined
         : undefined;
 

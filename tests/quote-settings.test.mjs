@@ -124,7 +124,7 @@ run("genere une phrase de reglement standard avec l'option au metre", () => {
 
   assert.equal(
     sentence,
-    "Règlement d'un acompte de 40% à la commande, ou par chèque ou virement lors de la prise de côtes si un métré SARANGE est prévu, puis solde de 60% à l'achèvement."
+    "Règlement d'un acompte de 40% par virement à la commande ou, si un métré SARANGE est prévu, par chèque ou virement lors de la prise de côtes, puis solde de 60% à l'achèvement."
   );
 });
 
