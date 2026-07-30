@@ -1,0 +1,14 @@
+[Unit]
+Description=Mise a jour quotidienne de l'index DGFiP des numeros de TVA
+
+[Timer]
+# Le jeu de donnees est publie quotidiennement : execution de nuit.
+OnCalendar=*-*-* 04:30:00
+# Etale la charge sur data.gouv.fr entre les instances.
+RandomizedDelaySec=900
+# Rattrape une execution manquee (machine eteinte, redemarrage).
+Persistent=true
+Unit=dgfip-vat-index-update.service
+
+[Install]
+WantedBy=timers.target

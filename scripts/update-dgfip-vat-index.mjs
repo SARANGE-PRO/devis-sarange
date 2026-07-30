@@ -23,7 +23,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -83,6 +83,43 @@ const fetchResource = async (resource) => {
   };
 };
 
+/* ─── Verrou d'exécution ─────────────────────────────────────────────────── */
+// Empêche deux mises à jour simultanées (tâche planifiée + lancement manuel).
+// Un verrou abandonné par un processus interrompu est repris au-delà du délai.
+const LOCK_PATH = `${INDEX_PATH}.lock`;
+const LOCK_STALE_AFTER_MS = 60 * 60 * 1000;
+
+const acquireLock = async (attempt = 0) => {
+  await mkdir(dirname(INDEX_PATH), { recursive: true });
+
+  try {
+    const handle = await open(LOCK_PATH, 'wx');
+    await handle.writeFile(
+      JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }),
+      'utf8'
+    );
+    await handle.close();
+    return true;
+  } catch (error) {
+    if (error?.code !== 'EEXIST' || attempt > 1) return false;
+
+    // Verrou présent : périmé (processus interrompu) ou mise à jour en cours ?
+    try {
+      const lockInfo = await stat(LOCK_PATH);
+      if (Date.now() - lockInfo.mtimeMs <= LOCK_STALE_AFTER_MS) return false;
+
+      console.warn('Verrou périmé détecté : reprise après un processus interrompu.');
+    } catch {
+      // Le verrou a disparu entre-temps : on retente une acquisition.
+    }
+
+    await unlink(LOCK_PATH).catch(() => {});
+    return acquireLock(attempt + 1);
+  }
+};
+
+const releaseLock = () => unlink(LOCK_PATH).catch(() => {});
+
 const readCurrentIndex = async () => {
   try {
     const raw = await readFile(INDEX_PATH, 'utf8');
@@ -133,13 +170,25 @@ const main = async () => {
     return 1;
   }
 
-  const result = await updateDgfipVatIndex({
-    fetchDataset,
-    fetchResource,
-    readCurrentIndex,
-    writeIndexAtomically,
-    minEntries: MIN_ENTRIES,
-  });
+  if (!(await acquireLock())) {
+    // Une mise à jour est déjà en cours : ce n'est pas un échec, le processus
+    // en cours rendra son propre compte.
+    console.log('Mise à jour déjà en cours (verrou actif) : exécution ignorée.');
+    return 0;
+  }
+
+  let result;
+  try {
+    result = await updateDgfipVatIndex({
+      fetchDataset,
+      fetchResource,
+      readCurrentIndex,
+      writeIndexAtomically,
+      minEntries: MIN_ENTRIES,
+    });
+  } finally {
+    await releaseLock();
+  }
 
   // Succès : index actualisé, ou ressource inchangée (aucun téléchargement).
   const exitCode = isSuccessfulUpdate(result.outcome) ? 0 : 1;

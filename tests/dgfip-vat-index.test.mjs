@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {
   DGFIP_INDEX_STALE_ALERT,
+  HEALTH_ISSUES,
   REJECTION_REASONS,
+  getDgfipIndexHealth,
   UPDATE_OUTCOMES,
   buildIndexEntries,
   getDgfipIndexStaleAlert,
@@ -370,6 +372,44 @@ await runAsync('échec des métadonnées : aucune interruption, aucun remplaceme
 
   assert.equal(result.outcome, UPDATE_OUTCOMES.METADATA_FAILED);
   assert.equal(calls.writes, 0);
+});
+
+run('supervision : les quatre conditions d’alerte', () => {
+  const now = new Date('2026-07-30T08:00:00.000Z');
+  const healthy = {
+    producer: 'DGFIP',
+    refreshedAt: '2026-07-29T08:00:00.000Z',
+    entryCount: 4826845,
+  };
+
+  // Index sain : aucune alerte.
+  const ok = getDgfipIndexHealth(healthy, { now });
+  assert.equal(ok.isHealthy, true);
+  assert.deepEqual(ok.issues, []);
+  assert.equal(ok.entryCount, 4826845);
+
+  // 1. Index absent (ou illisible : le lecteur renvoie alors null).
+  const missing = getDgfipIndexHealth(null, { now });
+  assert.equal(missing.isHealthy, false);
+  assert.deepEqual(missing.issues, [HEALTH_ISSUES.MISSING]);
+  assert.ok(missing.alerts[0].includes('absent'));
+
+  // 2. Index de plus de sept jours.
+  const stale = getDgfipIndexHealth({ ...healthy, refreshedAt: '2026-07-01T08:00:00.000Z' }, { now });
+  assert.deepEqual(stale.issues, [HEALTH_ISSUES.STALE]);
+  assert.equal(stale.alerts[0], DGFIP_INDEX_STALE_ALERT);
+
+  // 3. Volume anormalement faible.
+  const low = getDgfipIndexHealth({ ...healthy, entryCount: 1200 }, { now });
+  assert.deepEqual(low.issues, [HEALTH_ISSUES.LOW_ENTRY_COUNT]);
+
+  // 4. Cumul obsolescence + volume faible.
+  const both = getDgfipIndexHealth(
+    { ...healthy, refreshedAt: '2026-06-01T08:00:00.000Z', entryCount: 10 },
+    { now }
+  );
+  assert.deepEqual(both.issues, [HEALTH_ISSUES.STALE, HEALTH_ISSUES.LOW_ENTRY_COUNT]);
+  assert.equal(both.alerts.length, 2);
 });
 
 run('alerte lorsque l’index date de plus de sept jours', () => {
