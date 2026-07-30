@@ -110,8 +110,13 @@ run('CM2C present en B2C uniquement, jamais en B2B', () => {
     const text = flatten(build(clientType, contractType));
     if (clientType === CLIENT_TYPES.PARTICULIER) {
       assert.ok(text.includes('CM2C'), `CM2C absent (${contractType})`);
-      assert.ok(text.includes('cm2c@cm2c.net'));
+      // Mention officielle CM2C : coordonnées exactes de l'adhésion SARANGE.
+      assert.ok(text.includes('litiges@cm2c.net'));
+      assert.ok(!text.includes('cm2c@cm2c.net'));
       assert.ok(text.includes('49 rue de Ponthieu'));
+      assert.ok(text.includes('75008 Paris'));
+      assert.ok(text.includes('01 89 47 00 14'));
+      assert.ok(text.includes('https://www.cm2c.net/declarer-un-litige.php'));
     } else {
       assert.ok(!text.includes('CM2C'), `CM2C affiche en B2B (${contractType})`);
     }
