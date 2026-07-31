@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import {
   buildCheckmarkSegments,
+  drawAtAnchor,
   resolveAnchorPage,
   toPdfPoints,
   topMmToPdfY,
@@ -127,5 +128,57 @@ await run(
     });
   }
 );
+
+await run(
+  "drawAtAnchor dessine sur la page DU REPÈRE, jamais sur la page de repli passée par erreur (régression)",
+  async () => {
+    const pdfDocument = await PDFDocument.create();
+    pdfDocument.addPage([210 * MM_TO_PT, 297 * MM_TO_PT]); // page 1
+    pdfDocument.addPage([210 * MM_TO_PT, 297 * MM_TO_PT]); // page 2 (repère)
+    const signaturePage = pdfDocument.addPage([210 * MM_TO_PT, 297 * MM_TO_PT]); // page 3 (signature)
+
+    let drawnOnPage = null;
+    drawAtAnchor(pdfDocument, { pageNumber: 2 }, signaturePage, (page) => {
+      drawnOnPage = page;
+    });
+
+    assert.equal(drawnOnPage, pdfDocument.getPage(1), 'doit dessiner sur la page 2 (repère)');
+    assert.notEqual(drawnOnPage, signaturePage, 'ne doit jamais retomber sur la page de signature quand le repère est valide');
+  }
+);
+
+await run('drawAtAnchor retombe sur la page de secours si le repère est invalide', () => {
+  const pages = [{}, {}];
+  const pdfDocumentStub = {
+    getPageCount: () => pages.length,
+    getPage: (index) => pages[index],
+  };
+  const fallback = { id: 'fallback', getHeight: () => 1000 };
+
+  let received = null;
+  drawAtAnchor(pdfDocumentStub, { pageNumber: 99 }, fallback, (page) => {
+    received = page;
+  });
+  assert.equal(received, fallback);
+});
+
+await run("drawAtAnchor n'appelle pas draw si le repère est invalide et qu'il n'y a pas de page de secours (omission volontaire)", () => {
+  const pages = [{}, {}];
+  const pdfDocumentStub = {
+    getPageCount: () => pages.length,
+    getPage: (index) => pages[index],
+  };
+
+  let called = false;
+  drawAtAnchor(pdfDocumentStub, { pageNumber: undefined }, null, () => {
+    called = true;
+  });
+  assert.equal(called, false, 'aucune page de secours => on omet, on ne dessine pas au hasard');
+
+  drawAtAnchor(pdfDocumentStub, undefined, null, () => {
+    called = true;
+  });
+  assert.equal(called, false, 'repère totalement absent => même comportement');
+});
 
 console.log('Tous les tests des repères de signature PDF ont reussi.');
