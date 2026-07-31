@@ -9,6 +9,11 @@ import { subscribeToUserClients } from '@/lib/firebase/clients';
 import { deleteQuoteById, saveQuoteDraft, subscribeToUserQuotes } from '@/lib/firebase/quotes';
 import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
+import {
+  describeQuoteSendFailure,
+  readJsonResponse,
+  uploadQuoteDeliveryPdf,
+} from '@/lib/quote-delivery-upload';
 import { isKnownClientType } from '@/lib/client-type.mjs';
 import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import {
@@ -142,19 +147,6 @@ const getQuotePdfOptions = (quote) => {
 // fidèle d'un devis déjà figé par son snapshot CGV).
 const quoteHasKnownClientType = (quote) =>
   isKnownClientType(quote?.payload?.clientData?.clientType);
-
-const arrayBufferToBase64 = (arrayBuffer) => {
-  const bytes = new Uint8Array(arrayBuffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return window.btoa(binary);
-};
 
 const sortQuotes = (quotes, sortBy) =>
   [...quotes].sort((l, r) => {
@@ -695,7 +687,12 @@ export default function SavedQuotesPage() {
         body: JSON.stringify({
           quoteId: quote.id,
           deliveryMode,
-          pdfBase64: arrayBufferToBase64(pdfDocument.arrayBuffer),
+          // PDF téléversé en morceaux au préalable : la requête d'envoi reste
+          // légère (l'hébergement rejette en 413 les corps au-delà de ~4,5 Mo).
+          pdfUploadId: await uploadQuoteDeliveryPdf({
+            idToken,
+            arrayBuffer: pdfDocument.arrayBuffer,
+          }),
           pdfInfo: {
             filename: pdfDocument.filename,
             quoteNumber: pdfDocument.quoteNumber,
@@ -709,10 +706,12 @@ export default function SavedQuotesPage() {
           },
         }),
       });
-      const data = await response.json();
+      // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)
+      // renvoie du texte brut, pas du JSON.
+      const data = await readJsonResponse(response);
 
       if (!response.ok) {
-        throw new Error(data?.error || "Impossible d'envoyer le devis.");
+        throw new Error(data?.error || describeQuoteSendFailure(response));
       }
 
       setActionMessage(

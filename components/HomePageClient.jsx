@@ -33,6 +33,11 @@ import { resolveTaxRegime } from '@/lib/tax-regime.mjs';
 import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import { buildPanelSelections } from '@/lib/panel-selections.mjs';
 import { MAX_VARIANTS } from '@/lib/quote-cloud';
+import {
+  describeQuoteSendFailure,
+  readJsonResponse,
+  uploadQuoteDeliveryPdf,
+} from '@/lib/quote-delivery-upload';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
 import {
   ArrowLeft,
@@ -143,19 +148,6 @@ const normalizeCartItemsForQuote = (items = []) => {
   }
 
   return [...regularItems, ...trailingItems];
-};
-
-const arrayBufferToBase64 = (arrayBuffer) => {
-  const bytes = new Uint8Array(arrayBuffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    const chunk = bytes.subarray(index, index + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return window.btoa(binary);
 };
 
 const normalizeDesignationText = (value = '') =>
@@ -1222,6 +1214,12 @@ export default function HomePageClient() {
         throw new Error("Impossible d'enregistrer le devis avant l'envoi.");
       }
 
+      // Jeton obtenu avant la génération des PDF : il sert aussi aux uploads
+      // chunkés ci-dessous (chaque PDF part en morceaux ≤ 2 Mo, la requête
+      // d'envoi finale ne transporte plus que des identifiants — l'hébergement
+      // rejette en 413 tout corps de requête au-delà de ~4,5 Mo).
+      const idToken = await user.getIdToken();
+
       let pdfDocument;
       let variantsPayload = null;
 
@@ -1233,33 +1231,35 @@ export default function HomePageClient() {
           materializedVariants,
           getQuotePdfOptions(savedQuote)
         );
-        variantsPayload = (pdfDocument.variantDocuments || [])
-          .map((variant) => {
-            // On joint les réglages/TVA/pose de la variante (état local) pour que le
-            // serveur recalcule l'acompte EXACT de la configuration choisie à la signature.
-            const source = materializedVariants.find((entry) => entry.id === variant.id);
-            if (!source) return null;
-            return {
-              id: variant.id,
-              name: variant.name,
-              totalHT: variant.totalHT,
-              totalTTC: variant.totalTTC,
-              // Échéancier complet de la variante (celui du PDF) : affiché tel
-              // quel par le service de signature, sans recalcul serveur.
-              paymentMilestones: variant.paymentMilestones || null,
-              tvaRate: source.tvaRate,
-              quoteSettings: source.quoteSettings,
-              hasMeasurementVisit:
-                Array.isArray(source.cartItems) &&
-                source.cartItems.some((item) => item?.includePose === true),
-              // Portes à panneau décoratif PROPRES à cette variante (couleurs spécifiques).
-              panelSelections: buildPanelSelections(source.cartItems),
-              filename: variant.filename,
-              signatureAnchors: variant.signatureAnchors,
-              pdfBase64: arrayBufferToBase64(variant.arrayBuffer),
-            };
-          })
-          .filter(Boolean);
+        variantsPayload = [];
+        for (const variant of pdfDocument.variantDocuments || []) {
+          // On joint les réglages/TVA/pose de la variante (état local) pour que le
+          // serveur recalcule l'acompte EXACT de la configuration choisie à la signature.
+          const source = materializedVariants.find((entry) => entry.id === variant.id);
+          if (!source) continue;
+          variantsPayload.push({
+            id: variant.id,
+            name: variant.name,
+            totalHT: variant.totalHT,
+            totalTTC: variant.totalTTC,
+            // Échéancier complet de la variante (celui du PDF) : affiché tel
+            // quel par le service de signature, sans recalcul serveur.
+            paymentMilestones: variant.paymentMilestones || null,
+            tvaRate: source.tvaRate,
+            quoteSettings: source.quoteSettings,
+            hasMeasurementVisit:
+              Array.isArray(source.cartItems) &&
+              source.cartItems.some((item) => item?.includePose === true),
+            // Portes à panneau décoratif PROPRES à cette variante (couleurs spécifiques).
+            panelSelections: buildPanelSelections(source.cartItems),
+            filename: variant.filename,
+            signatureAnchors: variant.signatureAnchors,
+            pdfUploadId: await uploadQuoteDeliveryPdf({
+              idToken,
+              arrayBuffer: variant.arrayBuffer,
+            }),
+          });
+        }
       } else {
         // Mono : on réinjecte les images locales (le cloud strippe les data-URLs trop lourdes).
         const savedCartItems = savedQuote.payload?.cartItems || cartItems || [];
@@ -1280,7 +1280,6 @@ export default function HomePageClient() {
         );
       }
 
-      const idToken = await user.getIdToken();
       const response = await fetch('/api/quote-signatures/send', {
         method: 'POST',
         headers: {
@@ -1290,7 +1289,10 @@ export default function HomePageClient() {
         body: JSON.stringify({
           quoteId: savedQuote.id,
           deliveryMode,
-          pdfBase64: arrayBufferToBase64(pdfDocument.arrayBuffer),
+          pdfUploadId: await uploadQuoteDeliveryPdf({
+            idToken,
+            arrayBuffer: pdfDocument.arrayBuffer,
+          }),
           pdfInfo: {
             filename: pdfDocument.filename,
             quoteNumber: pdfDocument.quoteNumber,
@@ -1305,10 +1307,12 @@ export default function HomePageClient() {
           ...(variantsPayload ? { variants: variantsPayload } : {}),
         }),
       });
-      const data = await response.json();
+      // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)
+      // renvoie du texte brut, pas du JSON.
+      const data = await readJsonResponse(response);
 
       if (!response.ok) {
-        throw new Error(data?.error || "Impossible d'envoyer le devis.");
+        throw new Error(data?.error || describeQuoteSendFailure(response));
       }
 
       setDeliveryMessage(

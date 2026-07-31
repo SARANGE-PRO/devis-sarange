@@ -16,6 +16,7 @@ export async function POST(request) {
       quoteId: body?.quoteId,
       deliveryMode: body?.deliveryMode,
       hasPdfBase64: !!body?.pdfBase64,
+      pdfUploadId: body?.pdfUploadId || null,
       pdfInfoKeys: body?.pdfInfo ? Object.keys(body.pdfInfo) : null,
       variantsCount: Array.isArray(body?.variants) ? body.variants.length : null,
     });
@@ -25,6 +26,7 @@ export async function POST(request) {
       quoteId: body?.quoteId,
       deliveryMode: body?.deliveryMode,
       pdfBase64: body?.pdfBase64,
+      pdfUploadId: body?.pdfUploadId,
       pdfInfo: body?.pdfInfo,
       variants: body?.variants,
     });

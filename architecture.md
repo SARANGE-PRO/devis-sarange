@@ -214,9 +214,13 @@ Le flux est :
 
 Le devis est d'abord genere cote navigateur, puis :
 
-1. encode en base64,
-2. poste a `POST /api/quote-signatures/send`,
-3. pris en charge par `lib/quote-signature-service.js`,
+1. televerse en morceaux (~2 Mo) vers `POST /api/quote-signatures/upload` via
+   `lib/quote-delivery-upload.js` (l'hebergement rejette en 413 tout corps de
+   requete au-dela de ~4,5 Mo : un devis multi-variantes ne tient pas en une
+   seule requete base64),
+2. reference par son `pdfUploadId` dans `POST /api/quote-signatures/send`,
+3. pris en charge par `lib/quote-signature-service.js` (reassemblage des
+   morceaux depuis la zone de transit `quote-signature-uploads/`),
 4. stocke dans Firebase Storage,
 5. envoye par email via SMTP.
 
@@ -551,7 +555,8 @@ Cette section documente tous les fichiers utiles du depot versionne hors `node_m
 | `app/catalogue/page.js` | Route `/catalogue`. Edition des coefficients, prix et vitrages personnalises, avec synchronisation Firestore si la session Firebase est active. |
 | `app/compta/page.js` | Route `/compta`. Onglet Compta : preparation, controle, generation et suivi des exports CSV vers Sage 50 (voir `COMPTA.md`). |
 | `app/signature/[token]/page.js` | Route publique de signature d'un devis. |
-| `app/api/quote-signatures/send/route.js` | `POST` authentifie pour envoyer un devis par email ou signature. |
+| `app/api/quote-signatures/upload/route.js` | `POST` authentifie recevant un morceau (~2 Mo) de PDF en zone de transit avant envoi (limite hebergeur ~4,5 Mo/requete). |
+| `app/api/quote-signatures/send/route.js` | `POST` authentifie pour envoyer un devis par email ou signature (PDF references par `pdfUploadId`). |
 | `app/api/quote-signatures/remind/route.js` | `POST` authentifie pour les relances J+3/J+10/J+30. |
 | `app/api/quote-signatures/[token]/route.js` | `GET` public pour recuperer la session de signature. |
 | `app/api/quote-signatures/[token]/document/route.js` | `GET` public pour servir le PDF original ou signe. |
@@ -775,7 +780,28 @@ La signature n'utilise pas un prestataire externe type DocuSign. Le projet gere 
 
 ## 10. API et contrats d'entree/sortie
 
-### 10.1 `POST /api/quote-signatures/send`
+### 10.1 `POST /api/quote-signatures/upload`
+
+Authentification :
+
+- bearer token Firebase obligatoire.
+
+Televerse UN morceau (~2 Mo max) d'un PDF de devis vers la zone de transit
+`quote-signature-uploads/{uid}/{uploadId}/`. Appele en boucle par
+`lib/quote-delivery-upload.js` jusqu'au dernier morceau.
+
+Body attendu :
+
+```json
+{
+  "uploadId": "up_<32 hex>",
+  "chunkIndex": 0,
+  "totalChunks": 3,
+  "chunkBase64": "morceau du pdf encode en base64"
+}
+```
+
+### 10.2 `POST /api/quote-signatures/send`
 
 Authentification :
 
@@ -787,7 +813,7 @@ Body attendu :
 {
   "quoteId": "id-du-devis",
   "deliveryMode": "email ou signature",
-  "pdfBase64": "pdf encode en base64",
+  "pdfUploadId": "up_<32 hex> (PDF televerse au prealable via /upload)",
   "pdfInfo": {
     "filename": "...",
     "quoteNumber": "...",
@@ -795,11 +821,21 @@ Body attendu :
     "issueDateLabel": "...",
     "pageCount": 0,
     "signatureAnchors": {}
-  }
+  },
+  "variants": [
+    {
+      "id": "...",
+      "name": "...",
+      "pdfUploadId": "up_<32 hex> (PDF mono signable de la variante)"
+    }
+  ]
 }
 ```
 
-### 10.2 `POST /api/quote-signatures/remind`
+`pdfBase64` (et `variants[].pdfBase64`) restent acceptes en repli pour les
+clients dont le JavaScript en cache date d'avant le televersement en morceaux.
+
+### 10.3 `POST /api/quote-signatures/remind`
 
 Authentification :
 
@@ -814,15 +850,15 @@ Body attendu :
 }
 ```
 
-### 10.3 `GET /api/quote-signatures/[token]`
+### 10.4 `GET /api/quote-signatures/[token]`
 
 Public. Retourne une vue publique de la session de signature : statut, recipient, quote, urls document, flags TVA reduite, dates.
 
-### 10.4 `GET /api/quote-signatures/[token]/document?type=original|signed`
+### 10.5 `GET /api/quote-signatures/[token]/document?type=original|signed`
 
 Public. Retourne le PDF inline.
 
-### 10.5 `POST /api/quote-signatures/[token]/sign`
+### 10.6 `POST /api/quote-signatures/[token]/sign`
 
 Public. Body attendu :
 
@@ -836,7 +872,7 @@ Public. Body attendu :
 
 Le serveur ajoute aussi l'IP et le user-agent.
 
-### 10.6 `POST /api/quote-signatures/[token]/refuse`
+### 10.7 `POST /api/quote-signatures/[token]/refuse`
 
 Public. Body possible :
 
