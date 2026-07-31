@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
   CalendarClock,
@@ -90,6 +90,21 @@ export default function QuoteCommercialTerms({
     if (!onChange) return;
     onChange(normalizeQuoteSettings({ ...settings, ...patch }));
   };
+
+  // Dès qu'une pose apparaît dans le devis, l'échéancier fabrication/pose
+  // devient le choix par défaut (au lieu de l'acompte standard) : la plupart
+  // des devis avec pose restaient sur "standard" faute d'y penser. Ne réagit
+  // qu'à la TRANSITION indisponible -> disponible (pas à chaque changement
+  // de paymentMode) pour ne jamais écraser un choix explicite de
+  // l'utilisateur — s'il repasse en "standard" alors que la pose est
+  // toujours là, ce choix reste respecté tant qu'il ne retire/rajoute pas
+  // la pose.
+  useEffect(() => {
+    if (fabricationPoseAvailable && settings.paymentMode === 'standard') {
+      updateSettings({ paymentMode: 'fabricationPose' });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fabricationPoseAvailable]);
 
   return (
     <div className="border-t border-slate-100">
