@@ -6,10 +6,12 @@ name: Index DGFiP des numéros de TVA
 
 on:
   schedule:
-    # 02h30 UTC — soit 04h30 à Paris en heure d'été, 03h30 en heure d'hiver.
-    # Le jeu de données DGFiP est publié quotidiennement ; l'exécution est
-    # idempotente (aucune publication si l'empreinte est inchangée).
-    - cron: '30 2 * * *'
+    # 04h30 heure de Paris, fuseau explicite (sinon l'horaire est interprété
+    # en UTC et dérive entre heure d'été et heure d'hiver). Le jeu de données
+    # DGFiP est publié quotidiennement ; l'exécution est idempotente (aucune
+    # publication si l'empreinte est inchangée).
+    - cron: '30 4 * * *'
+      timezone: 'Europe/Paris'
   workflow_dispatch:
 
 # Une seule publication à la fois : équivalent du verrou d'exécution.
