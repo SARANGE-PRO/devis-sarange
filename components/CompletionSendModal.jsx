@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { AlertTriangle, Check, Copy, Link2, Loader2, Mail, Receipt, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, Check, Copy, Link2, Loader2, Mail, Package, Receipt, Truck, X } from 'lucide-react';
 import { useFirebaseAuth } from './FirebaseProvider';
 import { getQuoteDisplayStatus } from '@/lib/quote-signature';
+import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
@@ -38,10 +39,31 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
   const [createdLink, setCreatedLink] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [deliveryType, setDeliveryType] = useState('');
+
   const totalTTC = Number(quote?.totalTTC) || 0;
   const isDigitallySigned = getQuoteDisplayStatus(quote) === 'signed';
   const computedSolde = Math.max(0, totalTTC - parseAmount(acompte));
   const soldeValue = soldeOverride !== null ? soldeOverride : computedSolde.toFixed(2).replace('.', ',');
+
+  // Détection AUTOMATIQUE pose / fourniture seule (même source de vérité que
+  // la TVA et les CGV) sur la variante retenue à la signature. Le mode de
+  // remise (enlèvement/livraison) reste un CHOIX MANUEL, jamais deviné —
+  // le serveur refait la même détection et exige le choix.
+  const withPose = useMemo(() => {
+    const payload = quote?.payload || {};
+    let cartItems = Array.isArray(payload.cartItems) ? payload.cartItems : [];
+    let settings = payload.quoteSettings || {};
+    if (payload.variantsMode === true && Array.isArray(payload.variants)) {
+      const wantedVariantId =
+        quote?.signatureWorkflow?.selectedVariantId || payload.activeVariantId || '';
+      const variant =
+        payload.variants.find((entry) => entry?.id === wantedVariantId) || payload.variants[0] || {};
+      cartItems = Array.isArray(variant.cartItems) ? variant.cartItems : [];
+      settings = variant.quoteSettings || {};
+    }
+    return resolveContractType(cartItems, settings?.contractTypeOverride) === CONTRACT_TYPES.AVEC_POSE;
+  }, [quote]);
 
   const handleAcompteChange = (value) => {
     setAcompte(value);
@@ -59,6 +81,11 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
   };
 
   const handleSubmit = async (deliveryMode) => {
+    if (!withPose && !deliveryType) {
+      setError('Ce devis est en fourniture seule : choisissez Enlèvement ou Livraison.');
+      setMissingField('deliveryType');
+      return;
+    }
     if (!invoiceReference.trim()) {
       setError('La référence facture est obligatoire (celle de votre compta).');
       setMissingField('invoiceReference');
@@ -91,6 +118,7 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
           acompteRecu: effectiveAcompte,
           invoiceReference: invoiceReference.trim(),
           deliveryMode,
+          deliveryType: withPose ? '' : deliveryType,
           overrideEmail: email.trim(),
         }),
       });
@@ -124,7 +152,15 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
               <Receipt size={18} />
             </div>
             <div>
-              <p className="text-xs font-black uppercase tracking-widest text-orange-500">Bon de fin de chantier</p>
+              <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+                {withPose
+                  ? 'Bon de fin de chantier'
+                  : deliveryType === 'livraison'
+                    ? 'Bon de livraison'
+                    : deliveryType === 'enlevement'
+                      ? "Bon d'enlèvement"
+                      : "Bon d'enlèvement / de livraison"}
+              </p>
               <h3 className="text-base font-bold text-slate-900">Envoyer au client</h3>
             </div>
           </div>
@@ -176,6 +212,52 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
                   Ce devis n&apos;est pas marqué comme signé numériquement. Vérifiez qu&apos;il a bien été signé
                   (sur papier ou autrement) avant d&apos;envoyer ce bon.
                 </span>
+              </div>
+            )}
+
+            {!withPose && (
+              <div className="mt-4">
+                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Type de remise (devis en fourniture seule)
+                </span>
+                <div
+                  className={`grid grid-cols-2 gap-2 ${
+                    missingField === 'deliveryType' ? 'rounded-xl ring-4 ring-amber-500/10' : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryType('enlevement');
+                      if (missingField === 'deliveryType') setMissingField('');
+                      setError('');
+                    }}
+                    className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-bold transition-colors ${
+                      deliveryType === 'enlevement'
+                        ? 'border-orange-400 bg-orange-50 text-orange-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Package size={16} />
+                    Enlèvement
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryType('livraison');
+                      if (missingField === 'deliveryType') setMissingField('');
+                      setError('');
+                    }}
+                    className={`flex items-center justify-center gap-2 rounded-xl border-2 px-3 py-3 text-sm font-bold transition-colors ${
+                      deliveryType === 'livraison'
+                        ? 'border-orange-400 bg-orange-50 text-orange-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <Truck size={16} />
+                    Livraison
+                  </button>
+                </div>
               </div>
             )}
 

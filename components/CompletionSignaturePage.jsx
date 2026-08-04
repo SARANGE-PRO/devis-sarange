@@ -14,6 +14,10 @@ import {
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import ReservePhotoInput from './ReservePhotoInput';
+import {
+  getCompletionDocTypeLabel,
+  getCompletionRatingCriteria,
+} from '@/lib/completion-certificate.mjs';
 
 const SUPPORT_PHONE = '09 86 71 34 44';
 
@@ -239,7 +243,10 @@ export default function CompletionSignaturePage({ token }) {
     [itemStates, session]
   );
   const hasReserves = flaggedItems.length > 0;
-  const allRated = RATING_CRITERIA.every((criterion) => ratings[criterion.key] > 0);
+  // Critères de notation adaptés au type de document (pas de « qualité de la
+  // pose » sur un bon d'enlèvement/livraison) — mêmes clés de stockage.
+  const ratingCriteria = getCompletionRatingCriteria(session?.docType);
+  const allRated = ratingCriteria.every((criterion) => ratings[criterion.key] > 0);
   const checkedCount = itemStates.filter((item) => item.choice).length;
 
   const updateItem = (index, patch) => {
@@ -257,7 +264,7 @@ export default function CompletionSignaturePage({ token }) {
     if (!allItemsChecked) {
       const remaining = itemStates.length - checkedCount;
       setStepError(
-        `Il reste ${remaining} ouvrage${remaining > 1 ? 's' : ''} à vérifier : touchez « Conforme » ou « Signaler » sur chaque carte surlignée.`
+        `Il reste ${remaining} élément${remaining > 1 ? 's' : ''} à vérifier : touchez « Conforme » ou « Signaler » sur chaque carte surlignée.`
       );
       setShowMissing(true);
       return;
@@ -358,6 +365,9 @@ export default function CompletionSignaturePage({ token }) {
   }
 
   const isLift = session?.mode === 'reserves-lift';
+  const isReception = (session?.docType || 'reception') === 'reception';
+  const docLabel = getCompletionDocTypeLabel(session?.docType);
+  const docLabelCapitalized = docLabel.charAt(0).toUpperCase() + docLabel.slice(1);
   const chantierLabel = [session?.clientData?.adresseChantier, session?.clientData?.villeChantier]
     .filter(Boolean)
     .join(', ');
@@ -367,7 +377,7 @@ export default function CompletionSignaturePage({ token }) {
       headerLeft={
         <>
           <span className="truncate font-bold text-slate-800">
-            {isLift ? 'Levée des réserves' : 'Bon de fin de chantier'}
+            {isLift ? 'Levée des réserves' : docLabelCapitalized}
             {session?.quoteNumber ? ` — Devis n°${session.quoteNumber.replace(/^DV[-\s]*/i, '')}` : ''}
           </span>
           {chantierLabel && <span className="hidden truncate sm:inline">— {chantierLabel}</span>}
@@ -430,10 +440,13 @@ export default function CompletionSignaturePage({ token }) {
               <ClipboardCheck size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Vérifiez vos ouvrages</h1>
+              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">
+                {isReception ? 'Vérifiez vos ouvrages' : 'Vérifiez vos produits'}
+              </h1>
               <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                Pour chaque élément installé, indiquez s&apos;il est conforme ou signalez un problème. Ce constat
-                sera repris sur le bon de réception.
+                {isReception
+                  ? "Pour chaque élément installé, indiquez s'il est conforme ou signalez un problème. Ce constat sera repris sur le bon de réception."
+                  : "Pour chaque produit remis, indiquez s'il est conforme ou signalez un problème. Ce constat sera repris sur votre bon."}
               </p>
             </div>
           </div>
@@ -517,7 +530,7 @@ export default function CompletionSignaturePage({ token }) {
               </button>
             )}
             <p className="text-sm text-slate-400">
-              {checkedCount}/{itemStates.length} ouvrages vérifiés
+              {checkedCount}/{itemStates.length} {isReception ? 'ouvrages vérifiés' : 'produits vérifiés'}
             </p>
             <div className="w-full max-w-md">
               <StepAlert message={stepError} />
@@ -551,7 +564,7 @@ export default function CompletionSignaturePage({ token }) {
           </div>
 
           <div className="space-y-3">
-            {RATING_CRITERIA.map((criterion) => (
+            {ratingCriteria.map((criterion) => (
               <StarRow
                 key={criterion.key}
                 label={criterion.label}
@@ -603,7 +616,9 @@ export default function CompletionSignaturePage({ token }) {
               <p className="mt-1 text-sm text-slate-500 sm:text-base">
                 {isLift
                   ? 'Relisez le constat puis signez le PV de levée des réserves.'
-                  : 'Relisez le constat puis signez pour prononcer la réception des travaux.'}
+                  : isReception
+                    ? 'Relisez le constat puis signez pour prononcer la réception des travaux.'
+                    : 'Relisez le constat puis signez pour confirmer la remise de vos produits.'}
               </p>
             </div>
           </div>
@@ -618,9 +633,9 @@ export default function CompletionSignaturePage({ token }) {
             </div>
           ) : hasReserves ? (
             <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-800">
-              <p className="text-base font-bold">Réception avec réserves</p>
+              <p className="text-base font-bold">{isReception ? 'Réception avec réserves' : 'Remise avec réserves'}</p>
               <p className="mt-1.5 text-sm leading-6">
-                {flaggedItems.length} élément(s) signalé(s). Cela n&apos;empêche pas la réception : SARANGE
+                {flaggedItems.length} élément(s) signalé(s). Cela n&apos;empêche pas {isReception ? 'la réception' : 'la remise'} : SARANGE
                 s&apos;engage à les corriger dans le délai convenu ({session?.reserveLiftDelayDays || 30} jours).
               </p>
               <ul className="mt-3 space-y-1.5 text-sm">
@@ -637,8 +652,12 @@ export default function CompletionSignaturePage({ token }) {
             </div>
           ) : (
             <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-800">
-              <p className="text-base font-bold">Réception sans réserve</p>
-              <p className="mt-1.5 text-sm">Tous les ouvrages ont été vérifiés conformes au devis.</p>
+              <p className="text-base font-bold">{isReception ? 'Réception sans réserve' : 'Remise sans réserve'}</p>
+              <p className="mt-1.5 text-sm">
+                {isReception
+                  ? 'Tous les ouvrages ont été vérifiés conformes au devis.'
+                  : 'Tous les produits ont été vérifiés conformes au devis.'}
+              </p>
             </div>
           )}
 
@@ -661,9 +680,14 @@ export default function CompletionSignaturePage({ token }) {
                 <>
                   Je reconnais que les réserves listées ont été <strong>levées</strong>
                 </>
-              ) : (
+              ) : isReception ? (
                 <>
                   Je prononce la réception des travaux,{' '}
+                  <strong>{hasReserves ? 'avec les réserves ci-dessus' : 'sans réserve'}</strong>
+                </>
+              ) : (
+                <>
+                  Je confirme la {session?.docType === 'enlevement' ? "remise des produits lors de l'enlèvement" : 'livraison des produits'},{' '}
                   <strong>{hasReserves ? 'avec les réserves ci-dessus' : 'sans réserve'}</strong>
                 </>
               )}
