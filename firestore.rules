@@ -64,6 +64,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- Bon de fin de chantier (PV de réception) : SERVEUR UNIQUEMENT ----
+    // Même isolation que quoteSignatureSessions ci-dessus : la page publique
+    // /reception/[token] et /reception-generale passent uniquement par les
+    // routes API app/api/completion-certificates/*  (Admin SDK).
+    match /completionSignatureSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    // Variante générale (sans devis lié, lien fixe donné aux poseurs) : même
+    // isolation serveur-uniquement.
+    match /genericCompletionSessions/{sessionId} {
+      allow read, write: if false;
+    }
+
     // ---- sarange-suivi : collections partagées par toute l'équipe ----
     match /commandes/{commandeId} {
       allow read, write: if isSarange();

@@ -25,11 +25,14 @@ import {
   getQuoteSignatureWorkflow,
   quoteNeedsResend,
 } from '@/lib/quote-signature';
+import { getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
+import CompletionSendModal from '@/components/CompletionSendModal';
 import {
   BellRing,
   ChevronDown,
   Copy,
   ExternalLink,
+  FileCheck2,
   FileDown,
   FolderOpen,
   Loader2,
@@ -319,6 +322,7 @@ function QuoteCard({
   onSendForSignature,
   onSendReminder,
   onOpenSignedQuote,
+  onGenerateCompletion,
 }) {
   const workflow = getQuoteSignatureWorkflow(quote);
   const displayStatus = getQuoteDisplayStatus(quote);
@@ -326,6 +330,8 @@ function QuoteCard({
     getQuoteSignatureStatusMeta(displayStatus) ||
     STATUS_META[displayStatus] ||
     STATUS_META.draft;
+  const completionWorkflow = getCompletionWorkflow(quote);
+  const completionStatusMeta = completionWorkflow.status ? getCompletionStatusMeta(completionWorkflow.status) : null;
   const hasClientEmail = Boolean(quote.clientEmail || quote.payload?.clientData?.email);
   const canSend = canQuoteBeSent(quote) && hasClientEmail;
   const canOpenSignedQuote = Boolean(workflow.sessionId && workflow.signedPdfAvailable);
@@ -365,6 +371,11 @@ function QuoteCard({
               {Number(quote.variantCount) > 1 && (
                 <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">
                   {quote.variantCount} variantes
+                </span>
+              )}
+              {completionStatusMeta && (
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${completionStatusMeta.className}`}>
+                  {completionStatusMeta.label}
                 </span>
               )}
             </div>
@@ -455,6 +466,18 @@ function QuoteCard({
             >
               <ExternalLink size={14} />
               Ouvrir le devis signé
+            </button>
+          )}
+          {!completionWorkflow.sessionId && (
+            <button
+              type="button"
+              onClick={() => onGenerateCompletion(quote)}
+              disabled={isWorking}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Générer le bon de fin de chantier"
+            >
+              <FileCheck2 size={14} />
+              Bon de fin de chantier
             </button>
           )}
         </div>
@@ -558,6 +581,7 @@ export default function SavedQuotesPage() {
   const [actionKind, setActionKind]   = useState(null);
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
+  const [completionQuote, setCompletionQuote] = useState(null);
   const [searchTerm, setSearchTerm]   = useState('');
   const [statusFilter, setStatusFilter]   = useState('all');
   const [clientFilter, setClientFilter]   = useState('all');
@@ -725,6 +749,14 @@ export default function SavedQuotesPage() {
       setActionId(null);
       setActionKind(null);
     }
+  };
+
+  const handleGenerateCompletion = (quote) => {
+    setCompletionQuote(quote);
+  };
+
+  const handleCompletionSent = () => {
+    setActionMessage('Le bon de fin de chantier a été envoyé au client.');
   };
 
   const handleSendQuote = async (quote) => {
@@ -1113,9 +1145,18 @@ export default function SavedQuotesPage() {
                   onSendForSignature={handleSendForSignature}
                   onSendReminder={handleSendReminder}
                   onOpenSignedQuote={handleOpenSignedQuote}
+                  onGenerateCompletion={handleGenerateCompletion}
                 />
               ))}
             </div>
+          )}
+
+          {completionQuote && (
+            <CompletionSendModal
+              quote={completionQuote}
+              onClose={() => setCompletionQuote(null)}
+              onSent={handleCompletionSent}
+            />
           )}
         </div>
       )}
