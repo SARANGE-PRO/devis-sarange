@@ -27,6 +27,7 @@ export async function POST(request) {
       telephone: body?.telephone,
       quoteReference: body?.quoteReference,
       reserves: body?.reserves,
+      reservePhotos: body?.reservePhotos,
       ratings: body?.ratings,
       signatureDataUrl: body?.signatureDataUrl,
       signerIp: getClientIp(request),

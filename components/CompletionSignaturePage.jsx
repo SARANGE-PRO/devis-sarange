@@ -13,6 +13,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
+import ReservePhotoInput from './ReservePhotoInput';
 
 const SUPPORT_PHONE = '09 86 71 34 44';
 
@@ -191,7 +192,10 @@ export default function CompletionSignaturePage({ token }) {
       .then((data) => {
         if (cancelled) return;
         setSession(data);
-        setItemStates((data.ouvrages || []).map(() => ({ choice: null, comment: '' })));
+        setItemStates((data.ouvrages || []).map(() => ({ choice: null, comment: '', photos: [] })));
+        // PV de levée : pas d'étape de vérification ouvrage par ouvrage, le
+        // parcours démarre directement sur le constat de levée.
+        if (data.mode === 'reserves-lift') setStepIndex(0);
       })
       .catch((error) => {
         if (!cancelled) setLoadError(error.message);
@@ -244,6 +248,8 @@ export default function CompletionSignaturePage({ token }) {
               .join(' ')
               .trim(),
           })),
+          // Plafond aligné sur le serveur (MAX_RESERVE_PHOTOS = 4).
+          reservePhotos: flaggedItems.flatMap((item) => item.photos || []).slice(0, 4),
           ratings,
           signatureDataUrl,
           confirmed,
@@ -277,17 +283,18 @@ export default function CompletionSignaturePage({ token }) {
   }
 
   if (
-    ['refused', 'received_no_reserves', 'received_with_reserves'].includes(session?.status) &&
+    ['refused', 'received_no_reserves', 'received_with_reserves', 'reserves_lifted'].includes(session?.status) &&
     stepIndex !== 3
   ) {
     return (
       <CenteredNotice
         icon={<CheckCircle2 className="mx-auto text-emerald-500" size={40} />}
-        title="Ce bon de fin de chantier a déjà été traité."
+        title="Ce document a déjà été traité."
       />
     );
   }
 
+  const isLift = session?.mode === 'reserves-lift';
   const chantierLabel = [session?.clientData?.adresseChantier, session?.clientData?.villeChantier]
     .filter(Boolean)
     .join(', ');
@@ -297,18 +304,63 @@ export default function CompletionSignaturePage({ token }) {
       headerLeft={
         <>
           <span className="truncate font-bold text-slate-800">
-            Bon de fin de chantier{session?.quoteNumber ? ` — Devis n°${session.quoteNumber.replace(/^DV[-\s]*/i, '')}` : ''}
+            {isLift ? 'Levée des réserves' : 'Bon de fin de chantier'}
+            {session?.quoteNumber ? ` — Devis n°${session.quoteNumber.replace(/^DV[-\s]*/i, '')}` : ''}
           </span>
           {chantierLabel && <span className="hidden truncate sm:inline">— {chantierLabel}</span>}
         </>
       }
       stepBar={
         stepIndex < 3 ? (
-          <StepBar steps={STEPS} currentIndex={stepIndex} onStepClick={setStepIndex} />
+          <StepBar
+            steps={isLift ? ['Constat', 'Satisfaction', 'Signature'] : STEPS}
+            currentIndex={stepIndex}
+            onStepClick={setStepIndex}
+          />
         ) : null
       }
     >
-      {stepIndex === 0 && (
+      {stepIndex === 0 && isLift && (
+        <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
+          <div className="mb-6 flex items-start gap-3">
+            <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
+              <ClipboardCheck size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Constat de levée des réserves</h1>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                SARANGE est intervenu pour corriger les réserves formulées lors de la réception
+                {session?.completionNumber ? ` (bon n°${session.completionNumber})` : ''}.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(session?.reserves || []).map((reserve, index) => (
+              <div key={index} className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <CheckCircle2 size={20} className="mt-0.5 shrink-0 text-emerald-500" />
+                <div>
+                  <p className="text-sm text-slate-800">{reserve.description}</p>
+                  <p className="mt-0.5 text-xs font-bold text-emerald-600">Corrigée</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setStepIndex(1)}
+              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600"
+            >
+              Continuer
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stepIndex === 0 && !isLift && (
         <div className="duration-300 animate-in fade-in">
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
@@ -364,13 +416,19 @@ export default function CompletionSignaturePage({ token }) {
                   </button>
                 </div>
                 {itemStates[index]?.choice === 'warn' && (
-                  <textarea
-                    value={itemStates[index]?.comment || ''}
-                    onChange={(event) => updateItem(index, { comment: event.target.value })}
-                    placeholder="Décrivez le problème constaté…"
-                    className="mt-3 w-full rounded-xl border border-amber-300 bg-white p-3 text-sm outline-none focus:ring-4 focus:ring-amber-500/10"
-                    rows={2}
-                  />
+                  <>
+                    <textarea
+                      value={itemStates[index]?.comment || ''}
+                      onChange={(event) => updateItem(index, { comment: event.target.value })}
+                      placeholder="Décrivez le problème constaté…"
+                      className="mt-3 w-full rounded-xl border border-amber-300 bg-white p-3 text-sm outline-none focus:ring-4 focus:ring-amber-500/10"
+                      rows={2}
+                    />
+                    <ReservePhotoInput
+                      photos={itemStates[index]?.photos || []}
+                      onChange={(photos) => updateItem(index, { photos })}
+                    />
+                  </>
                 )}
               </div>
             ))}
@@ -458,12 +516,22 @@ export default function CompletionSignaturePage({ token }) {
             <div>
               <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Récapitulatif &amp; signature</h1>
               <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                Relisez le constat puis signez pour prononcer la réception des travaux.
+                {isLift
+                  ? 'Relisez le constat puis signez le PV de levée des réserves.'
+                  : 'Relisez le constat puis signez pour prononcer la réception des travaux.'}
               </p>
             </div>
           </div>
 
-          {hasReserves ? (
+          {isLift ? (
+            <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-800">
+              <p className="text-base font-bold">Réserves levées</p>
+              <p className="mt-1.5 text-sm">
+                Les {(session?.reserves || []).length} réserve(s) de la réception ont été corrigées. La signature
+                de ce PV clôt votre dossier.
+              </p>
+            </div>
+          ) : hasReserves ? (
             <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-800">
               <p className="text-base font-bold">Réception avec réserves</p>
               <p className="mt-1.5 text-sm leading-6">
@@ -497,8 +565,16 @@ export default function CompletionSignaturePage({ token }) {
               className="mt-0.5 h-5 w-5 accent-orange-500"
             />
             <span className="text-sm text-slate-800 sm:text-base">
-              Je prononce la réception des travaux,{' '}
-              <strong>{hasReserves ? 'avec les réserves ci-dessus' : 'sans réserve'}</strong>
+              {isLift ? (
+                <>
+                  Je reconnais que les réserves listées ont été <strong>levées</strong>
+                </>
+              ) : (
+                <>
+                  Je prononce la réception des travaux,{' '}
+                  <strong>{hasReserves ? 'avec les réserves ci-dessus' : 'sans réserve'}</strong>
+                </>
+              )}
             </span>
           </label>
 

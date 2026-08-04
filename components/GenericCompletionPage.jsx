@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import SignaturePad from './SignaturePad';
 import AddressAutocomplete from './AddressAutocomplete';
+import ReservePhotoInput from './ReservePhotoInput';
 import {
   RATING_CRITERIA,
   StarRow,
@@ -46,6 +47,7 @@ export default function GenericCompletionPage() {
   });
   const [validationChoice, setValidationChoice] = useState(null);
   const [validationComment, setValidationComment] = useState('');
+  const [validationPhotos, setValidationPhotos] = useState([]);
   const [ratings, setRatings] = useState({ pose: 0, proprete: 0, relation: 0 });
   const [confirmed, setConfirmed] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
@@ -78,6 +80,7 @@ export default function GenericCompletionPage() {
         body: JSON.stringify({
           ...contact,
           reserves: hasReserves ? [{ description: validationComment || 'Problème signalé par le client' }] : [],
+          reservePhotos: hasReserves ? validationPhotos.slice(0, 4) : [],
           ratings,
           signatureDataUrl,
         }),
@@ -252,13 +255,16 @@ export default function GenericCompletionPage() {
           </div>
 
           {validationChoice === 'warn' && (
-            <textarea
-              value={validationComment}
-              onChange={(event) => setValidationComment(event.target.value)}
-              placeholder="Décrivez le problème constaté…"
-              className="mt-4 w-full rounded-2xl border border-amber-300 bg-white p-4 text-sm outline-none focus:ring-4 focus:ring-amber-500/10"
-              rows={4}
-            />
+            <>
+              <textarea
+                value={validationComment}
+                onChange={(event) => setValidationComment(event.target.value)}
+                placeholder="Décrivez le problème constaté…"
+                className="mt-4 w-full rounded-2xl border border-amber-300 bg-white p-4 text-sm outline-none focus:ring-4 focus:ring-amber-500/10"
+                rows={4}
+              />
+              <ReservePhotoInput photos={validationPhotos} onChange={setValidationPhotos} max={3} />
+            </>
           )}
 
           <div className="mt-8 flex items-center justify-between">

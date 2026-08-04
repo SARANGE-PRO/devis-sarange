@@ -198,30 +198,53 @@ function GenericCompletionLinkSection() {
         saisit lui-même ses coordonnées. Ce lien est fixe (pas un lien à usage unique) : donnez-le une fois à vos
         poseurs pour qu&apos;ils l&apos;utilisent directement en fin d&apos;intervention.
       </p>
-      <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-        <Link2 size={14} className="shrink-0 text-slate-400" />
-        <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500">{fullUrl}</span>
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <a
-          href={fullUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800"
-        >
-          <ExternalLink size={15} />
-          Ouvrir
-        </a>
-        <button
-          type="button"
-          onClick={handleCopy}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
-            copied ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          {copied ? <Check size={15} /> : <Copy size={15} />}
-          {copied ? 'Copié !' : 'Copier le lien'}
-        </button>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <Link2 size={14} className="shrink-0 text-slate-400" />
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500">{fullUrl}</span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <a
+              href={fullUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800"
+            >
+              <ExternalLink size={15} />
+              Ouvrir
+            </a>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all ${
+                copied ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              {copied ? <Check size={15} /> : <Copy size={15} />}
+              {copied ? 'Copié !' : 'Copier le lien'}
+            </button>
+          </div>
+        </div>
+
+        {/* QR code du lien fixe : à imprimer/enregistrer pour que le poseur le
+            fasse simplement scanner au client en fin d'intervention. Généré via
+            le service public qr-server.com (l'URL encodée n'a rien de secret) —
+            aucune dépendance npm à ajouter. */}
+        <div className="flex shrink-0 flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=8&data=${encodeURIComponent(fullUrl)}`}
+            alt="QR code du bon de fin de chantier"
+            width={140}
+            height={140}
+            className="h-35 w-35 rounded-lg"
+            style={{ width: 140, height: 140 }}
+          />
+          <p className="max-w-[150px] text-center text-[11px] leading-tight text-slate-400">
+            À faire scanner par le client (clic droit pour enregistrer / imprimer)
+          </p>
+        </div>
       </div>
     </section>
   );

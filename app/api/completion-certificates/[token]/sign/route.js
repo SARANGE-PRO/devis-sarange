@@ -18,6 +18,7 @@ export async function POST(request, { params }) {
     const session = await signCompletionSession({
       sessionId: token,
       reserves: body?.reserves,
+      reservePhotos: body?.reservePhotos,
       ratings: body?.ratings,
       signatureDataUrl: body?.signatureDataUrl,
       signerName: body?.signerName,

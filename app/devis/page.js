@@ -25,7 +25,7 @@ import {
   getQuoteSignatureWorkflow,
   quoteNeedsResend,
 } from '@/lib/quote-signature';
-import { getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
+import { getCompletionReminderMeta, getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
 import CompletionSendModal from '@/components/CompletionSendModal';
 import {
   BellRing,
@@ -323,6 +323,8 @@ function QuoteCard({
   onSendReminder,
   onOpenSignedQuote,
   onGenerateCompletion,
+  onSendCompletionReminder,
+  onSendReservesLift,
 }) {
   const workflow = getQuoteSignatureWorkflow(quote);
   const displayStatus = getQuoteDisplayStatus(quote);
@@ -480,7 +482,70 @@ function QuoteCard({
               Bon de fin de chantier
             </button>
           )}
+          {['received_no_reserves', 'received_with_reserves', 'reserves_lifted'].includes(completionWorkflow.status) &&
+            completionWorkflow.sessionId && (
+              <a
+                href={`/api/completion-certificates/${encodeURIComponent(completionWorkflow.sessionId)}/document`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+              >
+                <ExternalLink size={14} />
+                Ouvrir le bon signé
+              </a>
+            )}
+          {completionWorkflow.status === 'received_with_reserves' && !completionWorkflow.liftSessionId && (
+            <button
+              type="button"
+              onClick={() => onSendReservesLift(quote)}
+              disabled={isWorking}
+              className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Envoyer le PV de levée des réserves au client (après correction)"
+            >
+              {workingKind === 'lift' ? <Loader2 size={14} className="animate-spin" /> : <FileCheck2 size={14} />}
+              Lever les réserves
+            </button>
+          )}
         </div>
+
+        {/* Relances du bon de fin de chantier non signé (même cadence que le devis). */}
+        {['sent', 'viewed'].includes(completionWorkflow.status) && completionWorkflow.sessionId && (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <BellRing size={14} className="text-orange-500" />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  Relances bon de fin de chantier
+                </p>
+              </div>
+              {completionWorkflow.lastReminderAt && getCompletionReminderMeta(completionWorkflow.lastReminderLevel) && (
+                <p className="text-[11px] text-slate-500">
+                  Derniere : {getCompletionReminderMeta(completionWorkflow.lastReminderLevel).shortLabel} le{' '}
+                  {formatQuoteUpdatedAt(completionWorkflow.lastReminderAt)}
+                </p>
+              )}
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[1, 2, 3].map((level) => {
+                const meta = getCompletionReminderMeta(level);
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => onSendCompletionReminder(quote, level)}
+                    disabled={isWorking}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {workingKind === `completion-reminder-${level}` ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : null}
+                    {meta.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {canSendReminder && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -757,6 +822,58 @@ export default function SavedQuotesPage() {
 
   const handleCompletionSent = () => {
     setActionMessage('Le bon de fin de chantier a été envoyé au client.');
+  };
+
+  const handleSendCompletionReminder = async (quote, reminderLevel) => {
+    if (!user) return;
+    const sessionId = getCompletionWorkflow(quote).sessionId;
+    if (!sessionId) return;
+
+    setActionId(quote.id);
+    setActionKind(`completion-reminder-${reminderLevel}`);
+    setActionError('');
+    setActionMessage('');
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/completion-certificates/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ sessionId, reminderLevel }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer la relance.");
+      setActionMessage('Relance du bon de fin de chantier envoyée au client.');
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setActionId(null);
+      setActionKind(null);
+    }
+  };
+
+  const handleSendReservesLift = async (quote) => {
+    if (!user) return;
+
+    setActionId(quote.id);
+    setActionKind('lift');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/completion-certificates/lift/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ quoteId: quote.id }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer le PV de levée des réserves.");
+      setActionMessage('Le PV de levée des réserves a été envoyé au client pour signature.');
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setActionId(null);
+      setActionKind(null);
+    }
   };
 
   const handleSendQuote = async (quote) => {
@@ -1146,6 +1263,8 @@ export default function SavedQuotesPage() {
                   onSendReminder={handleSendReminder}
                   onOpenSignedQuote={handleOpenSignedQuote}
                   onGenerateCompletion={handleGenerateCompletion}
+                  onSendCompletionReminder={handleSendCompletionReminder}
+                  onSendReservesLift={handleSendReservesLift}
                 />
               ))}
             </div>
