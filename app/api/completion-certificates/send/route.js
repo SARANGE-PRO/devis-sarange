@@ -16,6 +16,8 @@ export async function POST(request) {
       quoteId: body?.quoteId,
       acompteRecu: body?.acompteRecu,
       invoiceReference: body?.invoiceReference,
+      deliveryMode: body?.deliveryMode,
+      overrideEmail: body?.overrideEmail,
     });
 
     return NextResponse.json(result);

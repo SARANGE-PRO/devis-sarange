@@ -128,24 +128,25 @@ export function FinalScreen({ result }) {
   return result?.allFiveStars ? (
     <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
       <div className="rounded-3xl border border-emerald-200 bg-white p-8 text-center shadow-xl shadow-black/5 sm:p-10">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
-          <CheckCircle2 size={34} className="text-emerald-500" />
-        </div>
-        <h2 className="text-2xl font-black text-slate-900">Merci pour votre confiance ! ⭐⭐⭐⭐⭐</h2>
-        <p className="mx-auto mt-4 max-w-lg text-base leading-7 text-slate-600">
-          Toute l&apos;équipe SARANGE vous remercie pour votre évaluation. Votre satisfaction est notre plus belle
-          réussite. Pourriez-vous prendre 30 secondes pour partager votre expérience sur Google ? Cela aide
-          grandement de futurs clients à nous faire confiance.
+        <p className="text-3xl tracking-wider" aria-hidden="true">
+          ⭐⭐⭐⭐⭐
+        </p>
+        {/* Espace insécable avant le « ! » : la typographie française met une
+            espace avant, qui provoquait un retour à la ligne du « ! » seul. */}
+        <h2 className="mt-3 text-2xl font-black text-slate-900">Merci pour votre confiance&nbsp;!</h2>
+        <p className="mx-auto mt-3 max-w-md text-base leading-7 text-slate-600">
+          Votre avis compte énormément. Partagez-le en 30 secondes :
         </p>
         <a
           href={result.googleReviewUrl}
           target="_blank"
           rel="noreferrer"
-          className="mt-7 inline-flex items-center gap-2 rounded-full bg-orange-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600"
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-orange-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600"
         >
           Partager mon avis sur Google
           <ArrowRight size={18} />
         </a>
+        <p className="mt-5 text-xs text-slate-400">Votre exemplaire signé arrive par e-mail.</p>
       </div>
     </div>
   ) : (
@@ -154,10 +155,9 @@ export function FinalScreen({ result }) {
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
           <CheckCircle2 size={34} className="text-emerald-500" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900">Merci !</h2>
-        <p className="mx-auto mt-4 max-w-lg text-base leading-7 text-slate-600">
-          Votre bon de réception a bien été signé et transmis à SARANGE. Vous recevrez votre exemplaire par e-mail.
-          À bientôt.
+        <h2 className="text-2xl font-black text-slate-900">Merci&nbsp;!</h2>
+        <p className="mx-auto mt-3 max-w-md text-base leading-7 text-slate-600">
+          Votre bon de réception est signé et transmis à SARANGE. Votre exemplaire arrive par e-mail.
         </p>
       </div>
     </div>
@@ -325,7 +325,11 @@ export default function CompletionSignaturePage({ token }) {
                     </span>
                   )}
                 </div>
-                {item.repere && <p className="mt-0.5 text-sm text-slate-500">{item.repere}</p>}
+                {(item.dimensions || item.repere) && (
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    {[item.dimensions, item.repere].filter(Boolean).join(' · ')}
+                  </p>
+                )}
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <button
                     type="button"
