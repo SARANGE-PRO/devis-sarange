@@ -248,8 +248,14 @@ export default function CompletionSignaturePage({ token }) {
               .join(' ')
               .trim(),
           })),
-          // Plafond aligné sur le serveur (MAX_RESERVE_PHOTOS = 4).
-          reservePhotos: flaggedItems.flatMap((item) => item.photos || []).slice(0, 4),
+          // Chemin de SECOURS uniquement : les photos dont le téléversement
+          // en staging a réussi sont déjà côté serveur (rattachées au token),
+          // seules celles en échec repartent inline (plafond serveur : 4).
+          reservePhotos: flaggedItems
+            .flatMap((item) => item.photos || [])
+            .filter((photo) => !photo.uploaded)
+            .map((photo) => photo.dataUrl)
+            .slice(0, 4),
           ratings,
           signatureDataUrl,
           confirmed,
@@ -427,6 +433,7 @@ export default function CompletionSignaturePage({ token }) {
                     <ReservePhotoInput
                       photos={itemStates[index]?.photos || []}
                       onChange={(photos) => updateItem(index, { photos })}
+                      uploadContext={{ token }}
                     />
                   </>
                 )}

@@ -48,6 +48,7 @@ export default function GenericCompletionPage() {
   const [validationChoice, setValidationChoice] = useState(null);
   const [validationComment, setValidationComment] = useState('');
   const [validationPhotos, setValidationPhotos] = useState([]);
+  const [photoUploadId, setPhotoUploadId] = useState('');
   const [ratings, setRatings] = useState({ pose: 0, proprete: 0, relation: 0 });
   const [confirmed, setConfirmed] = useState(false);
   const [signatureDataUrl, setSignatureDataUrl] = useState(null);
@@ -80,7 +81,12 @@ export default function GenericCompletionPage() {
         body: JSON.stringify({
           ...contact,
           reserves: hasReserves ? [{ description: validationComment || 'Problème signalé par le client' }] : [],
-          reservePhotos: hasReserves ? validationPhotos.slice(0, 4) : [],
+          // Secours uniquement : les photos téléversées en staging sont déjà
+          // côté serveur, référencées par photoUploadId.
+          reservePhotos: hasReserves
+            ? validationPhotos.filter((photo) => !photo.uploaded).map((photo) => photo.dataUrl).slice(0, 4)
+            : [],
+          photoUploadId: hasReserves ? photoUploadId : '',
           ratings,
           signatureDataUrl,
         }),
@@ -263,7 +269,12 @@ export default function GenericCompletionPage() {
                 className="mt-4 w-full rounded-2xl border border-amber-300 bg-white p-4 text-sm outline-none focus:ring-4 focus:ring-amber-500/10"
                 rows={4}
               />
-              <ReservePhotoInput photos={validationPhotos} onChange={setValidationPhotos} max={3} />
+              <ReservePhotoInput
+                photos={validationPhotos}
+                onChange={setValidationPhotos}
+                max={6}
+                uploadContext={{ uploadId: photoUploadId, onUploadId: setPhotoUploadId }}
+              />
             </>
           )}
 

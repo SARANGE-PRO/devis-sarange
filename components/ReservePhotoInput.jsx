@@ -1,13 +1,14 @@
 'use client';
 
-import { useRef } from 'react';
-import { Camera, X } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Camera, Loader2, X } from 'lucide-react';
 
-// Compression côté client AVANT tout envoi : le corps de requête serverless
-// est limité à ~4,5 Mo, une photo de téléphone en fait 3 à 12. Recadrage à
-// 1280 px max et JPEG qualité 0,7 → ~150-400 Ko par photo.
-const MAX_EDGE_PX = 1280;
-const JPEG_QUALITY = 0.7;
+// Compression côté client AVANT tout envoi. Chaque photo partant dans SA
+// propre requête (staging /photo-upload), la limite ~4,5 Mo par requête
+// s'applique par photo : on peut se permettre une meilleure définition que
+// si tout voyageait dans le corps de la signature.
+const MAX_EDGE_PX = 1600;
+const JPEG_QUALITY = 0.78;
 
 const compressImageFile = (file) =>
   new Promise((resolve, reject) => {
@@ -32,34 +33,68 @@ const compressImageFile = (file) =>
 
 /**
  * Ajout de photos à un signalement de réserve : bouton appareil photo,
- * vignettes supprimables. `photos` est un tableau de dataURL JPEG compressées,
- * prêt à voyager dans le corps JSON de la signature.
+ * vignettes supprimables. Chaque photo est TÉLÉVERSÉE IMMÉDIATEMENT en
+ * staging (une requête par photo) ; en cas d'échec réseau elle est
+ * conservée localement et repartira dans le corps de la signature (chemin
+ * de secours, plafonné plus bas côté serveur).
+ *
+ * `photos` : [{ dataUrl, uploaded }] — `uploadContext` : { token } pour le
+ * flux lié à un devis, ou { uploadId, onUploadId } pour le flux générique
+ * (l'identifiant est créé par le serveur à la première photo).
  */
-export default function ReservePhotoInput({ photos = [], onChange, max = 2 }) {
+export default function ReservePhotoInput({ photos = [], onChange, max = 3, uploadContext = null }) {
   const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+
+  const stagePhoto = async (dataUrl) => {
+    if (!uploadContext) return false;
+    try {
+      const response = await fetch('/api/completion-certificates/photo-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: uploadContext.token || undefined,
+          uploadId: uploadContext.uploadId || undefined,
+          photo: dataUrl,
+        }),
+      });
+      if (!response.ok) return false;
+      const data = await response.json().catch(() => ({}));
+      if (data?.uploadId && uploadContext.onUploadId) uploadContext.onUploadId(data.uploadId);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const handleFiles = async (event) => {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     const remaining = Math.max(0, max - photos.length);
+    if (!remaining) return;
+
+    setUploading(true);
     const next = [...photos];
     for (const file of files.slice(0, remaining)) {
       try {
-        next.push(await compressImageFile(file));
+        const dataUrl = await compressImageFile(file);
+        const uploaded = await stagePhoto(dataUrl);
+        next.push({ dataUrl, uploaded });
       } catch {
         // Fichier illisible : ignoré silencieusement, les autres passent.
       }
     }
+    setUploading(false);
     onChange?.(next);
   };
 
   return (
     <div className="mt-2.5">
       <div className="flex flex-wrap items-center gap-2">
-        {photos.map((dataUrl, index) => (
+        {photos.map((photo, index) => (
           <div key={index} className="relative h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={dataUrl} alt={`Photo ${index + 1}`} className="h-full w-full object-cover" />
+            <img src={photo.dataUrl} alt={`Photo ${index + 1}`} className="h-full w-full object-cover" />
             <button
               type="button"
               onClick={() => onChange?.(photos.filter((_, i) => i !== index))}
@@ -74,10 +109,11 @@ export default function ReservePhotoInput({ photos = [], onChange, max = 2 }) {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="inline-flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition-colors hover:border-orange-300 hover:text-orange-500"
+            disabled={uploading}
+            className="inline-flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 transition-colors hover:border-orange-300 hover:text-orange-500 disabled:opacity-50"
           >
-            <Camera size={18} />
-            <span className="text-[9px] font-bold">Photo</span>
+            {uploading ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+            <span className="text-[9px] font-bold">{uploading ? 'Envoi…' : 'Photo'}</span>
           </button>
         )}
       </div>

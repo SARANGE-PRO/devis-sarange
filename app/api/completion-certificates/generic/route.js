@@ -28,6 +28,7 @@ export async function POST(request) {
       quoteReference: body?.quoteReference,
       reserves: body?.reserves,
       reservePhotos: body?.reservePhotos,
+      photoUploadId: body?.photoUploadId,
       ratings: body?.ratings,
       signatureDataUrl: body?.signatureDataUrl,
       signerIp: getClientIp(request),
