@@ -34,6 +34,7 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
   );
   const [submittingMode, setSubmittingMode] = useState(null);
   const [error, setError] = useState('');
+  const [missingField, setMissingField] = useState('');
   const [createdLink, setCreatedLink] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -59,11 +60,13 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
 
   const handleSubmit = async (deliveryMode) => {
     if (!invoiceReference.trim()) {
-      setError('La référence facture est obligatoire.');
+      setError('La référence facture est obligatoire (celle de votre compta).');
+      setMissingField('invoiceReference');
       return;
     }
     if (deliveryMode === 'email' && !email.trim()) {
-      setError('Renseignez une adresse e-mail, ou créez un lien à copier.');
+      setError('Renseignez une adresse e-mail, ou utilisez « Créer le lien et le copier ».');
+      setMissingField('email');
       return;
     }
     if (!user) {
@@ -72,6 +75,7 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
     }
     setSubmittingMode(deliveryMode);
     setError('');
+    setMissingField('');
     try {
       const idToken = await user.getIdToken();
       // Le montant qui fait foi est le SOLDE AFFICHÉ (modifiable) : l'acompte
@@ -222,9 +226,16 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
               <input
                 type="text"
                 value={invoiceReference}
-                onChange={(event) => setInvoiceReference(event.target.value)}
+                onChange={(event) => {
+                  setInvoiceReference(event.target.value);
+                  if (missingField === 'invoiceReference') setMissingField('');
+                }}
                 placeholder="FA-2026-0458"
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
+                className={`w-full rounded-xl border px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 ${
+                  missingField === 'invoiceReference'
+                    ? 'border-amber-400 ring-4 ring-amber-500/10'
+                    : 'border-slate-300'
+                }`}
               />
               <span className="mt-1 block text-[11px] text-slate-400">
                 Saisie manuellement : la référence de la facture émise dans votre compta, pas un numéro généré
@@ -239,9 +250,14 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
               <input
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  if (missingField === 'email') setMissingField('');
+                }}
                 placeholder="client@exemple.fr"
-                className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
+                className={`w-full rounded-xl border px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 ${
+                  missingField === 'email' ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-300'
+                }`}
               />
               <span className="mt-1 block text-[11px] text-slate-400">
                 Pré-rempli depuis le devis, modifiable. Inutile si vous créez simplement un lien à copier.

@@ -17,6 +17,7 @@ import ReservePhotoInput from './ReservePhotoInput';
 import {
   RATING_CRITERIA,
   StarRow,
+  StepAlert,
   StepBar,
   PageShell,
   FinalScreen,
@@ -55,23 +56,76 @@ export default function GenericCompletionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
+  const [stepError, setStepError] = useState('');
+  const [showMissing, setShowMissing] = useState(false);
 
   // Chaque étape repart du haut de page (bouton Continuer en bas sur mobile).
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    setStepError('');
+    setShowMissing(false);
   }, [stepIndex]);
 
   // Seuls nom, prénom et adresse bloquent la suite du parcours.
-  const contactComplete = [contact.nom, contact.prenom, contact.adresse].every(
-    (value) => value.trim().length > 0
-  );
+  const REQUIRED_CONTACT_FIELDS = [
+    ['nom', 'votre nom'],
+    ['prenom', 'votre prénom'],
+    ['adresse', "l'adresse du chantier"],
+  ];
+  const missingContactFields = REQUIRED_CONTACT_FIELDS.filter(([key]) => !contact[key].trim());
+  const contactComplete = missingContactFields.length === 0;
   const allRated = RATING_CRITERIA.every((criterion) => ratings[criterion.key] > 0);
   const hasReserves = validationChoice === 'warn';
 
-  const updateContact = (key) => (event) =>
+  const updateContact = (key) => (event) => {
     setContact((prev) => ({ ...prev, [key]: event.target.value }));
+    setStepError('');
+  };
+
+  const isFieldMissing = (key) => showMissing && !contact[key].trim();
+  const missingFieldClass = (key) => (isFieldMissing(key) ? ' border-amber-400 ring-4 ring-amber-500/10' : '');
+
+  const handleContinueContact = () => {
+    if (!contactComplete) {
+      setStepError(
+        `Pour continuer, renseignez ${missingContactFields.map(([, label]) => label).join(', ')}.`
+      );
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(1);
+  };
+
+  const handleContinueValidation = () => {
+    if (!validationChoice) {
+      setStepError('Choisissez une des deux options pour continuer.');
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(2);
+  };
+
+  const handleContinueRatings = () => {
+    if (!allRated) {
+      setStepError('Touchez les étoiles pour noter les 3 critères, puis continuez.');
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(3);
+  };
 
   const handleSubmit = async () => {
+    if (!confirmed) {
+      setStepError('Cochez la case de confirmation ci-dessus pour pouvoir signer.');
+      setShowMissing(true);
+      return;
+    }
+    if (!signatureDataUrl) {
+      setStepError("Signez dans le cadre ci-dessus (au doigt ou à la souris) avant d'envoyer.");
+      setShowMissing(true);
+      return;
+    }
+    setStepError('');
     setSubmitError('');
     setSubmitting(true);
     try {
@@ -141,7 +195,7 @@ export default function GenericCompletionPage() {
                   value={contact.nom}
                   onChange={updateContact('nom')}
                   autoComplete="family-name"
-                  className={inputClassName}
+                  className={inputClassName + missingFieldClass('nom')}
                 />
               </div>
               <div>
@@ -153,19 +207,24 @@ export default function GenericCompletionPage() {
                   value={contact.prenom}
                   onChange={updateContact('prenom')}
                   autoComplete="given-name"
-                  className={inputClassName}
+                  className={inputClassName + missingFieldClass('prenom')}
                 />
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
                   Adresse du chantier
                 </label>
-                <AddressAutocomplete
-                  value={contact.adresse}
-                  onChange={(value) => setContact((prev) => ({ ...prev, adresse: value }))}
-                  onSelect={({ label, ville }) => setContact((prev) => ({ ...prev, adresse: label, ville }))}
-                  placeholder="Numéro et nom de rue, ville…"
-                />
+                <div className={isFieldMissing('adresse') ? 'rounded-xl ring-4 ring-amber-500/10' : ''}>
+                  <AddressAutocomplete
+                    value={contact.adresse}
+                    onChange={(value) => {
+                      setContact((prev) => ({ ...prev, adresse: value }));
+                      setStepError('');
+                    }}
+                    onSelect={({ label, ville }) => setContact((prev) => ({ ...prev, adresse: label, ville }))}
+                    placeholder="Numéro et nom de rue, ville…"
+                  />
+                </div>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
@@ -207,12 +266,17 @@ export default function GenericCompletionPage() {
             </div>
           </div>
 
-          <div className="mt-8 flex justify-center">
+          <div className="mt-6">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-2 flex justify-center">
             <button
               type="button"
-              disabled={!contactComplete}
-              onClick={() => setStepIndex(1)}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              onClick={handleContinueContact}
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+                contactComplete ? '' : 'opacity-60'
+              }`}
             >
               Continuer
               <ArrowRight size={18} />
@@ -235,10 +299,13 @@ export default function GenericCompletionPage() {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className={`space-y-3 ${showMissing && !validationChoice ? 'rounded-2xl ring-4 ring-amber-500/10' : ''}`}>
             <button
               type="button"
-              onClick={() => setValidationChoice('ok')}
+              onClick={() => {
+                setValidationChoice('ok');
+                setStepError('');
+              }}
               className={`flex w-full items-center gap-4 rounded-2xl border-2 bg-white px-6 py-5 text-left text-base font-bold transition-colors ${
                 validationChoice === 'ok'
                   ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
@@ -249,7 +316,10 @@ export default function GenericCompletionPage() {
             </button>
             <button
               type="button"
-              onClick={() => setValidationChoice('warn')}
+              onClick={() => {
+                setValidationChoice('warn');
+                setStepError('');
+              }}
               className={`flex w-full items-center gap-4 rounded-2xl border-2 bg-white px-6 py-5 text-left text-base font-bold transition-colors ${
                 validationChoice === 'warn'
                   ? 'border-amber-400 bg-amber-50 text-amber-700'
@@ -278,7 +348,11 @@ export default function GenericCompletionPage() {
             </>
           )}
 
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-4">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setStepIndex(0)}
@@ -289,9 +363,10 @@ export default function GenericCompletionPage() {
             </button>
             <button
               type="button"
-              disabled={!validationChoice}
-              onClick={() => setStepIndex(2)}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              onClick={handleContinueValidation}
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+                validationChoice ? '' : 'opacity-60'
+              }`}
             >
               Continuer
               <ArrowRight size={18} />
@@ -320,12 +395,20 @@ export default function GenericCompletionPage() {
                 key={criterion.key}
                 label={criterion.label}
                 value={ratings[criterion.key]}
-                onChange={(value) => setRatings((prev) => ({ ...prev, [criterion.key]: value }))}
+                missing={showMissing && ratings[criterion.key] === 0}
+                onChange={(value) => {
+                  setRatings((prev) => ({ ...prev, [criterion.key]: value }));
+                  setStepError('');
+                }}
               />
             ))}
           </div>
 
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-4">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setStepIndex(1)}
@@ -336,9 +419,10 @@ export default function GenericCompletionPage() {
             </button>
             <button
               type="button"
-              disabled={!allRated}
-              onClick={() => setStepIndex(3)}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              onClick={handleContinueRatings}
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+                allRated ? '' : 'opacity-60'
+              }`}
             >
               Continuer
               <ArrowRight size={18} />
@@ -379,11 +463,18 @@ export default function GenericCompletionPage() {
             </div>
           )}
 
-          <label className="mb-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <label
+            className={`mb-5 flex items-start gap-3 rounded-2xl border bg-white p-5 shadow-sm ${
+              showMissing && !confirmed ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'
+            }`}
+          >
             <input
               type="checkbox"
               checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
+              onChange={(event) => {
+                setConfirmed(event.target.checked);
+                if (event.target.checked) setStepError('');
+              }}
               className="mt-0.5 h-5 w-5 accent-orange-500"
             />
             <span className="text-sm text-slate-800 sm:text-base">
@@ -393,7 +484,15 @@ export default function GenericCompletionPage() {
           </label>
 
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-slate-500">Votre signature</p>
-          <SignaturePad onChange={setSignatureDataUrl} height={200} />
+          <div className={showMissing && !signatureDataUrl ? 'rounded-2xl ring-4 ring-amber-500/15' : ''}>
+            <SignaturePad
+              onChange={(dataUrl) => {
+                setSignatureDataUrl(dataUrl);
+                if (dataUrl) setStepError('');
+              }}
+              height={200}
+            />
+          </div>
 
           {submitError && (
             <p className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -401,7 +500,11 @@ export default function GenericCompletionPage() {
             </p>
           )}
 
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-4">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setStepIndex(2)}
@@ -412,9 +515,11 @@ export default function GenericCompletionPage() {
             </button>
             <button
               type="button"
-              disabled={!confirmed || !signatureDataUrl || submitting}
+              disabled={submitting}
               onClick={handleSubmit}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-50 ${
+                confirmed && signatureDataUrl ? '' : 'opacity-60'
+              }`}
             >
               {submitting && <Loader2 size={17} className="animate-spin" />}
               Signer et envoyer

@@ -32,9 +32,13 @@ export const fetchJson = async (url, options) => {
   return data;
 };
 
-export function StarRow({ label, value, onChange }) {
+export function StarRow({ label, value, onChange, missing = false }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+    <div
+      className={`flex items-center justify-between gap-4 rounded-2xl border bg-white px-5 py-4 ${
+        missing ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'
+      }`}
+    >
       <span className="text-sm font-bold text-slate-800 sm:text-base">{label}</span>
       <div className="flex gap-1">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -53,6 +57,18 @@ export function StarRow({ label, value, onChange }) {
         ))}
       </div>
     </div>
+  );
+}
+
+// Alerte de validation d'étape : dit CE QUI MANQUE au lieu de laisser un
+// bouton grisé muet (les éléments concernés sont surlignés en ambre).
+export function StepAlert({ message }) {
+  if (!message) return null;
+  return (
+    <p className="mb-3 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 duration-200 animate-in fade-in">
+      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+      <span>{message}</span>
+    </p>
   );
 }
 
@@ -179,11 +195,17 @@ export default function CompletionSignaturePage({ token }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
+  // Message « ce qui manque » de l'étape courante + surlignage des éléments
+  // incomplets une fois que le client a tenté de continuer.
+  const [stepError, setStepError] = useState('');
+  const [showMissing, setShowMissing] = useState(false);
 
   // Chaque étape repart du haut de page : sur mobile, le bouton Continuer est
   // en bas et l'étape suivante s'ouvrirait sinon au milieu du contenu.
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    setStepError('');
+    setShowMissing(false);
   }, [stepIndex]);
 
   useEffect(() => {
@@ -222,13 +244,48 @@ export default function CompletionSignaturePage({ token }) {
 
   const updateItem = (index, patch) => {
     setItemStates((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+    if (patch.choice) setStepError('');
   };
 
   const markAllConform = () => {
     setItemStates((prev) => prev.map((item) => ({ ...item, choice: 'ok' })));
+    setStepError('');
+    setShowMissing(false);
+  };
+
+  const handleContinueChecklist = () => {
+    if (!allItemsChecked) {
+      const remaining = itemStates.length - checkedCount;
+      setStepError(
+        `Il reste ${remaining} ouvrage${remaining > 1 ? 's' : ''} à vérifier : touchez « Conforme » ou « Signaler » sur chaque carte surlignée.`
+      );
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(1);
+  };
+
+  const handleContinueRatings = () => {
+    if (!allRated) {
+      setStepError('Touchez les étoiles pour noter les 3 critères, puis continuez.');
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(2);
   };
 
   const handleSubmitSignature = async () => {
+    if (!confirmed) {
+      setStepError('Cochez la case de confirmation ci-dessus pour pouvoir signer.');
+      setShowMissing(true);
+      return;
+    }
+    if (!signatureDataUrl) {
+      setStepError('Signez dans le cadre ci-dessus (au doigt ou à la souris) avant d\'envoyer.');
+      setShowMissing(true);
+      return;
+    }
+    setStepError('');
     setSubmitError('');
     setSubmitting(true);
     try {
@@ -383,7 +440,14 @@ export default function CompletionSignaturePage({ token }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             {(session?.ouvrages || []).map((item, index) => (
-              <div key={index} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div
+                key={index}
+                className={`rounded-2xl border bg-white p-5 shadow-sm ${
+                  showMissing && !itemStates[index]?.choice
+                    ? 'border-amber-400 ring-4 ring-amber-500/10'
+                    : 'border-slate-200'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <p className="text-base font-bold text-slate-900">{item.designation}</p>
                   {item.qte > 1 && (
@@ -455,11 +519,15 @@ export default function CompletionSignaturePage({ token }) {
             <p className="text-sm text-slate-400">
               {checkedCount}/{itemStates.length} ouvrages vérifiés
             </p>
+            <div className="w-full max-w-md">
+              <StepAlert message={stepError} />
+            </div>
             <button
               type="button"
-              disabled={!allItemsChecked}
-              onClick={() => setStepIndex(1)}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              onClick={handleContinueChecklist}
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+                allItemsChecked ? '' : 'opacity-60'
+              }`}
             >
               Continuer
               <ArrowRight size={18} />
@@ -488,12 +556,20 @@ export default function CompletionSignaturePage({ token }) {
                 key={criterion.key}
                 label={criterion.label}
                 value={ratings[criterion.key]}
-                onChange={(value) => setRatings((prev) => ({ ...prev, [criterion.key]: value }))}
+                missing={showMissing && ratings[criterion.key] === 0}
+                onChange={(value) => {
+                  setRatings((prev) => ({ ...prev, [criterion.key]: value }));
+                  setStepError('');
+                }}
               />
             ))}
           </div>
 
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-4">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-6 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setStepIndex(0)}
@@ -504,9 +580,10 @@ export default function CompletionSignaturePage({ token }) {
             </button>
             <button
               type="button"
-              disabled={!allRated}
-              onClick={() => setStepIndex(2)}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              onClick={handleContinueRatings}
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+                allRated ? '' : 'opacity-60'
+              }`}
             >
               Continuer
               <ArrowRight size={18} />
@@ -565,11 +642,18 @@ export default function CompletionSignaturePage({ token }) {
             </div>
           )}
 
-          <label className="mb-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <label
+            className={`mb-5 flex items-start gap-3 rounded-2xl border bg-white p-5 shadow-sm ${
+              showMissing && !confirmed ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-200'
+            }`}
+          >
             <input
               type="checkbox"
               checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
+              onChange={(event) => {
+                setConfirmed(event.target.checked);
+                if (event.target.checked) setStepError('');
+              }}
               className="mt-0.5 h-5 w-5 accent-orange-500"
             />
             <span className="text-sm text-slate-800 sm:text-base">
@@ -587,7 +671,19 @@ export default function CompletionSignaturePage({ token }) {
           </label>
 
           <p className="mb-2 text-xs font-black uppercase tracking-widest text-slate-500">Votre signature</p>
-          <SignaturePad onChange={setSignatureDataUrl} height={200} />
+          <div
+            className={
+              showMissing && !signatureDataUrl ? 'rounded-2xl ring-4 ring-amber-500/15' : ''
+            }
+          >
+            <SignaturePad
+              onChange={(dataUrl) => {
+                setSignatureDataUrl(dataUrl);
+                if (dataUrl) setStepError('');
+              }}
+              height={200}
+            />
+          </div>
 
           {submitError && (
             <p className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -595,7 +691,11 @@ export default function CompletionSignaturePage({ token }) {
             </p>
           )}
 
-          <div className="mt-8 flex items-center justify-between">
+          <div className="mt-4">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-6 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setStepIndex(1)}
@@ -606,9 +706,11 @@ export default function CompletionSignaturePage({ token }) {
             </button>
             <button
               type="button"
-              disabled={!confirmed || !signatureDataUrl || submitting}
+              disabled={submitting}
               onClick={handleSubmitSignature}
-              className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"
+              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-50 ${
+                confirmed && signatureDataUrl ? '' : 'opacity-60'
+              }`}
             >
               {submitting && <Loader2 size={17} className="animate-spin" />}
               Signer et envoyer
