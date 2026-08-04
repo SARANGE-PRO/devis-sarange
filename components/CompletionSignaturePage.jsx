@@ -433,6 +433,7 @@ export default function CompletionSignaturePage({ token }) {
                     <ReservePhotoInput
                       photos={itemStates[index]?.photos || []}
                       onChange={(photos) => updateItem(index, { photos })}
+                      max={4}
                       uploadContext={{ token }}
                     />
                   </>

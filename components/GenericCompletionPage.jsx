@@ -272,7 +272,7 @@ export default function GenericCompletionPage() {
               <ReservePhotoInput
                 photos={validationPhotos}
                 onChange={setValidationPhotos}
-                max={6}
+                max={8}
                 uploadContext={{ uploadId: photoUploadId, onUploadId: setPhotoUploadId }}
               />
             </>
