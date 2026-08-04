@@ -179,6 +179,12 @@ export default function CompletionSignaturePage({ token }) {
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
 
+  // Chaque étape repart du haut de page : sur mobile, le bouton Continuer est
+  // en bas et l'étape suivante s'ouvrirait sinon au milieu du contenu.
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [stepIndex]);
+
   useEffect(() => {
     let cancelled = false;
     fetchJson(`/api/completion-certificates/${encodeURIComponent(token)}`)
@@ -212,6 +218,10 @@ export default function CompletionSignaturePage({ token }) {
 
   const updateItem = (index, patch) => {
     setItemStates((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  };
+
+  const markAllConform = () => {
+    setItemStates((prev) => prev.map((item) => ({ ...item, choice: 'ok' })));
   };
 
   const handleSubmitSignature = async () => {
@@ -354,6 +364,15 @@ export default function CompletionSignaturePage({ token }) {
           </div>
 
           <div className="mt-8 flex flex-col items-center gap-3">
+            {!allItemsChecked && itemStates.length > 1 && (
+              <button
+                type="button"
+                onClick={markAllConform}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-emerald-300 bg-emerald-50 px-6 py-2.5 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+              >
+                ✓ Tout est conforme
+              </button>
+            )}
             <p className="text-sm text-slate-400">
               {checkedCount}/{itemStates.length} ouvrages vérifiés
             </p>

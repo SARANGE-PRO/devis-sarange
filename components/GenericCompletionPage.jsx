@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -52,6 +52,11 @@ export default function GenericCompletionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
+
+  // Chaque étape repart du haut de page (bouton Continuer en bas sur mobile).
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [stepIndex]);
 
   // Seuls nom, prénom et adresse bloquent la suite du parcours.
   const contactComplete = [contact.nom, contact.prenom, contact.adresse].every(
@@ -122,7 +127,13 @@ export default function GenericCompletionPage() {
                 <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
                   Nom
                 </label>
-                <input type="text" value={contact.nom} onChange={updateContact('nom')} className={inputClassName} />
+                <input
+                  type="text"
+                  value={contact.nom}
+                  onChange={updateContact('nom')}
+                  autoComplete="family-name"
+                  className={inputClassName}
+                />
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
@@ -132,6 +143,7 @@ export default function GenericCompletionPage() {
                   type="text"
                   value={contact.prenom}
                   onChange={updateContact('prenom')}
+                  autoComplete="given-name"
                   className={inputClassName}
                 />
               </div>
@@ -166,6 +178,7 @@ export default function GenericCompletionPage() {
                   type="tel"
                   value={contact.telephone}
                   onChange={updateContact('telephone')}
+                  autoComplete="tel"
                   className={inputClassName}
                 />
               </div>
@@ -177,6 +190,7 @@ export default function GenericCompletionPage() {
                   type="email"
                   value={contact.email}
                   onChange={updateContact('email')}
+                  autoComplete="email"
                   placeholder="Pour recevoir votre exemplaire signé"
                   className={inputClassName}
                 />
