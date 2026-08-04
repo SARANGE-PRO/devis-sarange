@@ -167,11 +167,22 @@ export default function QuoteSummary({
   const [pendingActionKey, setPendingActionKey] = useState(null);
   const [isMultiTva, setIsMultiTva] = useState(() => cartItems.some(i => i.tvaRate !== undefined && i.tvaRate !== tvaRate));
 
-  // Commission commerciale : on redistribue le % dans les menuiseries pour l'affichage
-  // ET les totaux (le champ `commissionUnitHT` est éphémère, jamais renvoyé au panier).
+  // Commission commerciale : on redistribue le montant (% ou € selon le mode choisi)
+  // dans les menuiseries pour l'affichage ET les totaux (le champ `commissionUnitHT`
+  // est éphémère, jamais renvoyé au panier).
   const commissionedItems = useMemo(
-    () => applyCommissionToCartItems(cartItems, quoteSettings?.commissionPercent),
-    [cartItems, quoteSettings?.commissionPercent]
+    () =>
+      applyCommissionToCartItems(cartItems, {
+        mode: quoteSettings?.commissionMode,
+        percent: quoteSettings?.commissionPercent,
+        amount: quoteSettings?.commissionAmount,
+      }),
+    [
+      cartItems,
+      quoteSettings?.commissionMode,
+      quoteSettings?.commissionPercent,
+      quoteSettings?.commissionAmount,
+    ]
   );
   const totals = useMemo(
     () => computeQuoteTotals(commissionedItems, tvaRate),

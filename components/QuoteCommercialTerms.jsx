@@ -134,7 +134,12 @@ export default function QuoteCommercialTerms({
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">
                 Validité {validityLabel}
               </span>
-              {settings.commissionPercent > 0 && (
+              {settings.commissionMode === 'amount' && settings.commissionAmount > 0 && (
+                <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-semibold text-orange-700">
+                  Commission {settings.commissionAmount}&nbsp;€
+                </span>
+              )}
+              {settings.commissionMode !== 'amount' && settings.commissionPercent > 0 && (
                 <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-semibold text-orange-700">
                   Commission {settings.commissionPercent}%
                 </span>
@@ -565,31 +570,92 @@ export default function QuoteCommercialTerms({
                   </div>
                 </div>
 
-                <label className="block">
+                <div>
                   <span className="mb-1.5 block text-xs font-semibold text-slate-600">
-                    Pourcentage de commission
+                    Mode de saisie
                   </span>
-                  <div className="relative max-w-[180px]">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      value={settings.commissionPercent || 0}
-                      onChange={(event) =>
-                        updateSettings({
-                          commissionPercent: Number.parseFloat(event.target.value) || 0,
-                        })
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
-                      %
-                    </span>
-                  </div>
-                </label>
+                  <div className="grid max-w-[180px] grid-cols-2 gap-2">
+                    {[
+                      { id: 'percent', label: '%' },
+                      { id: 'amount', label: '€' },
+                    ].map((option) => {
+                      const isActive = (settings.commissionMode || 'percent') === option.id;
 
-                {settings.commissionPercent > 0 && (
+                      return (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => updateSettings({ commissionMode: option.id })}
+                          className={`rounded-xl border px-3 py-2 text-sm font-bold transition-all ${
+                            isActive
+                              ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                              : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300'
+                          }`}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {settings.commissionMode === 'amount' ? (
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Montant de commission
+                    </span>
+                    <div className="relative max-w-[180px]">
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={settings.commissionAmount || 0}
+                        onChange={(event) =>
+                          updateSettings({
+                            commissionAmount: Number.parseFloat(event.target.value) || 0,
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                        €
+                      </span>
+                    </div>
+                  </label>
+                ) : (
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold text-slate-600">
+                      Pourcentage de commission
+                    </span>
+                    <div className="relative max-w-[180px]">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={settings.commissionPercent || 0}
+                        onChange={(event) =>
+                          updateSettings({
+                            commissionPercent: Number.parseFloat(event.target.value) || 0,
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                        %
+                      </span>
+                    </div>
+                  </label>
+                )}
+
+                {settings.commissionMode === 'amount' && settings.commissionAmount > 0 && (
+                  <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
+                    Commission de {settings.commissionAmount}&nbsp;€ répartie au prorata dans
+                    le prix des menuiseries. Le total du devis augmente d&apos;autant ; la
+                    pose reste inchangée.
+                  </p>
+                )}
+                {settings.commissionMode !== 'amount' && settings.commissionPercent > 0 && (
                   <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
                     Commission de {settings.commissionPercent}% répartie au prorata dans le
                     prix des menuiseries. Le total du devis augmente d&apos;autant ; la pose
