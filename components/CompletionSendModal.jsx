@@ -50,12 +50,17 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
     setError('');
     try {
       const idToken = await user.getIdToken();
+      // Le montant qui fait foi est le SOLDE AFFICHÉ (modifiable) : l'acompte
+      // transmis en est déduit, pour que le PDF reflète exactement ce que
+      // l'utilisateur a validé à l'écran, y compris après une saisie manuelle
+      // du solde (avenant, règlement partiel non listé).
+      const effectiveAcompte = Math.max(0, totalTTC - parseAmount(soldeValue));
       const response = await fetch('/api/completion-certificates/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           quoteId: quote.id,
-          acompteRecu: parseAmount(acompte),
+          acompteRecu: effectiveAcompte,
           invoiceReference: invoiceReference.trim(),
         }),
       });
