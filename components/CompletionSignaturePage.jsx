@@ -232,8 +232,17 @@ export default function CompletionSignaturePage({ token }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Les dimensions identifient précisément l'ouvrage concerné sur le
+          // PDF (deux fenêtres du même modèle se distinguent par leur taille).
           reserves: flaggedItems.map((item) => ({
-            description: `${item.ouvrage?.designation || ''}${item.comment ? ' : ' + item.comment : ''}`.trim(),
+            description: [
+              item.ouvrage?.designation || '',
+              item.ouvrage?.dimensions ? `(${item.ouvrage.dimensions})` : '',
+              item.comment ? `: ${item.comment}` : '',
+            ]
+              .filter(Boolean)
+              .join(' ')
+              .trim(),
           })),
           ratings,
           signatureDataUrl,
@@ -465,6 +474,9 @@ export default function CompletionSignaturePage({ token }) {
                 {flaggedItems.map((item, index) => (
                   <li key={index} className="rounded-xl bg-white/60 px-3.5 py-2">
                     <span className="font-bold">{item.ouvrage?.designation}</span>
+                    {item.ouvrage?.dimensions && (
+                      <span className="text-amber-700/80"> ({item.ouvrage.dimensions})</span>
+                    )}
                     {item.comment ? ` : ${item.comment}` : ''}
                   </li>
                 ))}
