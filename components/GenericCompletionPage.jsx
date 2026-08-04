@@ -50,7 +50,15 @@ function StarRow({ label, value, onChange }) {
  */
 export default function GenericCompletionPage() {
   const [step, setStep] = useState('contact');
-  const [contact, setContact] = useState({ nom: '', prenom: '', email: '', adresse: '', telephone: '' });
+  const [contact, setContact] = useState({
+    nom: '',
+    prenom: '',
+    email: '',
+    adresse: '',
+    ville: '',
+    telephone: '',
+    quoteReference: '',
+  });
   const [validationChoice, setValidationChoice] = useState(null);
   const [validationComment, setValidationComment] = useState('');
   const [ratings, setRatings] = useState({ pose: 0, proprete: 0, relation: 0 });
@@ -60,7 +68,11 @@ export default function GenericCompletionPage() {
   const [submitError, setSubmitError] = useState('');
   const [result, setResult] = useState(null);
 
-  const contactComplete = Object.values(contact).every((value) => value.trim().length > 0);
+  // Seuls nom, prénom et adresse bloquent la suite du parcours : e-mail,
+  // téléphone et n° de devis restent utiles mais jamais bloquants.
+  const contactComplete = [contact.nom, contact.prenom, contact.adresse].every(
+    (value) => value.trim().length > 0
+  );
   const allRated = RATING_CRITERIA.every((criterion) => ratings[criterion.key] > 0);
   const hasReserves = validationChoice === 'warn';
 
@@ -135,6 +147,18 @@ export default function GenericCompletionPage() {
                 />
               </div>
               <div>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+                  Numéro de devis
+                </label>
+                <input
+                  type="text"
+                  value={contact.quoteReference}
+                  onChange={(event) => setContact((prev) => ({ ...prev, quoteReference: event.target.value }))}
+                  placeholder="DV-26216-0931"
+                  className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
+                />
+              </div>
+              <div>
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">E-mail</label>
                 <input
                   type="email"
@@ -148,7 +172,7 @@ export default function GenericCompletionPage() {
                 <AddressAutocomplete
                   value={contact.adresse}
                   onChange={(value) => setContact((prev) => ({ ...prev, adresse: value }))}
-                  onSelect={({ label }) => setContact((prev) => ({ ...prev, adresse: label }))}
+                  onSelect={({ label, ville }) => setContact((prev) => ({ ...prev, adresse: label, ville }))}
                   placeholder="Numéro et nom de rue, ville…"
                 />
               </div>
