@@ -17,6 +17,7 @@ export async function POST(request) {
       acompteRecu: body?.acompteRecu,
       invoiceReference: body?.invoiceReference,
       deliveryMode: body?.deliveryMode,
+      deliveryType: body?.deliveryType,
       overrideEmail: body?.overrideEmail,
     });
 
