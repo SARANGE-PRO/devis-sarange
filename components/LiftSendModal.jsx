@@ -16,8 +16,8 @@ const parseAmount = (value) => {
 /**
  * Écran d'envoi du PV de levée des réserves depuis /devis, sur le même modèle
  * que CompletionSendModal : l'app ne sait pas ce qui a réellement été réglé
- * depuis la réception, donc le montant réclamé à la levée (la retenue de 5 %
- * en général) est pré-rempli mais reste ENTIÈREMENT à la main de
+ * depuis la réception, donc le montant réclamé à la levée (l'échéance finale
+ * de 5 % en général) est pré-rempli mais reste ENTIÈREMENT à la main de
  * l'utilisateur — mettre 0 si tout est déjà soldé. Deux modes de remise :
  * e-mail ou lien à copier (avec QR), comme pour le bon.
  */
@@ -145,7 +145,7 @@ export default function LiftSendModal({ quote, onClose, onSent }) {
                 className="w-full rounded-xl border border-slate-300 px-3.5 py-3 text-sm font-bold outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10"
               />
               <span className="mt-1 block text-[11px] text-slate-400">
-                Pré-rempli avec la retenue de garantie appliquée à la réception
+                Pré-rempli avec l&apos;échéance finale de 5 % prévue au devis
                 {Number(workflow.retenueGarantie) > 0
                   ? ` (${currencyFormatter.format(Number(workflow.retenueGarantie))})`
                   : ''}

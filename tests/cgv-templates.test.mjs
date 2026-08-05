@@ -3,6 +3,7 @@ import {
   CGV_VERSION,
   buildCgvSections,
   buildCgvSnapshot,
+  cgvSnapshotEntryHasRetentionClause,
   getLegalNoticeColumns,
   matchCgvSnapshotEntry,
   normalizeCgvSnapshot,
@@ -309,6 +310,64 @@ run('snapshot : figement, normalisation et resolution par variante', () => {
   assert.equal(matchCgvSnapshotEntry(mono).variantId, 'mono');
   // Le snapshot fige le TEXTE : il ne doit plus contenir l'ancienne garantie.
   assert.ok(!JSON.stringify(mono).includes('garantis 10 ans'));
+});
+
+run("article 4.5 : échéance finale en cas de réserves (plus de retenue de garantie)", () => {
+  const sections = build(CLIENT_TYPES.PARTICULIER, CONTRACT_TYPES.AVEC_POSE);
+  const article4 = sections.find((section) => /^Article 4\b/.test(section.title));
+  assert.ok(article4, 'article 4 absent');
+
+  // Nouvelle clause : modalité contractuelle de paiement, jamais présentée
+  // comme une retenue de garantie.
+  assert.ok(article4.text.includes('4.5. Échéance finale en cas de réserves'));
+  assert.ok(article4.text.includes('limité à 95 % du montant total TTC du devis'));
+  assert.ok(article4.text.includes('déduction faite des sommes déjà encaissées'));
+  assert.ok(article4.text.includes('échéance distincte, non exigible à la date de réception'));
+  assert.ok(article4.text.includes("levée écrite de l'ensemble des réserves"));
+  assert.ok(article4.text.includes('validation électronique'));
+  assert.ok(!article4.text.includes('4.5. Retenue de garantie'));
+
+  // La SEULE mention résiduelle autorisée : le disclaimer final imposé, qui
+  // écarte expressément la qualification de retenue de garantie.
+  const disclaimer =
+    'ne constitue pas une retenue de garantie au sens de la loi n° 71-584 du 16 juillet 1971';
+  assert.ok(article4.text.includes(disclaimer));
+  const withoutDisclaimer = flatten(sections).replace(disclaimer, '');
+  assert.ok(!/retenue de garantie/i.test(withoutDisclaimer));
+  assert.ok(!withoutDisclaimer.includes('71-584'));
+  assert.ok(!/somme retenue|consignation|consignataire/i.test(flatten(sections)));
+
+  // Jamais de clause 4.5 en fourniture seule (marchés de travaux uniquement).
+  const sansPose = flatten(build(CLIENT_TYPES.PARTICULIER, CONTRACT_TYPES.FOURNITURE_SEULE));
+  assert.ok(!sansPose.includes('Échéance finale en cas de réserves'));
+});
+
+run('détection de la clause : anciens snapshots figés ET nouvelle rédaction (non-régression)', () => {
+  // Ancien devis signé sous 2026.08.1 : son snapshot est figé à jamais avec
+  // l'ancienne rédaction — le mécanisme des 5 % doit continuer de s'y
+  // appliquer sans réécrire l'historique.
+  const oldFrozenEntry = {
+    sections: [
+      {
+        title: 'Article 4 - Exécution des travaux de pose',
+        text: '4.4. Achèvement... 4.5. Retenue de garantie : conformément à la loi n° 71-584 du 16 juillet 1971, une retenue de garantie égale à 5% du montant total TTC du devis est prélevée sur le solde en cas de réserves.',
+      },
+    ],
+  };
+  assert.equal(cgvSnapshotEntryHasRetentionClause(oldFrozenEntry), true);
+
+  // Nouveau devis : la rédaction actuelle est détectée aussi.
+  const newEntry = { sections: build(CLIENT_TYPES.PARTICULIER, CONTRACT_TYPES.AVEC_POSE) };
+  assert.equal(cgvSnapshotEntryHasRetentionClause(newEntry), true);
+
+  // Devis d'avant la clause, ou fourniture seule : jamais de mécanisme 5 %.
+  const preClauseEntry = {
+    sections: [{ title: 'Article 4 - Exécution des travaux de pose', text: '4.4. Achèvement...' }],
+  };
+  assert.equal(cgvSnapshotEntryHasRetentionClause(preClauseEntry), false);
+  const sansPoseEntry = { sections: build(CLIENT_TYPES.PARTICULIER, CONTRACT_TYPES.FOURNITURE_SEULE) };
+  assert.equal(cgvSnapshotEntryHasRetentionClause(sansPoseEntry), false);
+  assert.equal(cgvSnapshotEntryHasRetentionClause(null), false);
 });
 
 console.log('Tous les tests des CGV adaptatives ont reussi.');

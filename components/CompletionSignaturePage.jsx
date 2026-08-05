@@ -729,13 +729,13 @@ export default function CompletionSignaturePage({ token }) {
               </p>
               {Number(session?.amountDue) > 0 && (
                 <p className="mt-3 rounded-xl bg-white/70 px-3.5 py-2.5 text-sm">
-                  Le solde retenu de{' '}
+                  L&apos;échéance finale de{' '}
                   <strong>
                     {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
                       Number(session.amountDue)
                     )}
                   </strong>{' '}
-                  devient dû à la signature. Les coordonnées de règlement figurent sur le PV.
+                  prévue au devis devient exigible à la signature. Les coordonnées de règlement figurent sur le PV.
                 </p>
               )}
             </div>
