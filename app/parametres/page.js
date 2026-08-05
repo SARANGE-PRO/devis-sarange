@@ -18,6 +18,7 @@ import {
   Tag,
 } from 'lucide-react';
 import AppShell from '@/components/AppShell';
+import QrCode from '@/components/QrCode';
 import {
   getInsuranceStatus,
   normalizeCompanyInsurance,
@@ -228,19 +229,11 @@ function GenericCompletionLinkSection() {
         </div>
 
         {/* QR code du lien fixe : à imprimer/enregistrer pour que le poseur le
-            fasse simplement scanner au client en fin d'intervention. Généré via
-            le service public qr-server.com (l'URL encodée n'a rien de secret) —
-            aucune dépendance npm à ajouter. */}
+            fasse simplement scanner au client en fin d'intervention. Généré
+            localement (lib/qr-code.mjs) : aucun service externe, donc aucun
+            risque de blocage réseau ou de pistage de l'URL. */}
         <div className="flex shrink-0 flex-col items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=8&data=${encodeURIComponent(fullUrl)}`}
-            alt="QR code du bon de fin de chantier"
-            width={140}
-            height={140}
-            className="h-35 w-35 rounded-lg"
-            style={{ width: 140, height: 140 }}
-          />
+          <QrCode value={fullUrl} size={140} className="rounded-lg" />
           <p className="max-w-[150px] text-center text-[11px] leading-tight text-slate-400">
             À faire scanner par le client (clic droit pour enregistrer / imprimer)
           </p>

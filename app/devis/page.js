@@ -6,7 +6,14 @@ import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
-import { deleteQuoteById, saveQuoteDraft, subscribeToUserQuotes } from '@/lib/firebase/quotes';
+import {
+  moveQuoteToTrash,
+  permanentlyDeleteTrashedQuote,
+  restoreQuoteFromTrash,
+  saveQuoteDraft,
+  subscribeToTrashedQuotes,
+  subscribeToUserQuotes,
+} from '@/lib/firebase/quotes';
 import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
@@ -27,6 +34,7 @@ import {
 } from '@/lib/quote-signature';
 import { getCompletionReminderMeta, getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
 import CompletionSendModal from '@/components/CompletionSendModal';
+import LiftSendModal from '@/components/LiftSendModal';
 import {
   BellRing,
   ChevronDown,
@@ -41,6 +49,7 @@ import {
   Pencil,
   PenSquare,
   Plus,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -508,6 +517,22 @@ function QuoteCard({
           )}
         </div>
 
+        {/* Une levée précédente a été refusée par le client : le cycle est
+            reparti à zéro, le bouton « Lever les réserves » est de nouveau
+            disponible ci-dessus. */}
+        {completionWorkflow.status === 'received_with_reserves' && completionWorkflow.lastLiftRefusal && (
+          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+            <span className="font-bold">Levée refusée par le client</span>
+            {completionWorkflow.lastLiftRefusal.at
+              ? ` le ${formatQuoteUpdatedAt(completionWorkflow.lastLiftRefusal.at)}`
+              : ''}
+            {completionWorkflow.lastLiftRefusal.reason
+              ? ` : « ${completionWorkflow.lastLiftRefusal.reason} »`
+              : ''}
+            . Corrigez les points signalés puis renvoyez un PV de levée.
+          </div>
+        )}
+
         {/* Relances du bon de fin de chantier non signé (même cadence que le devis). */}
         {['sent', 'viewed'].includes(completionWorkflow.status) && completionWorkflow.sessionId && (
           <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -635,6 +660,62 @@ function QuoteCard({
   );
 }
 
+/* ─── TrashQuoteCard ─────────────────────────────────────────────────────── */
+function TrashQuoteCard({ quote, isWorking, onRestore, onDeletePermanently }) {
+  const quoteClient =
+    quote.clientName ||
+    getClientDisplayName(quote.payload?.clientData) ||
+    'Client à définir';
+  const daysLeft = Math.max(
+    0,
+    Math.ceil((new Date(quote.expiresAt).getTime() - Date.now()) / 86_400_000)
+  );
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="h-1 w-full bg-slate-300" />
+      <div className="p-4 sm:p-5">
+        <h3 className="truncate text-base font-bold text-slate-900">
+          {quote.title || 'Devis sans titre'}
+        </h3>
+        <p className="mt-1 truncate text-xs text-slate-500">{quoteClient}</p>
+        <p className="mt-2 text-base font-black text-slate-900">
+          {currencyFormatter.format(quote.totalTTC || 0)}
+        </p>
+        <p className="mt-3 text-[11px] text-slate-400">
+          Supprimé le {formatQuoteUpdatedAt(quote.deletedAt)}
+        </p>
+        <p className="mt-0.5 text-[11px] font-semibold text-amber-600">
+          {daysLeft > 0
+            ? `Suppression définitive dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}`
+            : 'Suppression définitive imminente'}
+        </p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onRestore(quote.id)}
+            disabled={isWorking}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isWorking ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+            Restaurer
+          </button>
+          <button
+            type="button"
+            title="Supprimer définitivement"
+            onClick={() => onDeletePermanently(quote.id)}
+            disabled={isWorking}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition-colors hover:bg-red-100 disabled:opacity-50"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SavedQuotesPage() {
   const { user, initializing, isConfigured, signOut } = useFirebaseAuth();
@@ -642,11 +723,14 @@ export default function SavedQuotesPage() {
   const [clients, setClients]         = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [trashedQuotes, setTrashedQuotes] = useState([]);
+  const [showTrash, setShowTrash]     = useState(false);
   const [actionId, setActionId]       = useState(null);
   const [actionKind, setActionKind]   = useState(null);
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
   const [completionQuote, setCompletionQuote] = useState(null);
+  const [liftQuote, setLiftQuote] = useState(null);
   const [searchTerm, setSearchTerm]   = useState('');
   const [statusFilter, setStatusFilter]   = useState('all');
   const [clientFilter, setClientFilter]   = useState('all');
@@ -673,6 +757,18 @@ export default function SavedQuotesPage() {
       userId: user.uid,
       onNext: (c) => { setClients(c); setLoadingClients(false); },
       onError: (e) => { setActionError(e.message || 'Impossible de charger vos clients.'); setLoadingClients(false); },
+    });
+  }, [initializing, isConfigured, user]);
+
+  // S'abonner ici (et pas seulement quand la corbeille est ouverte) déclenche
+  // la purge silencieuse des devis > 30 jours (subscribeToTrashedQuotes) dès
+  // l'ouverture de « Mes devis », et alimente le badge du bouton Corbeille.
+  useEffect(() => {
+    if (!isConfigured || initializing || !user) { setTrashedQuotes([]); return undefined; }
+    return subscribeToTrashedQuotes({
+      userId: user.uid,
+      onNext: (t) => setTrashedQuotes(t),
+      onError: (e) => setActionError(e.message || 'Impossible de charger la corbeille.'),
     });
   }, [initializing, isConfigured, user]);
 
@@ -851,29 +947,16 @@ export default function SavedQuotesPage() {
     }
   };
 
-  const handleSendReservesLift = async (quote) => {
-    if (!user) return;
-
-    setActionId(quote.id);
-    setActionKind('lift');
+  // Ouvre la modale de levée (montant réclamé, référence, e-mail ou lien) :
+  // jamais d'envoi direct, l'utilisateur garde la main sur le montant.
+  const handleSendReservesLift = (quote) => {
     setActionError('');
     setActionMessage('');
-    try {
-      const idToken = await user.getIdToken();
-      const response = await fetch('/api/completion-certificates/lift/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
-        body: JSON.stringify({ quoteId: quote.id }),
-      });
-      const data = await readJsonResponse(response);
-      if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer le PV de levée des réserves.");
-      setActionMessage('Le PV de levée des réserves a été envoyé au client pour signature.');
-    } catch (error) {
-      setActionError(error.message);
-    } finally {
-      setActionId(null);
-      setActionKind(null);
-    }
+    setLiftQuote(quote);
+  };
+
+  const handleLiftSent = () => {
+    setActionMessage('Le PV de levée des réserves a été transmis au client pour signature.');
   };
 
   const handleSendQuote = async (quote) => {
@@ -1275,6 +1358,14 @@ export default function SavedQuotesPage() {
               quote={completionQuote}
               onClose={() => setCompletionQuote(null)}
               onSent={handleCompletionSent}
+            />
+          )}
+
+          {liftQuote && (
+            <LiftSendModal
+              quote={liftQuote}
+              onClose={() => setLiftQuote(null)}
+              onSent={handleLiftSent}
             />
           )}
         </div>

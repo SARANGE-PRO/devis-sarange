@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, Copy, Link2, Loader2, Mail, Package, Receipt, Truck, X } from 'lucide-react';
+import { AlertTriangle, Link2, Loader2, Mail, Package, Receipt, Truck, X } from 'lucide-react';
+import CreatedLinkPanel from './CreatedLinkPanel';
 import { useFirebaseAuth } from './FirebaseProvider';
 import { getQuoteDisplayStatus } from '@/lib/quote-signature';
 import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
@@ -170,39 +171,12 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
         </div>
 
         {createdLink ? (
-          <div className="mt-5">
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-              <p className="font-bold">Lien de signature créé{linkCopied ? ' et copié !' : ''}</p>
-              <p className="mt-1 text-xs">
-                Transmettez-le au client (SMS, WhatsApp...). Il reste valable 60 jours.
-              </p>
-            </div>
-            <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-              <Link2 size={14} className="shrink-0 text-slate-400" />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-500">{createdLink}</span>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={() => copyLink(createdLink)}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition-all ${
-                  linkCopied
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                {linkCopied ? <Check size={15} /> : <Copy size={15} />}
-                {linkCopied ? 'Copié !' : 'Copier le lien'}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
-              >
-                Fermer
-              </button>
-            </div>
-          </div>
+          <CreatedLinkPanel
+            link={createdLink}
+            copied={linkCopied}
+            onCopy={() => copyLink(createdLink)}
+            onClose={onClose}
+          />
         ) : (
           <>
             {!isDigitallySigned && (

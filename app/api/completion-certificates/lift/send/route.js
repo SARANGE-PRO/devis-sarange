@@ -14,6 +14,10 @@ export async function POST(request) {
     const result = await createAndSendReservesLift({
       userId: user.uid,
       quoteId: body?.quoteId,
+      amountDue: body?.amountDue,
+      paymentReference: body?.paymentReference,
+      deliveryMode: body?.deliveryMode,
+      overrideEmail: body?.overrideEmail,
     });
 
     return NextResponse.json(result);

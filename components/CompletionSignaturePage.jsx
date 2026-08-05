@@ -203,6 +203,13 @@ export default function CompletionSignaturePage({ token }) {
   // incomplets une fois que le client a tenté de continuer.
   const [stepError, setStepError] = useState('');
   const [showMissing, setShowMissing] = useState(false);
+  // Refus de la levée (PV uniquement) : le client signale qu'une réserve
+  // n'est pas corrigée au lieu de signer — le cycle repart côté SARANGE.
+  const [refusalOpen, setRefusalOpen] = useState(false);
+  const [refusalComment, setRefusalComment] = useState('');
+  const [refusalSubmitting, setRefusalSubmitting] = useState(false);
+  const [refusalError, setRefusalError] = useState('');
+  const [refusalDone, setRefusalDone] = useState(false);
 
   // Chaque étape repart du haut de page : sur mobile, le bouton Continuer est
   // en bas et l'étape suivante s'ouvrirait sinon au milieu du contenu.
@@ -334,11 +341,42 @@ export default function CompletionSignaturePage({ token }) {
     }
   };
 
+  const handleRefuseLift = async () => {
+    if (!refusalComment.trim()) {
+      setRefusalError("Décrivez en quelques mots ce qui n'est pas corrigé.");
+      return;
+    }
+    setRefusalSubmitting(true);
+    setRefusalError('');
+    try {
+      await fetchJson(`/api/completion-certificates/${encodeURIComponent(token)}/refuse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: refusalComment.trim() }),
+      });
+      setRefusalDone(true);
+    } catch (error) {
+      setRefusalError(error.message);
+    } finally {
+      setRefusalSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50">
         <Loader2 size={30} className="animate-spin text-orange-500" />
       </main>
+    );
+  }
+
+  if (refusalDone) {
+    return (
+      <CenteredNotice
+        icon={<CheckCircle2 className="mx-auto text-emerald-500" size={40} />}
+        title="Votre signalement est transmis."
+        message="SARANGE est prévenu que la correction n'est pas terminée. Notre équipe reviendra vers vous pour planifier une nouvelle intervention, puis un nouveau PV de levée vous sera envoyé."
+      />
     );
   }
 
@@ -429,6 +467,65 @@ export default function CompletionSignaturePage({ token }) {
               Continuer
               <ArrowRight size={18} />
             </button>
+          </div>
+
+          {/* Refus discret : le client ne doit pas signer si une correction
+              n'est pas réellement terminée — il le signale, avec un
+              commentaire, et le cycle de levée repart côté SARANGE. */}
+          <div className="mt-6 text-center">
+            {!refusalOpen ? (
+              <button
+                type="button"
+                onClick={() => setRefusalOpen(true)}
+                className="text-xs font-semibold text-slate-400 underline underline-offset-2 hover:text-slate-600"
+              >
+                Une réserve n&apos;est pas corrigée ?
+              </button>
+            ) : (
+              <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
+                <p className="text-sm font-bold text-slate-800">Signaler une réserve non corrigée</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Ne signez pas le PV : décrivez ce qui reste à corriger, SARANGE planifiera une
+                  nouvelle intervention.
+                </p>
+                <textarea
+                  value={refusalComment}
+                  onChange={(event) => {
+                    setRefusalComment(event.target.value);
+                    if (refusalError) setRefusalError('');
+                  }}
+                  rows={3}
+                  placeholder="Ex. : la rayure sur le vitrage du séjour est toujours visible."
+                  className={`mt-3 w-full rounded-xl border px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 ${
+                    refusalError ? 'border-amber-400 ring-4 ring-amber-500/10' : 'border-slate-300'
+                  }`}
+                />
+                {refusalError && (
+                  <p className="mt-2 text-xs font-semibold text-rose-600">{refusalError}</p>
+                )}
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRefusalOpen(false);
+                      setRefusalError('');
+                    }}
+                    className="rounded-xl px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    disabled={refusalSubmitting}
+                    onClick={handleRefuseLift}
+                    className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {refusalSubmitting && <Loader2 size={13} className="animate-spin" />}
+                    Envoyer le signalement
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -630,6 +727,17 @@ export default function CompletionSignaturePage({ token }) {
                 Les {(session?.reserves || []).length} réserve(s) de la réception ont été corrigées. La signature
                 de ce PV clôt votre dossier.
               </p>
+              {Number(session?.amountDue) > 0 && (
+                <p className="mt-3 rounded-xl bg-white/70 px-3.5 py-2.5 text-sm">
+                  Le solde retenu de{' '}
+                  <strong>
+                    {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(
+                      Number(session.amountDue)
+                    )}
+                  </strong>{' '}
+                  devient dû à la signature. Les coordonnées de règlement figurent sur le PV.
+                </p>
+              )}
             </div>
           ) : hasReserves ? (
             <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-800">
