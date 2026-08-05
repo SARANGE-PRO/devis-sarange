@@ -28,6 +28,12 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // Corbeille des devis : purge automatique après 30 jours, gérée côté
+    // client (lib/firebase/quotes.js) à chaque ouverture de « Mes devis ».
+    match /users/{userId}/quotes_corbeille/{quoteId} {
+      allow read, write: if isOwner(userId);
+    }
+
     match /users/{userId}/clients/{clientId} {
       allow read, write: if isOwner(userId);
     }

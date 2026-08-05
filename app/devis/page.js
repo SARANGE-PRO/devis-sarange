@@ -6,7 +6,14 @@ import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
-import { deleteQuoteById, saveQuoteDraft, subscribeToUserQuotes } from '@/lib/firebase/quotes';
+import {
+  moveQuoteToTrash,
+  permanentlyDeleteTrashedQuote,
+  restoreQuoteFromTrash,
+  saveQuoteDraft,
+  subscribeToTrashedQuotes,
+  subscribeToUserQuotes,
+} from '@/lib/firebase/quotes';
 import { buildQuotePdfDocument, generateQuotePDF } from '@/lib/pdf-generator';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
@@ -42,6 +49,7 @@ import {
   Pencil,
   PenSquare,
   Plus,
+  RotateCcw,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -652,6 +660,66 @@ function QuoteCard({
   );
 }
 
+// Fonction séparée (et non un calcul direct dans le composant) : la règle
+// react-hooks/purity interdit d'appeler Date.now() directement au fil du
+// rendu d'un composant (même convention que getQuoteValidity dans
+// QuoteSignaturePage.jsx).
+const getTrashDaysRemaining = (expiresAt) =>
+  Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86_400_000));
+
+/* ─── TrashQuoteCard ─────────────────────────────────────────────────────── */
+function TrashQuoteCard({ quote, isWorking, onRestore, onDeletePermanently }) {
+  const quoteClient =
+    quote.clientName ||
+    getClientDisplayName(quote.payload?.clientData) ||
+    'Client à définir';
+  const daysLeft = getTrashDaysRemaining(quote.expiresAt);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="h-1 w-full bg-slate-300" />
+      <div className="p-4 sm:p-5">
+        <h3 className="truncate text-base font-bold text-slate-900">
+          {quote.title || 'Devis sans titre'}
+        </h3>
+        <p className="mt-1 truncate text-xs text-slate-500">{quoteClient}</p>
+        <p className="mt-2 text-base font-black text-slate-900">
+          {currencyFormatter.format(quote.totalTTC || 0)}
+        </p>
+        <p className="mt-3 text-[11px] text-slate-400">
+          Supprimé le {formatQuoteUpdatedAt(quote.deletedAt)}
+        </p>
+        <p className="mt-0.5 text-[11px] font-semibold text-amber-600">
+          {daysLeft > 0
+            ? `Suppression définitive dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}`
+            : 'Suppression définitive imminente'}
+        </p>
+
+        <div className="mt-4 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onRestore(quote.id)}
+            disabled={isWorking}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isWorking ? <Loader2 size={15} className="animate-spin" /> : <RotateCcw size={15} />}
+            Restaurer
+          </button>
+          <button
+            type="button"
+            title="Supprimer définitivement"
+            onClick={() => onDeletePermanently(quote.id)}
+            disabled={isWorking}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-500 transition-colors hover:bg-red-100 disabled:opacity-50"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SavedQuotesPage() {
   const { user, initializing, isConfigured, signOut } = useFirebaseAuth();
@@ -659,6 +727,8 @@ export default function SavedQuotesPage() {
   const [clients, setClients]         = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [loadingClients, setLoadingClients] = useState(true);
+  const [trashedQuotes, setTrashedQuotes] = useState([]);
+  const [showTrash, setShowTrash]     = useState(false);
   const [actionId, setActionId]       = useState(null);
   const [actionKind, setActionKind]   = useState(null);
   const [actionError, setActionError] = useState('');
@@ -694,13 +764,50 @@ export default function SavedQuotesPage() {
     });
   }, [initializing, isConfigured, user]);
 
+  // S'abonner ici (et pas seulement quand la corbeille est ouverte) déclenche
+  // la purge silencieuse des devis > 30 jours (subscribeToTrashedQuotes) dès
+  // l'ouverture de « Mes devis », et alimente le badge du bouton Corbeille.
+  useEffect(() => {
+    if (!isConfigured || initializing || !user) { setTrashedQuotes([]); return undefined; }
+    return subscribeToTrashedQuotes({
+      userId: user.uid,
+      onNext: (t) => setTrashedQuotes(t),
+      onError: (e) => setActionError(e.message || 'Impossible de charger la corbeille.'),
+    });
+  }, [initializing, isConfigured, user]);
+
+  // Déplacement réversible vers la corbeille : pas de confirmation bloquante,
+  // le devis reste récupérable 30 jours (voir handlePermanentDelete pour la
+  // seule action réellement irréversible du flux).
   const handleDelete = async (quoteId) => {
     if (!user) return;
-    if (!window.confirm('Supprimer définitivement ce devis cloud ?')) return;
     setActionId(quoteId); setActionError(''); setActionMessage('');
     try {
-      await deleteQuoteById({ userId: user.uid, quoteId });
-      setActionMessage('Devis supprimé.');
+      await moveQuoteToTrash({ userId: user.uid, quoteId });
+      setActionMessage('Devis déplacé vers la corbeille.');
+    } catch (e) {
+      setActionError(e.message || 'Suppression impossible.');
+    } finally { setActionId(null); }
+  };
+
+  const handleRestoreQuote = async (quoteId) => {
+    if (!user) return;
+    setActionId(quoteId); setActionError(''); setActionMessage('');
+    try {
+      await restoreQuoteFromTrash({ userId: user.uid, quoteId });
+      setActionMessage('Devis restauré.');
+    } catch (e) {
+      setActionError(e.message || 'Restauration impossible.');
+    } finally { setActionId(null); }
+  };
+
+  const handlePermanentDelete = async (quoteId) => {
+    if (!user) return;
+    if (!window.confirm('Supprimer définitivement ce devis ? Cette action est irréversible.')) return;
+    setActionId(quoteId); setActionError(''); setActionMessage('');
+    try {
+      await permanentlyDeleteTrashedQuote({ userId: user.uid, quoteId });
+      setActionMessage('Devis supprimé définitivement.');
     } catch (e) {
       setActionError(e.message || 'Suppression impossible.');
     } finally { setActionId(null); }
@@ -982,14 +1089,33 @@ export default function SavedQuotesPage() {
       title="Mes devis"
       subtitle="Retrouvez, filtrez et reprenez vos devis depuis votre espace cloud."
       actions={
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm"
-        >
-          <Plus size={13} />
-          <span className="hidden sm:inline">Nouveau devis</span>
-          <span className="sm:hidden">Nouveau</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          {isConfigured && user && trashedQuotes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowTrash((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all sm:px-4 sm:py-2 sm:text-sm ${
+                showTrash
+                  ? 'border-orange-300 bg-orange-50 text-orange-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Trash2 size={13} />
+              <span className="hidden sm:inline">Corbeille</span>
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[10px] font-black text-slate-600">
+                {trashedQuotes.length}
+              </span>
+            </button>
+          )}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 transition-all hover:bg-slate-50 sm:px-4 sm:py-2 sm:text-sm"
+          >
+            <Plus size={13} />
+            <span className="hidden sm:inline">Nouveau devis</span>
+            <span className="sm:hidden">Nouveau</span>
+          </Link>
+        </div>
       }
     >
       {/* ── Firebase non configuré ─────────────────────────────────────── */}
@@ -1053,6 +1179,53 @@ export default function SavedQuotesPage() {
             </div>
           )}
 
+          {/* ── Corbeille ─────────────────────────────────────────────── */}
+          {showTrash && (
+            <>
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm sm:px-5">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-bold text-slate-900">Corbeille</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Les devis supprimés restent ici 30 jours puis sont effacés automatiquement.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowTrash(false)}
+                  className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 sm:text-sm"
+                >
+                  Retour à mes devis
+                </button>
+              </div>
+
+              {trashedQuotes.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <Trash2 size={24} />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900">La corbeille est vide</h3>
+                  <p className="mt-2 text-sm text-slate-500">
+                    Les devis supprimés depuis « Mes devis » apparaîtront ici.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {trashedQuotes.map((quote) => (
+                    <TrashQuoteCard
+                      key={quote.id}
+                      quote={quote}
+                      isWorking={actionId === quote.id}
+                      onRestore={handleRestoreQuote}
+                      onDeletePermanently={handlePermanentDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {!showTrash && (
+            <>
           {/* ── Barre de recherche + filtres ───────────────────────────── */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             {/* Recherche + bouton Filtres */}
@@ -1273,6 +1446,8 @@ export default function SavedQuotesPage() {
                 />
               ))}
             </div>
+          )}
+            </>
           )}
 
           {completionQuote && (
