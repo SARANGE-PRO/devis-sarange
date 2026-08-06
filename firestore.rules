@@ -2,10 +2,12 @@ rules_version = '2';
 
 // ============================================================================
 // FICHIER DE RÈGLES UNIQUE du projet Firebase `sarange-pro`.
-// Couvre les trois apps qui partagent ce projet :
-//   - devis-sarange   (users/{uid}/quotes|clients|catalogue|compta|comptaExports)
-//   - sarange-métrage (users/{uid}/metrageDossiers)
-//   - sarange-suivi   (commandes, commandes_corbeille)
+// Couvre les apps qui partagent ce projet :
+//   - devis-sarange    (users/{uid}/quotes|clients|catalogue|compta|comptaExports)
+//   - sarange-métrage  (users/{uid}/metrageDossiers)
+//   - sarange-suivi    (commandes, commandes_corbeille)
+//   - sarange-prodoutil (Chantiers, Chantiers/{id}/Unites)
+//   - sarange-finances (fin_*)
 // Ne déployer les règles QUE depuis ce dépôt :
 //   firebase deploy --only firestore:rules
 // ============================================================================
@@ -112,5 +114,29 @@ service cloud.firestore {
     match /{path=**}/Unites/{uniteId} {
       allow read: if request.auth != null;
     }
+
+    // ---- sarange-finances : données financières partagées par l'équipe ----
+    // Lecture temps réel pour les comptes @sarange.fr ; TOUTES les écritures
+    // passent par les routes API de sarange-finances (Admin SDK, qui ignore
+    // les règles) afin que les invariants financiers soient validés côté
+    // serveur. Aucune écriture cliente n'est légitime — y compris depuis les
+    // tablettes atelier en connexion anonyme.
+    //
+    // fin_events est alimenté en CRÉATION SEULE par devis-sarange (Admin SDK,
+    // lib/financial-events.mjs) : idempotent par identifiant déterministe.
+    match /fin_events/{eventId}            { allow read: if isSarange(); allow write: if false; }
+    match /fin_invoiceTasks/{taskId}       { allow read: if isSarange(); allow write: if false; }
+    match /fin_invoices/{invoiceId}        { allow read: if isSarange(); allow write: if false; }
+    match /fin_clients/{clientId}          { allow read: if isSarange(); allow write: if false; }
+    match /fin_payments/{paymentId}        { allow read: if isSarange(); allow write: if false; }
+    match /fin_allocations/{allocationId}  { allow read: if isSarange(); allow write: if false; }
+    match /fin_bankImports/{batchId}       { allow read: if isSarange(); allow write: if false; }
+    match /fin_bankTransactions/{txId}     { allow read: if isSarange(); allow write: if false; }
+    match /fin_journal/{entryId}           { allow read: if isSarange(); allow write: if false; }
+    match /fin_reminders/{reminderId}      { allow read: if isSarange(); allow write: if false; }
+    match /fin_promises/{promiseId}        { allow read: if isSarange(); allow write: if false; }
+    match /fin_formalNotices/{noticeId}    { allow read: if isSarange(); allow write: if false; }
+    match /fin_audit/{entryId}             { allow read: if isSarange(); allow write: if false; }
+    match /fin_settings/{documentId}       { allow read: if isSarange(); allow write: if false; }
   }
 }
