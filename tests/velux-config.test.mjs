@@ -68,7 +68,7 @@ run("genere la designation exacte de l'exemple du cahier des charges", () => {
 
   assert.equal(
     designation,
-    "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles) – Uw = 1.3 W/m²K – Sw = 0.22"
+    "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles)"
   );
 });
 
@@ -82,7 +82,7 @@ run('designation sans equipement : pas de suffixe « avec »', () => {
     accessory: 'aucun',
   });
 
-  assert.equal(designation, 'Velux GPL UK08 (134x140) - Standard + Raccord EDS (Ardoises) – Uw = 1.4 W/m²K – Sw = 0.39');
+  assert.equal(designation, 'Velux GPL UK08 (134x140) - Standard + Raccord EDS (Ardoises)');
 });
 
 run('designation incomplete (dont raccord manquant) -> null', () => {
@@ -131,7 +131,7 @@ run("createVeluxConfiguration retourne l'objet complet (sans aucun prix)", () =>
     accessory: 'store-occultation',
     prefix: 'GGU',
     designation:
-      "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles) – Uw = 1.3 W/m²K – Sw = 0.22",
+      "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles)",
     thermalUw: 1.3,
     thermalSw: 0.22,
     imageSrc: '/fenetre-de-toit-velux-rotation-v2.webp',
@@ -179,7 +179,10 @@ run('les coefficients du descriptif viennent de la table de reference', () => {
   }
 });
 
-run('chaque designation Velux affiche Uw et Sw', () => {
+run('la reference commerciale reste pure : Uw/Sw n’y figurent pas', () => {
+  // Uw/Sw vont en DERNIÈRE LIGNE de la description (handleVeluxValidate dans
+  // components/ProductSelector.jsx), pas dans la référence : c'est la place
+  // qu'ils occupent pour les menuiseries catalogue.
   for (const range of VELUX_RANGES) {
     const designation = buildVeluxDesignation({
       opening: 'rotation',
@@ -188,12 +191,18 @@ run('chaque designation Velux affiche Uw et Sw', () => {
       range: range.id,
       flashing: 'edw',
     });
+    assert.ok(!designation.includes('Uw ='), `Uw ne doit pas polluer la référence (${range.id})`);
+    assert.ok(!designation.includes('Sw ='), `Sw ne doit pas polluer la référence (${range.id})`);
+  }
+});
+
+run('la derniere ligne de description porte Uw et Sw', () => {
+  for (const range of VELUX_RANGES) {
     const thermal = getVeluxThermal(range.id);
-    assert.ok(
-      designation.includes(`Uw = ${thermal.uw} W/m²K`),
-      `Uw absent du descriptif de la gamme ${range.id}`
-    );
-    assert.ok(designation.includes(`Sw = ${thermal.sw}`), `Sw absent (${range.id})`);
+    const ligne = formatVeluxThermal(range.id);
+    assert.equal(ligne, `Uw = ${thermal.uw} W/m²K – Sw = ${thermal.sw}`);
+    // Même forme exacte que lib/designation-generator.js pour les fenêtres.
+    assert.match(ligne, /^Uw = [\d.]+ W\/m²K – Sw = [\d.]+$/);
   }
 });
 

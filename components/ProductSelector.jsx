@@ -73,6 +73,7 @@ import CustomProductIcon from '@/components/icons/CustomProductIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
 import { VELUX_GLAZING_THERMAL } from '@/lib/vat-window-eligibility.mjs';
+import { formatVeluxThermal } from '@/lib/velux-config';
 import {
   SPARE_PART_PRICING_MODES,
   calculateTablierPrice,
@@ -1429,6 +1430,14 @@ export default function ProductSelector({
     ];
     if (configuration.accessory !== 'aucun') {
       detailLines.push(`Équipement : ${labels.accessory}`);
+    }
+
+    // Performance thermique en DERNIÈRE ligne, même forme et même place que
+    // pour les menuiseries catalogue (lib/designation-generator.js) : c'est la
+    // mention qui justifie le taux de 5,5 % sur le devis et la facture.
+    const veluxThermalLine = formatVeluxThermal(configuration.range);
+    if (veluxThermalLine) {
+      detailLines.push(veluxThermalLine);
     }
 
     setSelectedProduct('custom-product');
