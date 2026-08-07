@@ -8,8 +8,16 @@ import {
   VELUX_SIZES,
   buildVeluxDesignation,
   createVeluxConfiguration,
+  formatVeluxThermal,
   getVeluxPrefix,
+  getVeluxThermal,
 } from '../lib/velux-config.js';
+import {
+  ROOF_WINDOW_RULE,
+  VELUX_GLAZING_THERMAL,
+  evaluateReducedVatEligibility,
+  VAT_ELIGIBILITY_STATUS,
+} from '../lib/vat-window-eligibility.mjs';
 
 const run = (name, fn) => {
   try {
@@ -60,7 +68,7 @@ run("genere la designation exacte de l'exemple du cahier des charges", () => {
 
   assert.equal(
     designation,
-    "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles)"
+    "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles) – Uw = 1.3 W/m²K – Sw = 0.22"
   );
 });
 
@@ -74,7 +82,7 @@ run('designation sans equipement : pas de suffixe « avec »', () => {
     accessory: 'aucun',
   });
 
-  assert.equal(designation, 'Velux GPL UK08 (134x140) - Standard + Raccord EDS (Ardoises)');
+  assert.equal(designation, 'Velux GPL UK08 (134x140) - Standard + Raccord EDS (Ardoises) – Uw = 1.4 W/m²K – Sw = 0.39');
 });
 
 run('designation incomplete (dont raccord manquant) -> null', () => {
@@ -123,7 +131,9 @@ run("createVeluxConfiguration retourne l'objet complet (sans aucun prix)", () =>
     accessory: 'store-occultation',
     prefix: 'GGU',
     designation:
-      "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles)",
+      "Velux GGU MK04 (78x98) - Tout Confort avec Store d'occultation intérieur + Raccord EDW (Tuiles) – Uw = 1.3 W/m²K – Sw = 0.22",
+    thermalUw: 1.3,
+    thermalSw: 0.22,
     imageSrc: '/fenetre-de-toit-velux-rotation-v2.webp',
     labels: {
       opening: 'Rotation',
@@ -150,6 +160,80 @@ run("createVeluxConfiguration retourne l'objet complet (sans aucun prix)", () =>
     }),
     null
   );
+});
+
+/* ─── Performance thermique et TVA 5,5 % ────────────────────────────────────
+ * Le descriptif d'une fenêtre de toit doit porter Uw et Sw : c'est la mention
+ * qui justifie le taux réduit sur le devis et la facture. Ces tests verrouillent
+ * deux choses : que le libellé les affiche, et qu'ils proviennent de la MÊME
+ * table que le contrôle d'éligibilité — deux sources qui divergeraient
+ * feraient afficher une valeur et en contrôler une autre.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+run('les coefficients du descriptif viennent de la table de reference', () => {
+  for (const range of VELUX_RANGES) {
+    const thermal = getVeluxThermal(range.id);
+    assert.ok(thermal, `gamme ${range.id} absente de VELUX_GLAZING_THERMAL`);
+    assert.equal(thermal, VELUX_GLAZING_THERMAL[range.id], 'source unique attendue');
+    assert.equal(formatVeluxThermal(range.id), `Uw = ${thermal.uw} W/m²K – Sw = ${thermal.sw}`);
+  }
+});
+
+run('chaque designation Velux affiche Uw et Sw', () => {
+  for (const range of VELUX_RANGES) {
+    const designation = buildVeluxDesignation({
+      opening: 'rotation',
+      finish: 'bois-vernis',
+      sizeCode: 'MK04',
+      range: range.id,
+      flashing: 'edw',
+    });
+    const thermal = getVeluxThermal(range.id);
+    assert.ok(
+      designation.includes(`Uw = ${thermal.uw} W/m²K`),
+      `Uw absent du descriptif de la gamme ${range.id}`
+    );
+    assert.ok(designation.includes(`Sw = ${thermal.sw}`), `Sw absent (${range.id})`);
+  }
+});
+
+run('la performance ne depend pas de la taille (Velux publie par gamme)', () => {
+  const forSize = (sizeCode) =>
+    createVeluxConfiguration({
+      opening: 'rotation',
+      finish: 'bois-vernis',
+      sizeCode,
+      range: 'confort',
+      flashing: 'edw',
+    });
+  const petite = forSize('CK02');
+  const grande = forSize('UK08');
+  assert.equal(petite.thermalUw, grande.thermalUw);
+  assert.equal(petite.thermalSw, grande.thermalSw);
+});
+
+run('le taux de 5,5 % suit reellement les coefficients annonces', () => {
+  const evaluate = (rangeId) =>
+    evaluateReducedVatEligibility({ veluxRange: rangeId, tvaRate: 5.5 });
+
+  // Seuil fenêtre de toit : Uw ≤ 1,5 ET Sw ≤ 0,36 (plafond, pas plancher).
+  for (const range of VELUX_RANGES) {
+    const thermal = getVeluxThermal(range.id);
+    const attendu =
+      thermal.uw <= ROOF_WINDOW_RULE.maxUw && thermal.sw <= ROOF_WINDOW_RULE.maxSw;
+    const evaluation = evaluate(range.id);
+    assert.equal(
+      evaluation.status === VAT_ELIGIBILITY_STATUS.ELIGIBLE,
+      attendu,
+      `gamme ${range.id} : eligibilite incoherente avec Uw=${thermal.uw} / Sw=${thermal.sw}`
+    );
+  }
+
+  // Concrètement, avec les valeurs du tarif Velux en vigueur :
+  assert.equal(evaluate('confort').status, VAT_ELIGIBILITY_STATUS.ELIGIBLE);
+  assert.equal(evaluate('tout-confort').status, VAT_ELIGIBILITY_STATUS.ELIGIBLE);
+  // Standard : Sw = 0,39 dépasse le plafond de 0,36 → pas de 5,5 %.
+  assert.notEqual(evaluate('standard').status, VAT_ELIGIBILITY_STATUS.ELIGIBLE);
 });
 
 console.log('Tous les tests du configurateur Velux ont reussi.');
