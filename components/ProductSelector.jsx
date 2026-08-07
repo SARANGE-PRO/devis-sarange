@@ -165,7 +165,7 @@ const buildFillingSelectionMeta = ({
   const parsedHeight = parsePositiveInt(heightMm);
   const glassAreas =
     parsedWidth && parsedHeight
-      ? calculateGlassAreas(parsedWidth, parsedHeight, frameSystem.frameWidthMm)
+      ? calculateGlassAreas(parsedWidth, parsedHeight, frameSystem, product.sheet)
       : null;
 
   const buildPricing = (nextGlazingId) =>
