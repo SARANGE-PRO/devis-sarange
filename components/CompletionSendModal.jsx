@@ -4,8 +4,9 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Link2, Loader2, Mail, Package, Receipt, Truck, X } from 'lucide-react';
 import CreatedLinkPanel from './CreatedLinkPanel';
 import { useFirebaseAuth } from './FirebaseProvider';
-import { getQuoteDisplayStatus } from '@/lib/quote-signature';
+import { getQuoteDisplayStatus, getQuoteSignatureWorkflow } from '@/lib/quote-signature';
 import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
+import { computeQuoteTotals } from '@/lib/quote-totals.mjs';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
@@ -42,29 +43,45 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
 
   const [deliveryType, setDeliveryType] = useState('');
 
-  const totalTTC = Number(quote?.totalTTC) || 0;
-  const isDigitallySigned = getQuoteDisplayStatus(quote) === 'signed';
-  const computedSolde = Math.max(0, totalTTC - parseAmount(acompte));
-  const soldeValue = soldeOverride !== null ? soldeOverride : computedSolde.toFixed(2).replace('.', ',');
-
-  // Détection AUTOMATIQUE pose / fourniture seule (même source de vérité que
-  // la TVA et les CGV) sur la variante retenue à la signature. Le mode de
-  // remise (enlèvement/livraison) reste un CHOIX MANUEL, jamais deviné —
-  // le serveur refait la même détection et exige le choix.
-  const withPose = useMemo(() => {
+  // Détection AUTOMATIQUE pose / fourniture seule + montant TTC, sur la
+  // VARIANTE RETENUE À LA SIGNATURE (jamais la variante "active" par défaut,
+  // qui peut avoir changé depuis — d'où le bug historique : `quote.totalTTC`
+  // reflète l'active, pas forcément la signée). Priorité au montant figé par
+  // le workflow de signature (`selectedVariantTotalTTC`) ; à défaut (anciens
+  // devis signés avant l'ajout de ce champ), on le recalcule depuis la
+  // variante elle-même avec la même fonction que le reste de l'app
+  // (computeQuoteTotals), donc fiable même sans ce champ. Le mode de remise
+  // (enlèvement/livraison) reste un CHOIX MANUEL, jamais deviné — le serveur
+  // refait la même détection et exige le choix.
+  const { totalTTC, withPose } = useMemo(() => {
+    const workflow = getQuoteSignatureWorkflow(quote);
     const payload = quote?.payload || {};
     let cartItems = Array.isArray(payload.cartItems) ? payload.cartItems : [];
     let settings = payload.quoteSettings || {};
-    if (payload.variantsMode === true && Array.isArray(payload.variants)) {
-      const wantedVariantId =
-        quote?.signatureWorkflow?.selectedVariantId || payload.activeVariantId || '';
+    let resolvedTotalTTC = Number(quote?.totalTTC) || 0;
+
+    if (payload.variantsMode === true && Array.isArray(payload.variants) && payload.variants.length) {
+      const wantedVariantId = workflow.selectedVariantId || payload.activeVariantId || '';
       const variant =
         payload.variants.find((entry) => entry?.id === wantedVariantId) || payload.variants[0] || {};
       cartItems = Array.isArray(variant.cartItems) ? variant.cartItems : [];
       settings = variant.quoteSettings || {};
+      resolvedTotalTTC =
+        workflow.selectedVariantTotalTTC != null
+          ? Number(workflow.selectedVariantTotalTTC)
+          : computeQuoteTotals(cartItems, variant.tvaRate).totalTTC;
     }
-    return resolveContractType(cartItems, settings?.contractTypeOverride) === CONTRACT_TYPES.AVEC_POSE;
+
+    return {
+      totalTTC: resolvedTotalTTC,
+      withPose:
+        resolveContractType(cartItems, settings?.contractTypeOverride) === CONTRACT_TYPES.AVEC_POSE,
+    };
   }, [quote]);
+
+  const isDigitallySigned = getQuoteDisplayStatus(quote) === 'signed';
+  const computedSolde = Math.max(0, totalTTC - parseAmount(acompte));
+  const soldeValue = soldeOverride !== null ? soldeOverride : computedSolde.toFixed(2).replace('.', ',');
 
   const handleAcompteChange = (value) => {
     setAcompte(value);
