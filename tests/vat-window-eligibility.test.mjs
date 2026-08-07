@@ -14,7 +14,13 @@ import {
   isRoofWindowUwSwCompliant,
   isWindowUwSwCompliant,
   resolveEffectiveTvaRate,
+  setVatThresholdCheckResolver,
 } from '../lib/vat-window-eligibility.mjs';
+
+// Le contrôle des seuils est DÉSACTIVÉ par défaut (réglage /parametres, cf.
+// lib/vat-check-settings.js). Les scénarios ci-dessous décrivent le
+// comportement quand il est actif : on l'active donc explicitement.
+setVatThresholdCheckResolver(() => true);
 
 const run = (name, fn) => {
   try {
@@ -251,4 +257,45 @@ run('5,5% demandé sur un Velux Confort reste à 5,5%, sur un Velux Standard est
   assert.equal(confortResolved.wasCorrected, false);
   assert.equal(standardResolved.rate, FALLBACK_VAT_RATE);
   assert.equal(standardResolved.wasCorrected, true);
+});
+
+/* ─── Interrupteur du contrôle (réglage /parametres) ─────────────────────────
+ * Désactivé par défaut : le taux saisi doit toujours être respecté, sinon un
+ * devis serait requalifié — et son prix TTC modifié — sans que l'utilisateur
+ * le voie, sur des valeurs thermiques encore déclaratives.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+run('controle desactive : aucune correction, meme sur une ligne non conforme', () => {
+  setVatThresholdCheckResolver(() => false);
+
+  const veluxStandard = resolveEffectiveTvaRate({ veluxRange: 'standard' }, REDUCED_VAT_RATE);
+  assert.equal(veluxStandard.rate, REDUCED_VAT_RATE, 'le taux saisi doit etre respecte');
+  assert.equal(veluxStandard.wasCorrected, false);
+  assert.equal(veluxStandard.checkDisabled, true);
+  // L'évaluation reste fournie : on informe sans jamais décider à sa place.
+  assert.ok(veluxStandard.evaluation);
+  assert.notEqual(veluxStandard.evaluation.status, VAT_ELIGIBILITY_STATUS.ELIGIBLE);
+
+  const porteSansUd = resolveEffectiveTvaRate({ productId: 'porte-entree' }, REDUCED_VAT_RATE);
+  assert.equal(porteSansUd.rate, REDUCED_VAT_RATE);
+  assert.equal(porteSansUd.wasCorrected, false);
+
+  // Un taux autre que 5,5 % n'est de toute façon jamais touché.
+  const dixPourcent = resolveEffectiveTvaRate({ veluxRange: 'standard' }, FALLBACK_VAT_RATE);
+  assert.equal(dixPourcent.rate, FALLBACK_VAT_RATE);
+  assert.equal(dixPourcent.wasCorrected, false);
+});
+
+run('absence de reglage = controle inactif (defaut prudent)', () => {
+  setVatThresholdCheckResolver(null);
+  const resolved = resolveEffectiveTvaRate({ veluxRange: 'standard' }, REDUCED_VAT_RATE);
+  assert.equal(resolved.rate, REDUCED_VAT_RATE);
+  assert.equal(resolved.wasCorrected, false);
+});
+
+run('controle reactive : la correction reprend', () => {
+  setVatThresholdCheckResolver(() => true);
+  const resolved = resolveEffectiveTvaRate({ veluxRange: 'standard' }, REDUCED_VAT_RATE);
+  assert.equal(resolved.rate, FALLBACK_VAT_RATE);
+  assert.equal(resolved.wasCorrected, true);
 });

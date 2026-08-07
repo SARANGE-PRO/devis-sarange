@@ -15,6 +15,9 @@ import { hydrateCatalogueCoefficients } from '@/lib/catalogue-coefficients';
 import { hydrateCataloguePricing } from '@/lib/catalogue-pricing';
 import { hydrateCustomGlazingOptions } from '@/lib/glazing';
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client';
+// Importé pour son effet de bord : branche le réglage « contrôle des seuils
+// TVA 5,5 % » (/parametres) sur le moteur de TVA, sur toutes les pages.
+import '@/lib/vat-check-settings';
 
 const FirebaseContext = createContext({
   user: null,
