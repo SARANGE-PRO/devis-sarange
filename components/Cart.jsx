@@ -19,6 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowRight,
+  Cog,
   Copy,
   FileText,
   GripVertical,
@@ -37,6 +38,7 @@ import {
   getItemPricingSummary,
   getItemThermalMetrics,
   getPoseLabel,
+  SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
@@ -238,6 +240,10 @@ function SortableCartItem({
         ) : item.productId === 'custom-product' ? (
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
             <Package size={28} className="text-slate-300" />
+          </div>
+        ) : SPARE_PART_PRODUCT_IDS.has(item.productId) ? (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-100 bg-slate-50">
+            <Cog size={28} className="text-slate-300" />
           </div>
         ) : (
           <MenuiserieVisual

@@ -13,6 +13,7 @@ import {
   Palette,
   Grid3X3,
   Wrench,
+  Cog,
   Trash2,
   PackagePlus,
   ImagePlus,
@@ -72,6 +73,14 @@ import CustomProductIcon from '@/components/icons/CustomProductIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
 import { VELUX_GLAZING_THERMAL } from '@/lib/vat-window-eligibility.mjs';
+import {
+  SPARE_PART_PRICING_MODES,
+  calculateTablierPrice,
+  getSparePart,
+  getSparePartSalePrice,
+  getSparePartsByCategory,
+  getTablierLameOptions,
+} from '@/lib/spare-parts';
 
 const ICONS = {
   LayoutGrid,
@@ -81,6 +90,7 @@ const ICONS = {
   Blinds,
   Recycle: WasteRecycleIcon,
   Wrench,
+  Cog,
   PackagePlus,
 };
 
@@ -242,6 +252,38 @@ const getSoubassementPricingDetails = (pricing) => {
   }
 
   return details.join(' | ');
+};
+
+const formatFrenchDecimal = (value, decimals = 2) =>
+  Number(value || 0)
+    .toFixed(decimals)
+    .replace('.', ',');
+
+const formatSparePartQuantityLabel = (part, quantity) =>
+  part?.pricingMode === SPARE_PART_PRICING_MODES.LENGTH
+    ? `${formatFrenchDecimal(quantity)} ml`
+    : `${quantity} ${(part?.unitLabel || 'unité').toLowerCase()}`;
+
+const buildSparePartDescription = (part, quantity) => {
+  if (!part) return '';
+  const lines = [`Pièce détachée — ${part.label}`];
+  if (part.color) lines.push(`Coloris : ${part.color}`);
+  lines.push(`${part.supplier} — Réf. ${part.reference}`);
+  lines.push(
+    part.pricingMode === SPARE_PART_PRICING_MODES.LENGTH
+      ? `Longueur : ${formatFrenchDecimal(quantity)} ml`
+      : `Quantité : ${quantity} ${(part.unitLabel || '').toLowerCase()}`
+  );
+  return lines.join('\n');
+};
+
+const buildTablierDescription = (lame, widthMm, heightMm) => {
+  if (!lame) return '';
+  return [
+    `Tablier de volet roulant — ${lame.reference}${lame.color ? ` ${lame.color}` : ''}`,
+    `Dimensions : ${widthMm} × ${heightMm} mm`,
+    `${lame.supplier} — lame ${lame.profileHeightMm} mm`,
+  ].join('\n');
 };
 
 const getSashCount = (sheetName = '') => {
@@ -716,6 +758,16 @@ export default function ProductSelector({
   // au prix saisi. Le défaut vient de `serviceBillingDefault` du produit.
   const [servicePriceMode, setServicePriceMode] = useState('free');
   const [servicePrice, setServicePrice] = useState('');
+  // Pièces détachées : référence choisie dans la sous-catégorie du produit
+  // (cf. lib/spare-parts.js) + quantité (unités, ou longueur en ml selon la
+  // référence). Tablier de volet roulant : formulaire dédié au m² (profil +
+  // coloris de lame, largeur/hauteur, nombre de tabliers identiques).
+  const [sparePartId, setSparePartId] = useState('');
+  const [sparePartQuantity, setSparePartQuantity] = useState('1');
+  const [tablierLameId, setTablierLameId] = useState('');
+  const [tablierWidthMm, setTablierWidthMm] = useState('');
+  const [tablierHeightMm, setTablierHeightMm] = useState('');
+  const [tablierQuantity, setTablierQuantity] = useState('1');
   // Modèle « ossature » v2 : source de vérité du nouveau constructeur.
   const [compositeFrame, setCompositeFrame] = useState(() => createDefaultFrame(1080, 2150, 0, 0));
   // Ouverture sélectionnée dans l'éditeur composé : pilote le formulaire de config réutilisé.
@@ -759,6 +811,27 @@ export default function ProductSelector({
   const defaultProductVariant = isFixedPriceProduct
     ? getDefaultProductVariant(product)
     : null;
+  const isSparePartProduct = product?.pricingMode === 'spare-part';
+  const isTablierProduct = product?.pricingMode === 'spare-part-tablier';
+  const sparePartOptions = isSparePartProduct
+    ? getSparePartsByCategory(product.sparePartCategoryId)
+    : [];
+  const selectedSparePart = isSparePartProduct ? getSparePart(sparePartId) : null;
+  const parsedSparePartQuantity = Math.max(
+    0,
+    Number.parseFloat(String(sparePartQuantity).replace(',', '.')) || 0
+  );
+  const tablierLameOptions = isTablierProduct ? getTablierLameOptions() : [];
+  const selectedTablierLame = isTablierProduct ? getSparePart(tablierLameId) : null;
+  const parsedTablierQuantity = Math.max(0, Number.parseInt(tablierQuantity, 10) || 0);
+  const tablierPricing =
+    isTablierProduct && selectedTablierLame
+      ? calculateTablierPrice({
+          widthMm: parsePositiveInt(tablierWidthMm),
+          heightMm: parsePositiveInt(tablierHeightMm),
+          lameId: selectedTablierLame.id,
+        })
+      : null;
   const netAdjustmentValue =
     netAdjustmentMode === 'discount' ? netDiscountWanted : netMarginWanted;
   const netAdjustmentLabel =
@@ -911,7 +984,9 @@ export default function ProductSelector({
     !isRemiseCommerciale &&
     !isCatalogService &&
     !isTextOnlyProduct &&
-    !isFixedPriceProduct;
+    !isFixedPriceProduct &&
+    !isSparePartProduct &&
+    !isTablierProduct;
   const isSimpleOutOfGrid =
     isDimensionedCatalogProduct &&
     Boolean(simpleConfig.widthMm && simpleConfig.heightMm) &&
@@ -992,13 +1067,17 @@ export default function ProductSelector({
       !isRemiseCommerciale &&
       !isCatalogService &&
       !isTextOnlyProduct &&
+      !isSparePartProduct &&
+      !isTablierProduct &&
       !simplePriceData &&
       !canForceOutOfGrid) ||
     (isCustomProduct &&
       (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
     (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
     (isCatalogService && !isServicePriceValid) ||
-    (isTextOnlyProduct && !textOnlyContent.trim());
+    (isTextOnlyProduct && !textOnlyContent.trim()) ||
+    (isSparePartProduct && !(selectedSparePart && parsedSparePartQuantity > 0)) ||
+    (isTablierProduct && !(tablierPricing && parsedTablierQuantity > 0));
 
   const addButtonLabel = editingItem
     ? isTextOnlyProduct
@@ -1102,6 +1181,37 @@ export default function ProductSelector({
       return createCatalogServiceCartItem(product?.id, {
         priceHt: effectiveServicePriceHt,
       });
+    }
+
+    if (isSparePartProduct) {
+      if (!selectedSparePart || !(parsedSparePartQuantity > 0)) return null;
+      const unitPrice = getSparePartSalePrice(selectedSparePart.id);
+      return {
+        productId: product.id,
+        productLabel: `${product.label} — ${selectedSparePart.label}${
+          selectedSparePart.color ? ` (${selectedSparePart.color})` : ''
+        }`,
+        sheetName: product.sheet,
+        widthMm: 0,
+        heightMm: 0,
+        quantity: parsedSparePartQuantity,
+        unitPrice,
+      };
+    }
+
+    if (isTablierProduct) {
+      if (!selectedTablierLame || !tablierPricing || !(parsedTablierQuantity > 0)) return null;
+      return {
+        productId: product.id,
+        productLabel: `${product.label} — ${selectedTablierLame.reference}${
+          selectedTablierLame.color ? ` ${selectedTablierLame.color}` : ''
+        }`,
+        sheetName: product.sheet,
+        widthMm: parsePositiveInt(tablierWidthMm),
+        heightMm: parsePositiveInt(tablierHeightMm),
+        quantity: parsedTablierQuantity,
+        unitPrice: tablierPricing.unitPrice,
+      };
     }
 
     if (isCompositeMode) {
@@ -1257,6 +1367,12 @@ export default function ProductSelector({
     setTextOnlyContent('');
     setServicePriceMode('free');
     setServicePrice('');
+    setSparePartId('');
+    setSparePartQuantity('1');
+    setTablierLameId('');
+    setTablierWidthMm('');
+    setTablierHeightMm('');
+    setTablierQuantity('1');
   };
 
   const resetCompositeSelection = () => {
@@ -1457,6 +1573,22 @@ export default function ProductSelector({
       return;
     }
 
+    if (getProductById(editingItem.productId)?.pricingMode === 'spare-part') {
+      setSparePartId(editingItem.sparePartId || '');
+      setSparePartQuantity(
+        editingItem.quantity != null ? String(editingItem.quantity) : '1'
+      );
+      return;
+    }
+
+    if (getProductById(editingItem.productId)?.pricingMode === 'spare-part-tablier') {
+      setTablierLameId(editingItem.sparePartId || '');
+      setTablierWidthMm(editingItem.tablierWidthMm?.toString() || editingItem.widthMm?.toString() || '');
+      setTablierHeightMm(editingItem.tablierHeightMm?.toString() || editingItem.heightMm?.toString() || '');
+      setTablierQuantity(editingItem.quantity != null ? String(editingItem.quantity) : '1');
+      return;
+    }
+
     if (editingItem.productId === 'text-only') {
       setTextOnlyContent(editingItem.textContent || '');
       return;
@@ -1602,6 +1734,77 @@ export default function ProductSelector({
       if (!serviceItem) return;
 
       onAddToCart(serviceItem);
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (isSparePartProduct) {
+      if (!selectedSparePart || !(parsedSparePartQuantity > 0)) return;
+      const unitPrice = getSparePartSalePrice(selectedSparePart.id);
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: product.id,
+        productLabel: `${product.label} — ${selectedSparePart.label}${
+          selectedSparePart.color ? ` (${selectedSparePart.color})` : ''
+        }`,
+        sheetName: product.sheet,
+        widthMm: 0,
+        heightMm: 0,
+        quantity: parsedSparePartQuantity,
+        unitPrice,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+        netDiscountWanted: 0,
+        customDescription: buildSparePartDescription(selectedSparePart, parsedSparePartQuantity),
+        customDescriptionManual: false,
+        customImage: null,
+        hasDimensions: false,
+        dimensionLabel: formatSparePartQuantityLabel(selectedSparePart, parsedSparePartQuantity),
+        showThermalData: false,
+        sparePartId: selectedSparePart.id,
+        sparePartCategoryId: product.sparePartCategoryId,
+      });
+
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
+    if (isTablierProduct) {
+      if (!selectedTablierLame || !tablierPricing || !(parsedTablierQuantity > 0)) return;
+      const parsedWidthMm = parsePositiveInt(tablierWidthMm);
+      const parsedHeightMm = parsePositiveInt(tablierHeightMm);
+
+      onAddToCart({
+        id: editingItem ? editingItem.id : createCartItemId(),
+        productId: product.id,
+        productLabel: `${product.label} — ${selectedTablierLame.reference}${
+          selectedTablierLame.color ? ` ${selectedTablierLame.color}` : ''
+        }`,
+        sheetName: product.sheet,
+        widthMm: parsedWidthMm,
+        heightMm: parsedHeightMm,
+        quantity: parsedTablierQuantity,
+        unitPrice: tablierPricing.unitPrice,
+        includePose: false,
+        remise: 0,
+        netMarginWanted: 0,
+        netDiscountWanted: 0,
+        customDescription: buildTablierDescription(selectedTablierLame, parsedWidthMm, parsedHeightMm),
+        customDescriptionManual: false,
+        customImage: null,
+        hasDimensions: false,
+        dimensionLabel: `${parsedWidthMm} × ${parsedHeightMm} mm`,
+        showThermalData: false,
+        sparePartId: selectedTablierLame.id,
+        sparePartCategoryId: 'tabliers-lames',
+        tablierWidthMm: parsedWidthMm,
+        tablierHeightMm: parsedHeightMm,
+      });
 
       resetSimpleSelection();
       resetGlobalCommercialFields();
@@ -2492,7 +2695,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isTextOnlyProduct && !isCatalogService && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isTextOnlyProduct && !isCatalogService && !isSparePartProduct && !isTablierProduct && (
         <div className="border-b border-slate-100 px-4 pt-4 sm:px-6 sm:pt-6">
           {isFixedPriceProduct && (selectedProductVariant || defaultProductVariant) ? (
             <div className="grid gap-6 py-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-center">
@@ -2552,7 +2755,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCatalogService && !isTextOnlyProduct && !isRemiseCommerciale && (
+      {product && !isWasteManagement && !isCatalogService && !isTextOnlyProduct && !isRemiseCommerciale && !isSparePartProduct && !isTablierProduct && (
         <div className="border-b border-slate-100 bg-orange-50/30 p-4 md:p-6">
           <label className="mb-1.5 block text-sm font-bold text-slate-700">
             Repère (ex : SDB, Chambre 1, Cuisine)
@@ -2620,6 +2823,143 @@ export default function ProductSelector({
             Calcul dynamique base sur les surfaces presentes au devis, a{' '}
             {WASTE_PRICE_PER_KG.toFixed(2)} EUR / kg estime.
           </p>
+        </div>
+      )}
+
+      {isSparePartProduct && (
+        <div className="space-y-4 p-4 md:p-6">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Référence
+            </label>
+            <select
+              value={sparePartId}
+              onChange={(event) => setSparePartId(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            >
+              <option value="">Choisir une référence…</option>
+              {sparePartOptions.map((part) => (
+                <option key={part.id} value={part.id}>
+                  {part.reference} — {part.label}
+                  {part.color ? ` (${part.color})` : ''} —{' '}
+                  {formatFrenchDecimal(getSparePartSalePrice(part.id))} EUR / {part.unitLabel}
+                </option>
+              ))}
+            </select>
+            {selectedSparePart && (
+              <p className="mt-1.5 text-xs text-slate-400">
+                {selectedSparePart.supplier} — {selectedSparePart.conditioning || `Vendu à l'unité (${selectedSparePart.unitLabel})`}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                {selectedSparePart?.pricingMode === SPARE_PART_PRICING_MODES.LENGTH
+                  ? 'Longueur (m)'
+                  : `Quantité (${selectedSparePart?.unitLabel?.toLowerCase() || 'unité'})`}
+              </label>
+              <input
+                type="number"
+                min="0"
+                step={selectedSparePart?.pricingMode === SPARE_PART_PRICING_MODES.LENGTH ? '0.1' : '1'}
+                {...DECIMAL_INPUT_PROPS}
+                value={sparePartQuantity}
+                onChange={(event) => setSparePartQuantity(event.target.value)}
+                placeholder="0"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Prix de vente unitaire
+              </label>
+              <div className="flex h-[46px] items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-700">
+                {selectedSparePart
+                  ? `${formatFrenchDecimal(getSparePartSalePrice(selectedSparePart.id))} EUR / ${selectedSparePart.unitLabel}`
+                  : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isTablierProduct && (
+        <div className="space-y-4 p-4 md:p-6">
+          <p className="text-xs text-slate-400">
+            Tablier facturé au m² (surface réelle largeur × hauteur), à partir du prix
+            d&apos;achat de la lame ramené au m² selon la hauteur du profil (42 ou 55 mm).
+          </p>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Lame (profil + coloris)
+            </label>
+            <select
+              value={tablierLameId}
+              onChange={(event) => setTablierLameId(event.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            >
+              <option value="">Choisir une lame…</option>
+              {tablierLameOptions.map((lame) => (
+                <option key={lame.id} value={lame.id}>
+                  {lame.reference} — {lame.profileHeightMm} mm — {lame.color}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Largeur (mm)
+              </label>
+              <input
+                type="number"
+                min="0"
+                {...NUMERIC_INPUT_PROPS}
+                value={tablierWidthMm}
+                onChange={(event) => setTablierWidthMm(event.target.value)}
+                placeholder="1200"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Hauteur (mm)
+              </label>
+              <input
+                type="number"
+                min="0"
+                {...NUMERIC_INPUT_PROPS}
+                value={tablierHeightMm}
+                onChange={(event) => setTablierHeightMm(event.target.value)}
+                placeholder="1000"
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Nombre de tabliers
+              </label>
+              <input
+                type="number"
+                min="1"
+                {...NUMERIC_INPUT_PROPS}
+                value={tablierQuantity}
+                onChange={(event) => setTablierQuantity(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+          </div>
+
+          {tablierPricing && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
+              Surface : {formatFrenchDecimal(tablierPricing.areaM2, 3)} m² — Prix de vente :{' '}
+              {formatFrenchDecimal(tablierPricing.salePricePerM2)} EUR / m² — soit{' '}
+              {formatFrenchDecimal(tablierPricing.unitPrice)} EUR pour ce tablier.
+            </div>
+          )}
         </div>
       )}
 
@@ -2926,7 +3266,7 @@ export default function ProductSelector({
         </div>
       )}
 
-      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isCatalogService && !isTextOnlyProduct && (
+      {product && !isWasteManagement && !isCustomProduct && !isRemiseCommerciale && !isVeluxConfigurator && !isCatalogService && !isTextOnlyProduct && !isSparePartProduct && !isTablierProduct && (
         <div className="space-y-6 p-4 md:p-6">
           {isFixedPriceProduct && (
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">

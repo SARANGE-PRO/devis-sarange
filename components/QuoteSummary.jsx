@@ -9,6 +9,7 @@ import {
   getDisplayProductLabel,
   getItemPricingSummary,
   getPoseLabel,
+  SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
 import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
@@ -31,6 +32,7 @@ import {
   FileText,
   Download,
   CheckCircle,
+  Cog,
   Package,
   Pencil,
   Check,
@@ -488,6 +490,10 @@ export default function QuoteSummary({
                         <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                           <Package size={20} className="text-slate-300" />
                         </div>
+                      ) : SPARE_PART_PRODUCT_IDS.has(item.productId) ? (
+                        <div className="relative w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                          <Cog size={20} className="text-slate-300" />
+                        </div>
                       ) : (
                         <MenuiserieVisual
                           sheetName={item.sheetName}
@@ -748,8 +754,12 @@ export default function QuoteSummary({
                               <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
                                 <Package size={24} className="text-slate-300" />
                               </div>
+                            ) : SPARE_PART_PRODUCT_IDS.has(item.productId) ? (
+                              <div className="relative w-14 h-14 shrink-0 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center overflow-hidden">
+                                <Cog size={24} className="text-slate-300" />
+                              </div>
                             ) : (
-                              <MenuiserieVisual 
+                              <MenuiserieVisual
                                 sheetName={item.sheetName}
                                 width={item.widthMm}
                                 height={item.heightMm}
