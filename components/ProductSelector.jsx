@@ -71,6 +71,7 @@ import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import CustomProductIcon from '@/components/icons/CustomProductIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import TextOnlyIcon from '@/components/icons/TextOnlyIcon';
+import { VELUX_GLAZING_THERMAL } from '@/lib/vat-window-eligibility.mjs';
 
 const ICONS = {
   LayoutGrid,
@@ -106,6 +107,7 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   petitsBoisH: 0,
   petitsBoisV: 0,
   panneauDecoratif: false,
+  manualUd: '',
   hasSousBassement: false,
   sousBassementHeight: 400,
   sashOptions: {},
@@ -702,6 +704,13 @@ export default function ProductSelector({
   const [customIncludePose, setCustomIncludePose] = useState(false);
   const [customPoseHt, setCustomPoseHt] = useState('');
   const [customPoseLabel, setCustomPoseLabel] = useState('');
+  // Reportés par le configurateur Velux (lib/velux-config.js) : gamme de
+  // vitrage officielle (standard/confort/tout-confort) et préfixe technique
+  // (GGL/GGU/GPL/GPU). Permettent la vérification automatique du seuil TVA
+  // 5,5% fenêtre de toit (lib/vat-window-eligibility.mjs) sur une ligne
+  // "custom-product" qui n'a par ailleurs aucune donnée thermique calculée.
+  const [customVeluxRange, setCustomVeluxRange] = useState(null);
+  const [customVeluxPrefix, setCustomVeluxPrefix] = useState(null);
   const [textOnlyContent, setTextOnlyContent] = useState('');
   // Services catalogue (métrage, forfait déplacement) : offert (0 €) ou facturé
   // au prix saisi. Le défaut vient de `serviceBillingDefault` du produit.
@@ -1243,6 +1252,8 @@ export default function ProductSelector({
     setCustomIncludePose(false);
     setCustomPoseHt('');
     setCustomPoseLabel('');
+    setCustomVeluxRange(null);
+    setCustomVeluxPrefix(null);
     setTextOnlyContent('');
     setServicePriceMode('free');
     setServicePrice('');
@@ -1318,6 +1329,10 @@ export default function ProductSelector({
     setCustomIncludePose(poseIncluded);
     setCustomPoseHt(poseIncluded ? String(configuration.pose.priceHt) : '');
     setCustomPoseLabel(poseIncluded ? 'Pose fenêtre de toit Velux' : '');
+    // Gamme de vitrage officielle Velux : seule donnée nécessaire à la
+    // vérification automatique du seuil TVA 5,5% fenêtre de toit.
+    setCustomVeluxRange(configuration.range);
+    setCustomVeluxPrefix(configuration.prefix);
   };
 
   const handleMaterialChange = (material) => {
@@ -1420,6 +1435,8 @@ export default function ProductSelector({
           : ''
       );
       setCustomPoseLabel(editingItem.poseLabel || '');
+      setCustomVeluxRange(editingItem.veluxRange || null);
+      setCustomVeluxPrefix(editingItem.veluxPrefix || null);
       return;
     }
 
@@ -1454,6 +1471,7 @@ export default function ProductSelector({
         rawColorState: editingItem.rawColorState || createDefaultColorState(),
         ...buildPetitsBoisState(editingItem),
         panneauDecoratif: editingItem.panneauDecoratif || false,
+        manualUd: Number.isFinite(editingItem.manualUd) ? String(editingItem.manualUd) : '',
         hasSousBassement: editingItem.hasSousBassement || false,
         sousBassementHeight: editingItem.sousBassementHeight || 400,
         sashOptions: editingItem.sashOptions || {},
@@ -1598,6 +1616,11 @@ export default function ProductSelector({
       const parsedHeightMm = Math.max(0, Number.parseInt(customHeightMm, 10) || 0);
       const parsedPoseHt = Number.parseFloat(customPoseHt);
       const includeCustomPose = customIncludePose && Number.isFinite(parsedPoseHt) && parsedPoseHt >= 0;
+      // Ligne issue du configurateur Velux : la gamme officielle porte à elle
+      // seule la vérification du seuil TVA 5,5% (lib/vat-window-eligibility.mjs).
+      // Uw/Sw sont aussi reportés pour affichage (panier, désignation PDF),
+      // comme pour une menuiserie catalogue.
+      const veluxThermal = customVeluxRange ? VELUX_GLAZING_THERMAL[customVeluxRange] : null;
 
       onAddToCart({
         id: editingItem ? editingItem.id : createCartItemId(),
@@ -1616,6 +1639,14 @@ export default function ProductSelector({
         customPoseHt: includeCustomPose ? Math.round(parsedPoseHt * 100) / 100 : 0,
         ...(includeCustomPose
           ? { poseLabel: customPoseLabel.trim() || `Pose ${customLabel}` }
+          : {}),
+        ...(customVeluxRange
+          ? {
+              veluxRange: customVeluxRange,
+              veluxPrefix: customVeluxPrefix,
+              thermalUw: veluxThermal?.uw ?? null,
+              thermalSw: veluxThermal?.sw ?? null,
+            }
           : {}),
         remise: 0,
         netMarginWanted: 0,
@@ -1741,6 +1772,10 @@ export default function ProductSelector({
       netMarginWanted,
       netDiscountWanted,
       panneauDecoratif: workingIsPorte ? simpleConfig.panneauDecoratif : false,
+      manualUd:
+        workingIsPorte && Number.isFinite(Number.parseFloat(simpleConfig.manualUd))
+          ? Number.parseFloat(simpleConfig.manualUd)
+          : null,
       hasSousBassement: !workingIsVolet && simpleConfig.hasSousBassement,
       sousBassementHeight: simpleConfig.hasSousBassement
         ? simpleConfig.sousBassementHeight
@@ -2542,6 +2577,35 @@ export default function ProductSelector({
               />
               Panneau décoratif (choisi sur catalogue à la signature)
             </label>
+          )}
+
+          {/* Porte d'entrée : aucun profilé de porte n'est modélisé dans le
+              catalogue (grille de prix générique, sans marque ni Uf dédié) —
+              contrairement aux fenêtres, le Uw calculé pour une porte n'est
+              donc jamais fiable. Seule la saisie du Ud déclaré par le
+              fabricant (fiche DoP / marquage CE) permet de vérifier le seuil
+              TVA 5,5% (Ud ≤ 1,7, lib/vat-window-eligibility.mjs). Laissé
+              vide : le taux 5,5% est automatiquement ramené à 10% sur cette
+              ligne. */}
+          {workingIsPorte && (
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Coefficient Ud déclaré (fiche fabricant) — optionnel
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                inputMode="decimal"
+                value={simpleConfig.manualUd}
+                onChange={(event) => updateSimpleOptions({ manualUd: event.target.value })}
+                placeholder="Ex : 1.4"
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Requis pour appliquer la TVA à 5,5% sur une porte (seuil légal : Ud ≤ 1,7 W/m².K). Sans cette valeur, le taux est automatiquement ramené à 10%.
+              </p>
+            </div>
           )}
         </div>
       )}

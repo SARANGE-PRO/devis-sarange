@@ -41,7 +41,7 @@ import {
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
-import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
+import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/lib/quote-totals.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -99,6 +99,7 @@ function SortableCartItem({
   onDuplicate,
   onRemove,
   onUpdateQuantity,
+  defaultTvaRate,
 }) {
   const {
     attributes,
@@ -122,6 +123,7 @@ function SortableCartItem({
     item.modules
   );
   const thermalMetrics = getItemThermalMetrics(item);
+  const tvaCorrection = getItemTvaCorrection(item, defaultTvaRate);
   const petitsBoisConfig = getPetitsBoisConfig(item);
   const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
   const isTextOnly = item.productId === 'text-only';
@@ -386,6 +388,15 @@ function SortableCartItem({
               </>
             )}
           </p>
+          {tvaCorrection.wasCorrected && (
+            <p
+              className="mt-1 text-[11px] font-semibold text-amber-600"
+              title={tvaCorrection.evaluation?.message || ''}
+            >
+              ⚠ TVA ramenée à {formatTvaRateLabel(tvaCorrection.rate)} (seuil 5,5&nbsp;% non
+              vérifié)
+            </p>
+          )}
         </div>
       </div>
 
@@ -526,6 +537,7 @@ export default function Cart({
                 onDuplicate={onDuplicate}
                 onRemove={onRemove}
                 onUpdateQuantity={onUpdateQuantity}
+                defaultTvaRate={tvaRate}
               />
             ))}
           </div>

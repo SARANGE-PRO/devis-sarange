@@ -44,7 +44,11 @@ import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import QuoteCommercialTerms from '@/components/QuoteCommercialTerms';
-import { computeQuoteTotals, formatTvaRateLabel } from '@/lib/quote-totals.mjs';
+import {
+  computeQuoteTotals,
+  formatTvaRateLabel,
+  getItemTvaCorrection,
+} from '@/lib/quote-totals.mjs';
 import { getClientJobSiteFullName } from '@/lib/client-cloud';
 
 const getPetitsBoisConfig = (item = {}) => {
@@ -568,6 +572,17 @@ export default function QuoteSummary({
                           </div>
                         )}
                       </div>
+                      {(() => {
+                        const tvaCorrection = getItemTvaCorrection(item, tvaRate);
+                        return tvaCorrection.wasCorrected ? (
+                          <p
+                            className="mt-1 text-[10px] font-bold text-amber-600"
+                            title={tvaCorrection.evaluation?.message || ''}
+                          >
+                            ⚠ TVA appliquée à {formatTvaRateLabel(tvaCorrection.rate)} (seuil 5,5&nbsp;% non vérifié)
+                          </p>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
 
@@ -840,6 +855,17 @@ export default function QuoteSummary({
                                         {item.includePose && (
                                           <span className="text-[9px] px-1.5 py-0.5 bg-green-50 rounded text-green-600 font-bold">Pose incluse</span>
                                         )}
+                                        {(() => {
+                                          const tvaCorrection = getItemTvaCorrection(item, tvaRate);
+                                          return tvaCorrection.wasCorrected ? (
+                                            <span
+                                              className="text-[9px] px-1.5 py-0.5 bg-amber-50 rounded text-amber-600 font-bold"
+                                              title={tvaCorrection.evaluation?.message || ''}
+                                            >
+                                              ⚠ TVA {formatTvaRateLabel(tvaCorrection.rate)} (seuil 5,5% non vérifié)
+                                            </span>
+                                          ) : null;
+                                        })()}
                                       </div>
                                     </div>
                                   )}
