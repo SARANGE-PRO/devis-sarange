@@ -724,13 +724,6 @@ export default function CataloguePage() {
                     onSave: (value) =>
                       setCataloguePricingValue('panneauDecoratifMultiplier', value),
                   },
-                  {
-                    key: 'pricing:sparePartsMarkupCoefficient',
-                    label: 'Coefficient pieces detachees (x achat)',
-                    value: currentPricing.sparePartsMarkupCoefficient,
-                    onSave: (value) =>
-                      setCataloguePricingValue('sparePartsMarkupCoefficient', value),
-                  },
                 ].map((entry) => {
                   const inputValue = pricingDrafts[entry.key] ?? formatPriceInput(entry.value);
 
