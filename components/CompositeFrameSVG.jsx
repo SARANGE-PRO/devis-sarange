@@ -11,6 +11,7 @@ import {
   listSegments,
 } from '@/lib/composite-frame';
 import { CompositeModule } from '@/components/CompositeSVG';
+import { getProductById, resolveSvgColor } from '@/lib/products';
 
 const COLORS = {
   frame: '#0f172a',
@@ -152,7 +153,11 @@ export default function CompositeFrameSVG({
                       heightMm: opening.hMm,
                       options: placement.options || {},
                     }}
-                    frameColor={placement.options?.svgColor || '#FFFFFF'}
+                    frameColor={resolveSvgColor({
+                      isVolet: getProductById(placement.productId)?.sheet?.startsWith('Volet'),
+                      colorOptionId: placement.options?.colorOptionId,
+                      colorState: placement.options?.rawColorState,
+                    })}
                   />
                 </g>
               )}
