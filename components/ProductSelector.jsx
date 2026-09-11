@@ -61,6 +61,8 @@ import {
   calculateGlazingExtra,
   subscribeToGlazingOptions,
   getDefaultGlazingId,
+  PANEL_SANDWICH_GLAZING_ID,
+  PANEL_SANDWICH_ALU_GLAZING_ID,
 } from '@/lib/glazing';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import CompositeFrameEditor from '@/components/CompositeFrameEditor';
@@ -178,6 +180,9 @@ const buildFillingSelectionMeta = ({
     parsedWidth && parsedHeight
       ? calculateGlassAreas(parsedWidth, parsedHeight, frameSystem, product.sheet)
       : null;
+  // Le panneau sandwich (soubassement inclus) est un matériau physique (PVC ou
+  // alu) : le prix ET le choix proposé doivent suivre le matériau de la menuiserie.
+  const isAlu = product.material === 'alu';
 
   const buildPricing = (nextGlazingId) =>
     glassAreas
@@ -188,15 +193,22 @@ const buildFillingSelectionMeta = ({
           hasSousBassement,
           sousBassementHeightMm: sousBassementHeight,
           colorOptionId,
+          isAlu,
         })
       : EMPTY_FILLING_PRICING;
 
   const selectedGlazing = getSelectedGlazing(glazingId);
   const selectedPricing = buildPricing(selectedGlazing);
-  const options = glazingOptions.map((glazing) => ({
-    glazing,
-    pricing: buildPricing(glazing),
-  }));
+  const options = glazingOptions
+    .filter((glazing) => {
+      if (glazing.id === PANEL_SANDWICH_GLAZING_ID) return !isAlu;
+      if (glazing.id === PANEL_SANDWICH_ALU_GLAZING_ID) return isAlu;
+      return true;
+    })
+    .map((glazing) => ({
+      glazing,
+      pricing: buildPricing(glazing),
+    }));
 
   return {
     frameSystem,
@@ -1617,7 +1629,9 @@ export default function ProductSelector({
         sousBassementHeight: editingItem.sousBassementHeight || 400,
         sashOptions: editingItem.sashOptions || {},
         openingDirection: editingItem.openingDirection || 'standard',
-        glazingId: editingItem.glazingOption?.id || 'dv_4_20_4_argon_we',
+        glazingId:
+          editingItem.glazingOption?.id ||
+          getDefaultGlazingId(getProductById(editingItem.productId)?.material || 'pvc'),
         hasLockingHandle: editingItem.hasLockingHandle || false,
         handleHeightMm: editingItem.handleHeightMm ?? '',
         allegeHeightMm: editingItem.allegeHeightMm ?? '',

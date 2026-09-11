@@ -634,7 +634,7 @@ export default function CataloguePage() {
                   },
                   {
                     key: 'pricing:panelSandwichPricePerM2',
-                    label: 'Panneau sandwich (EUR/m2)',
+                    label: 'Panneau sandwich PVC (EUR/m2)',
                     value: currentPricing.panelSandwichPricePerM2,
                     onSave: (value) => setCataloguePricingValue('panelSandwichPricePerM2', value),
                   },
