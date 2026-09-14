@@ -394,8 +394,8 @@ run('supervision : les quatre conditions d’alerte', () => {
   assert.deepEqual(missing.issues, [HEALTH_ISSUES.MISSING]);
   assert.ok(missing.alerts[0].includes('absent'));
 
-  // 2. Index de plus de sept jours.
-  const stale = getDgfipIndexHealth({ ...healthy, refreshedAt: '2026-07-01T08:00:00.000Z' }, { now });
+  // 2. Index de plus de trente-cinq jours.
+  const stale = getDgfipIndexHealth({ ...healthy, refreshedAt: '2026-06-01T08:00:00.000Z' }, { now });
   assert.deepEqual(stale.issues, [HEALTH_ISSUES.STALE]);
   assert.equal(stale.alerts[0], DGFIP_INDEX_STALE_ALERT);
 
@@ -412,21 +412,21 @@ run('supervision : les quatre conditions d’alerte', () => {
   assert.equal(both.alerts.length, 2);
 });
 
-run('alerte lorsque l’index date de plus de sept jours', () => {
+run('alerte lorsque l’index date de plus de trente-cinq jours', () => {
   const now = new Date('2026-07-30T08:00:00.000Z');
 
   assert.equal(isDgfipIndexStale('2026-07-28T08:00:00.000Z', now), false);
-  assert.equal(isDgfipIndexStale('2026-07-23T08:00:00.000Z', now), false, '7 jours pile : encore valable');
-  assert.equal(isDgfipIndexStale('2026-07-20T08:00:00.000Z', now), true);
+  assert.equal(isDgfipIndexStale('2026-06-25T08:00:00.000Z', now), false, '35 jours pile : encore valable');
+  assert.equal(isDgfipIndexStale('2026-06-20T08:00:00.000Z', now), true);
   // Date absente ou illisible : traitée comme obsolète.
   assert.equal(isDgfipIndexStale('', now), true);
 
   assert.equal(getDgfipIndexStaleAlert({ refreshedAt: '2026-07-28T08:00:00.000Z' }, now), '');
   assert.equal(
-    getDgfipIndexStaleAlert({ refreshedAt: '2026-07-01T08:00:00.000Z' }, now),
+    getDgfipIndexStaleAlert({ refreshedAt: '2026-06-01T08:00:00.000Z' }, now),
     DGFIP_INDEX_STALE_ALERT
   );
-  assert.ok(DGFIP_INDEX_STALE_ALERT.includes('plus de sept jours'));
+  assert.ok(DGFIP_INDEX_STALE_ALERT.includes('plus de trente-cinq jours'));
 });
 
 console.log('Tous les tests de l’index DGFiP ont reussi.');

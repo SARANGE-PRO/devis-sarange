@@ -6,11 +6,21 @@ name: Index DGFiP des numéros de TVA
 
 on:
   schedule:
-    # 04h30 heure de Paris, fuseau explicite (sinon l'horaire est interprété
-    # en UTC et dérive entre heure d'été et heure d'hiver). Le jeu de données
-    # DGFiP est publié quotidiennement ; l'exécution est idempotente (aucune
-    # publication si l'empreinte est inchangée).
-    - cron: '30 4 * * *'
+    # MENSUEL, le 10 à 04h30 heure de Paris, fuseau explicite (sinon l'horaire
+    # est interprété en UTC et dérive entre heure d'été et heure d'hiver).
+    #
+    # Pourquoi pas tous les jours : une publication écrit 892 fichiers de
+    # préfixe + le manifeste, et chaque `put()` compte comme une « Advanced
+    # Operation » Vercel Blob, dont le plan Hobby n'inclut que 2 000 par mois.
+    # En quotidien le quota était épuisé en trois jours et Vercel bloquait le
+    # magasin pendant trente jours — en lecture comme en écriture —, ce qui
+    # faisait échouer le workflow tous les jours (constaté du 05/08 au 02/09
+    # puis à partir du 06/09/2026). En mensuel : ~895 opérations, soit moins de
+    # la moitié du quota, avec de la marge pour un déclenchement manuel.
+    #
+    # Le 10 plutôt que le 1er : après un blocage, le magasin ne redevient
+    # accessible qu'une fois la fenêtre glissante de trente jours écoulée.
+    - cron: '30 4 10 * *'
       timezone: 'Europe/Paris'
   workflow_dispatch:
 

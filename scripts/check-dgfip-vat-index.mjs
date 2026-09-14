@@ -13,7 +13,7 @@
  *
  * Contrôles (code de sortie 1 dès qu'un seul échoue) :
  *   - index présent et lisible (producteur DGFiP vérifié) ;
- *   - index actualisé depuis moins de sept jours ;
+ *   - index actualisé depuis moins de trente-cinq jours ;
  *   - volume d'entrées cohérent (~4,8 millions attendus) ;
  *   - sonde fonctionnelle : SIREN 820001014 -> FR22820001014 ;
  *   - sonde négative : un SIREN inconnu ne produit PAS de faux VERIFIED_DGFIP.
@@ -100,7 +100,7 @@ if (metadata) {
   );
 
   report(
-    'Index actualisé depuis moins de sept jours',
+    'Index actualisé depuis moins de trente-cinq jours',
     !health.issues.includes('index-obsolete'),
     `${health.ageInDays} jour(s)`
   );

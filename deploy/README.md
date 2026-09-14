@@ -98,14 +98,31 @@ Index publié : 4826845 entrées (extraction du 2026-07-29…).
 
 ---
 
-## 3. Mise à jour quotidienne
+## 3. Mise à jour mensuelle
 
 Le workflow [`.github/workflows/dgfip-vat-index.yml`](../.github/workflows/dgfip-vat-index.yml)
 s'exécute :
 
-- **automatiquement** à 02h30 UTC (04h30 à Paris en heure d'été, 03h30 en heure
-  d'hiver) — le jeu DGFiP est publié quotidiennement ;
+- **automatiquement le 10 de chaque mois** à 04h30 heure de Paris ;
 - **manuellement** via **Run workflow**.
+
+### Pourquoi mensuel et non quotidien
+
+Une publication écrit 892 fichiers de préfixe plus le manifeste. Chaque
+`put()` compte comme une **Advanced Operation** Vercel Blob, et le plan
+**Hobby n'en inclut que 2 000 par mois**. En quotidien (~27 000 par mois) le
+quota était épuisé en trois jours, après quoi Vercel **bloque le magasin
+pendant trente jours, en lecture comme en écriture** : le workflow échouait
+tous les jours et l'application ne pouvait plus lire l'index (repli VIES).
+Constaté du 05/08 au 02/09/2026, puis à partir du 06/09/2026.
+
+En mensuel, une exécution consomme ~895 opérations, soit moins de la moitié du
+quota — il reste donc de la marge pour **un** déclenchement manuel dans le
+mois. Au-delà, le magasin sera de nouveau bloqué pendant trente jours.
+
+> Passer l'équipe Vercel en **Pro** lèverait la contrainte (dépassement
+> facturé quelques centimes) et permettrait de revenir au quotidien. Le plan
+> Hobby est par ailleurs réservé à un usage non commercial.
 
 `concurrency: dgfip-vat-index` empêche deux publications simultanées.
 L'exécution est idempotente : si l'empreinte de la ressource n'a pas changé,
@@ -144,7 +161,7 @@ DGFIP_BLOB_BASE_URL="https://<identifiant>.public.blob.vercel-storage.com" \
 Sortie en code 1 — et alerte sur la sortie d'erreur — si :
 
 - **l'index est absent** ou le manifeste illisible ;
-- **l'index a plus de sept jours** ;
+- **l'index a plus de trente-cinq jours** ;
 - **le nombre d'entrées est anormalement faible** (seuil : 1 000 000) ;
 - **une sonde échoue**.
 
@@ -163,7 +180,7 @@ Résultat attendu :
 Mode PRODUCTION — Vercel Blob : https://…
 OK   Index présent et lisible
   producteur : DGFIP | publication : … | actualisé : … | entrées : 4826845
-OK   Index actualisé depuis moins de sept jours — 0 jour(s)
+OK   Index actualisé depuis moins de trente-cinq jours — 0 jour(s)
 OK   Volume d’entrées cohérent — 4826845 entrées
 OK   Sonde 820001014 -> FR22820001014 — FR22820001014
 OK   Sonde négative 999999999 -> NOT_FOUND_DGFIP — not-found-dgfip
