@@ -16,6 +16,7 @@ import {
   saveClientProfile,
   subscribeToUserClients,
 } from '@/lib/firebase/clients';
+import { formatPhoneNumber, formatPhoneWhileTyping, matchesSearchTerm } from '@/lib/phone.mjs';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
   ArrowRight,
@@ -36,7 +37,7 @@ const normalizeSearchValue = (value) =>
   (typeof value === 'string' ? value : '').trim().toLowerCase();
 
 /* ─── Drawer ────────────────────────────────────────────────────────────── */
-function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, editingClientId, onChange, onSave, onCancel }) {
+function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, editingClientId, onChange, onPhoneBlur, onSave, onCancel }) {
   const inputClasses =
     'w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200';
 
@@ -111,7 +112,7 @@ function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, ed
               <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <Phone size={14} className="text-slate-400" /> Téléphone
               </span>
-              <input name="telephone" value={editingClientData.telephone} onChange={onChange} className={inputClasses} placeholder="06 12 34 56 78" type="tel" inputMode="tel" />
+              <input name="telephone" value={editingClientData.telephone} onChange={onChange} onBlur={onPhoneBlur} className={inputClasses} placeholder="06 12 34 56 78" type="tel" inputMode="tel" />
             </label>
             <label className="block sm:col-span-2">
               <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-slate-700">
@@ -266,7 +267,8 @@ export default function ClientsPage() {
   const filteredClients = clients.filter((client) => {
     if (!normalizedSearchTerm) return true;
     const haystack = (client.searchText || '').toLowerCase();
-    return haystack.includes(normalizedSearchTerm);
+    // Recherche par téléphone tolérante à la mise en forme (avec ou sans espaces).
+    return matchesSearchTerm(haystack, normalizedSearchTerm);
   });
 
   const loadingClients = isConfigured && !initializing && !!user && clientsOwnerId !== user.uid;
@@ -294,10 +296,26 @@ export default function ClientsPage() {
 
   const handleEditorChange = (event) => {
     const { name, value, type, checked } = event.target;
+
+    // Téléphone : mise en forme automatique pendant la frappe.
+    if (name === 'telephone') {
+      const formatted = formatPhoneWhileTyping(value, event.target.selectionStart);
+      setEditingClientData((prev) => ({ ...prev, telephone: formatted }));
+      return;
+    }
+
     setEditingClientData((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  // Sortie du champ : on remet en forme une correction faite au milieu du numéro.
+  const handleEditorPhoneBlur = (event) => {
+    const formatted = formatPhoneNumber(event.target.value);
+    setEditingClientData((prev) =>
+      prev.telephone === formatted ? prev : { ...prev, telephone: formatted }
+    );
   };
 
   const handleSaveClient = async () => {
@@ -523,6 +541,7 @@ export default function ClientsPage() {
         workingClientId={workingClientId}
         editingClientId={editingClientId}
         onChange={handleEditorChange}
+        onPhoneBlur={handleEditorPhoneBlur}
         onSave={() => void handleSaveClient()}
         onCancel={cancelEdit}
       />

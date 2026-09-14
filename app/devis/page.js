@@ -5,6 +5,7 @@ import { useDeferredValue, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
+import { formatPhoneNumber, matchesSearchTerm } from '@/lib/phone.mjs';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 import {
   moveQuoteToTrash,
@@ -359,8 +360,7 @@ function QuoteCard({
     '—';
   const quoteContact =
     quote.clientEmail ||
-    quote.clientPhone ||
-    quote.payload?.clientData?.telephone ||
+    formatPhoneNumber(quote.clientPhone || quote.payload?.clientData?.telephone) ||
     '—';
 
   return (
@@ -1065,7 +1065,7 @@ export default function SavedQuotesPage() {
 
   const filteredQuotes = sortQuotes(
     quotes.filter((q) => {
-      if (normalizedSearch && !getQuoteSearchText(q).includes(normalizedSearch)) return false;
+      if (normalizedSearch && !matchesSearchTerm(getQuoteSearchText(q), normalizedSearch)) return false;
       if (statusFilter !== 'all' && getQuoteDisplayStatus(q) !== statusFilter) return false;
       if (clientFilter !== 'all' && getQuoteClientId(q) !== clientFilter) return false;
       return matchesPeriodFilter(q, periodFilter);

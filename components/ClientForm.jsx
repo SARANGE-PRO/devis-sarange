@@ -21,6 +21,7 @@ import {
   getClientFullLocation,
   sanitizeClientData,
 } from '@/lib/client-cloud';
+import { formatPhoneNumber, formatPhoneWhileTyping, matchesSearchTerm } from '@/lib/phone.mjs';
 import {
   CLIENT_TYPES,
   computeFrenchVatNumber,
@@ -363,6 +364,14 @@ export default function ClientForm({
     setActiveSearchField(null);
   };
 
+  // Sortie du champ téléphone : on remet en forme ce qui a été corrigé au
+  // milieu de la saisie (là, on laisse le curseur tranquille — cf. lib/phone.mjs).
+  const handlePhoneBlur = (event) => {
+    const { name, value } = event.target;
+    const formatted = formatPhoneNumber(value);
+    setFormData((prev) => (prev[name] === formatted ? prev : { ...prev, [name]: formatted }));
+  };
+
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;
     const finalValue = type === 'checkbox' ? checked : value;
@@ -375,6 +384,15 @@ export default function ClientForm({
         siret: value,
         siren: getSirenFromSiret(value),
       }));
+      return;
+    }
+
+    // Téléphone : mise en forme automatique pendant la frappe (06 62 68 90 84,
+    // +33 6 62 68 90 84…). Aucune saisie n'est rejetée, on se contente d'espacer.
+    if (name === 'telephone') {
+      const formatted = formatPhoneWhileTyping(value, event.target.selectionStart);
+      setFormData((prev) => ({ ...prev, telephone: formatted }));
+      if (errors.telephone) setErrors((prev) => ({ ...prev, telephone: '' }));
       return;
     }
 
@@ -456,7 +474,9 @@ export default function ClientForm({
           .filter((client) => {
             const haystack =
               client.searchText || buildClientSearchText(client.payload) || client.displayName || '';
-            return haystack.includes(term);
+            // matchesSearchTerm : « 06 62 68 90 84 » retrouve aussi les fiches
+            // indexées avant la mise en forme (« 0662689084 »).
+            return matchesSearchTerm(haystack, term);
           })
           .slice(0, limit);
 
@@ -1151,6 +1171,8 @@ export default function ClientForm({
                 placeholder="06 12 34 56 78"
                 value={formData.telephone}
                 onChange={handleChange}
+                onBlur={handlePhoneBlur}
+                inputMode="tel"
                 className={inputClasses}
               />
             </div>

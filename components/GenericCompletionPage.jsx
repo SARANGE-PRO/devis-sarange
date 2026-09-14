@@ -11,6 +11,7 @@ import {
   Star,
   UserRound,
 } from 'lucide-react';
+import { formatPhoneNumber, formatPhoneWhileTyping } from '@/lib/phone.mjs';
 import SignaturePad from './SignaturePad';
 import AddressAutocomplete from './AddressAutocomplete';
 import ReservePhotoInput from './ReservePhotoInput';
@@ -76,6 +77,17 @@ export default function GenericCompletionPage() {
   const contactComplete = missingContactFields.length === 0;
   const allRated = RATING_CRITERIA.every((criterion) => ratings[criterion.key] > 0);
   const hasReserves = validationChoice === 'warn';
+
+  // Téléphone : mise en forme automatique pendant la frappe (06 62 68 90 84).
+  const updatePhone = (event) => {
+    const formatted = formatPhoneWhileTyping(event.target.value, event.target.selectionStart);
+    setContact((prev) => ({ ...prev, telephone: formatted }));
+  };
+
+  const blurPhone = (event) => {
+    const formatted = formatPhoneNumber(event.target.value);
+    setContact((prev) => (prev.telephone === formatted ? prev : { ...prev, telephone: formatted }));
+  };
 
   const updateContact = (key) => (event) => {
     setContact((prev) => ({ ...prev, [key]: event.target.value }));
@@ -245,7 +257,9 @@ export default function GenericCompletionPage() {
                 <input
                   type="tel"
                   value={contact.telephone}
-                  onChange={updateContact('telephone')}
+                  onChange={updatePhone}
+                  onBlur={blurPhone}
+                  inputMode="tel"
                   autoComplete="tel"
                   className={inputClassName}
                 />

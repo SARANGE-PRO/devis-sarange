@@ -284,6 +284,15 @@ Chemin principal :
 3. sauvegarde optionnelle dans `users/{uid}/clients/{clientId}`,
 4. copie egalement embarquee dans `payload.clientData` du devis.
 
+Le numero de telephone est mis en forme par `lib/phone.mjs` (`06 62 68 90 84`,
+`+33 6 62 68 90 84` conserve tel quel, indicatifs etrangers groupes selon
+l'usage local) : pendant la frappe, puis a chaque passage par
+`sanitizeClientData` — donc aussi pour les fiches enregistrees avant.
+`matchesSearchTerm` rend la recherche insensible aux espaces, pour que les
+anciens numeros indexes sans mise en forme restent trouvables.
+Fichiers jumeaux a maintenir en phase : `site-sarange/src/lib/phone.js` et
+`sarange-suivi/src/lib/phone.ts`.
+
 ### 6.3 Donnees devis
 
 Chemin principal :

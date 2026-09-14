@@ -12,6 +12,7 @@ import {
   SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
+import { formatPhoneNumber } from '@/lib/phone.mjs';
 import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
 import ClientTypeDialog from '@/components/ClientTypeDialog';
 import { CLIENT_TYPES, isKnownClientType } from '@/lib/client-type.mjs';
@@ -393,7 +394,9 @@ export default function QuoteSummary({
                 </p>
                 <div className="flex items-center gap-2 mt-1 text-slate-500">
                   <Phone size={12} className="shrink-0" />
-                  <span className="min-w-0 break-words text-sm">{clientData?.telephone || 'À définir'}</span>
+                  <span className="min-w-0 break-words text-sm">
+                    {formatPhoneNumber(clientData?.telephone) || 'À définir'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-slate-500">
                   <Mail size={12} className="shrink-0" />
