@@ -143,8 +143,10 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   voletMonobloc: false,
   voletMonoblocManoeuvre: 'manuel',
   // Menuiseries cintrées (Formes spéciales) : type de cintrage, flèche et prix
-  // saisi (fixe cintré en imposte, ou prix total en cintre intégré).
-  cintrageType: CINTRAGE_TYPES.IMPOSTE,
+  // saisi (fixe cintré en imposte, ou prix total en cintre intégré). Aucun
+  // type par défaut : ce formulaire est recopié tel quel dans les options des
+  // châssis composés, qui ne doivent jamais porter de cintrage.
+  cintrageType: null,
   cintrageFlecheMm: '',
   cintrageImpostePriceHt: '',
   cintrageManualPriceHt: '',
@@ -1715,7 +1717,7 @@ export default function ProductSelector({
         allegeHeightMm: editingItem.allegeHeightMm ?? '',
         voletMonobloc: editingItem.voletMonobloc || false,
         voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
-        cintrageType: normalizeCintrageType(editingItem.cintrageType) || CINTRAGE_TYPES.IMPOSTE,
+        cintrageType: normalizeCintrageType(editingItem.cintrageType),
         cintrageFlecheMm:
           editingItem.cintrageFlecheMm != null ? String(editingItem.cintrageFlecheMm) : '',
         cintrageImpostePriceHt:
