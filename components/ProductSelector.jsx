@@ -20,6 +20,7 @@ import {
   X,
   Pencil,
   ShoppingCart,
+  Sunrise,
 } from 'lucide-react';
 import {
   CATEGORIES,
@@ -84,6 +85,15 @@ import {
   getSparePartsByCategory,
   getTablierLameOptions,
 } from '@/lib/spare-parts';
+import {
+  CINTRAGE_TYPES,
+  CINTRAGE_TYPE_OPTIONS,
+  MIN_FLECHE_MM,
+  getDefaultFlecheMm,
+  getMaxFlecheMm,
+  normalizeCintrageType,
+  resolveCintrageGeometry,
+} from '@/lib/cintrage.mjs';
 
 const ICONS = {
   LayoutGrid,
@@ -95,6 +105,7 @@ const ICONS = {
   Wrench,
   Cog,
   PackagePlus,
+  Sunrise,
 };
 
 const createCartItemId = () => Date.now().toString();
@@ -131,6 +142,12 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   allegeHeightMm: '',
   voletMonobloc: false,
   voletMonoblocManoeuvre: 'manuel',
+  // Menuiseries cintrées (Formes spéciales) : type de cintrage, flèche et prix
+  // saisi (fixe cintré en imposte, ou prix total en cintre intégré).
+  cintrageType: CINTRAGE_TYPES.IMPOSTE,
+  cintrageFlecheMm: '',
+  cintrageImpostePriceHt: '',
+  cintrageManualPriceHt: '',
   ...overrides,
   ...buildPetitsBoisState(overrides),
   rawColorState: createDefaultColorState(overrides.rawColorState),
@@ -958,6 +975,47 @@ export default function ProductSelector({
     formProduct?.categoryId || ''
   );
 
+  // Menuiserie cintrée (catégorie « Formes spéciales ») : jamais en composé.
+  const workingIsCintre = !isCompositeMode && formProduct?.shape === 'cintre';
+  const workingCintrageType = workingIsCintre
+    ? normalizeCintrageType(simpleConfig.cintrageType) || CINTRAGE_TYPES.IMPOSTE
+    : null;
+  // Cintre intégré (sous-traitance) : le prix total est saisi à la main, le
+  // calcul automatique (grille, coefficient, options) est désactivé.
+  const isCintreManualPrice = workingCintrageType === CINTRAGE_TYPES.INTEGRE;
+  const parsedCintrageImpostePrice = Number.parseFloat(simpleConfig.cintrageImpostePriceHt);
+  const parsedCintrageManualPrice = Number.parseFloat(simpleConfig.cintrageManualPriceHt);
+  const cintrageGeometry = workingIsCintre
+    ? resolveCintrageGeometry({
+        type: workingCintrageType,
+        flecheMm: simpleConfig.cintrageFlecheMm,
+        widthMm: parsePositiveInt(simpleConfig.widthMm),
+        heightMm: parsePositiveInt(simpleConfig.heightMm),
+      })
+    : null;
+  // Prix requis : celui du fixe cintré en imposte (0 accepté), le prix total
+  // (> 0) en cintre intégré.
+  const isCintragePriceValid =
+    !workingIsCintre ||
+    (isCintreManualPrice
+      ? parsedCintrageManualPrice > 0
+      : Number.isFinite(parsedCintrageImpostePrice) && parsedCintrageImpostePrice >= 0);
+  // Champs cintrage reportés sur l'article (flèche effective, prix normalisés).
+  const cintrageItemFields = workingIsCintre
+    ? {
+        cintrageType: workingCintrageType,
+        cintrageFlecheMm: cintrageGeometry?.flecheMm ?? null,
+        cintrageImpostePriceHt:
+          !isCintreManualPrice && Number.isFinite(parsedCintrageImpostePrice)
+            ? Math.max(0, parsedCintrageImpostePrice)
+            : 0,
+        cintrageManualPriceHt:
+          isCintreManualPrice && Number.isFinite(parsedCintrageManualPrice)
+            ? Math.max(0, parsedCintrageManualPrice)
+            : 0,
+      }
+    : {};
+
   const simplePriceData =
     !isCompositeMode &&
     product &&
@@ -999,7 +1057,9 @@ export default function ProductSelector({
     !isTextOnlyProduct &&
     !isFixedPriceProduct &&
     !isSparePartProduct &&
-    !isTablierProduct;
+    !isTablierProduct &&
+    // Cintre intégré : prix manuel, la grille tarifaire ne s'applique pas.
+    !isCintreManualPrice;
   const isSimpleOutOfGrid =
     isDimensionedCatalogProduct &&
     Boolean(simpleConfig.widthMm && simpleConfig.heightMm) &&
@@ -1082,6 +1142,7 @@ export default function ProductSelector({
       !isTextOnlyProduct &&
       !isSparePartProduct &&
       !isTablierProduct &&
+      !isCintreManualPrice &&
       !simplePriceData &&
       !canForceOutOfGrid) ||
     (isCustomProduct &&
@@ -1090,7 +1151,10 @@ export default function ProductSelector({
     (isCatalogService && !isServicePriceValid) ||
     (isTextOnlyProduct && !textOnlyContent.trim()) ||
     (isSparePartProduct && !(selectedSparePart && parsedSparePartQuantity > 0)) ||
-    (isTablierProduct && !(tablierPricing && parsedTablierQuantity > 0));
+    (isTablierProduct && !(tablierPricing && parsedTablierQuantity > 0)) ||
+    // Menuiserie cintrée : géométrie résoluble (dimensions saisies) et prix
+    // renseigné (fixe cintré en imposte, ou prix total en cintre intégré).
+    (workingIsCintre && (!cintrageGeometry || !isCintragePriceValid));
 
   const addButtonLabel = editingItem
     ? isTextOnlyProduct
@@ -1284,9 +1348,15 @@ export default function ProductSelector({
       };
     }
 
-    // Hors grille validé : on chiffre sur le tarif de repli (cote ramenée au
-    // maximum de la grille), la marge nette venant compenser le hors-format.
-    if (!product || (!effectiveSimplePriceData && !canForceOutOfGrid)) return null;
+    if (!product) return null;
+    if (isCintreManualPrice) {
+      // Cintre intégré : prix total manuel, aucune grille à respecter.
+      if (!cintrageGeometry || !isCintragePriceValid) return null;
+    } else if (!effectiveSimplePriceData && !canForceOutOfGrid) {
+      // Hors grille validé : on chiffre sur le tarif de repli (cote ramenée au
+      // maximum de la grille), la marge nette venant compenser le hors-format.
+      return null;
+    }
 
     const simplePreviewItem = {
       productId: product.id,
@@ -1294,8 +1364,9 @@ export default function ProductSelector({
       material: product.material ?? null,
       widthMm: parsePositiveInt(simpleConfig.widthMm),
       heightMm: parsePositiveInt(simpleConfig.heightMm),
-      unitPrice: effectiveSimplePriceData?.price ?? 0,
-      outOfGridPricing: !simplePriceData,
+      unitPrice: isCintreManualPrice ? 0 : effectiveSimplePriceData?.price ?? 0,
+      outOfGridPricing: !isCintreManualPrice && !simplePriceData,
+      ...cintrageItemFields,
       quantity,
       includePose,
       remise,
@@ -1416,6 +1487,13 @@ export default function ProductSelector({
   const handleProductChange = (productId) => {
     setSelectedProduct(productId);
     resetSimpleSelection({ preserveConfiguration: true });
+    // Les prix saisis pour le cintrage sont propres à chaque menuiserie : on
+    // ne les reporte jamais d'un produit à l'autre.
+    setSimpleConfig((previous) => ({
+      ...previous,
+      cintrageImpostePriceHt: '',
+      cintrageManualPriceHt: '',
+    }));
     // Services catalogue : mode de facturation par défaut du produit.
     const nextProduct = getProductById(productId);
     if (nextProduct?.pricingMode === 'service') {
@@ -1637,6 +1715,17 @@ export default function ProductSelector({
         allegeHeightMm: editingItem.allegeHeightMm ?? '',
         voletMonobloc: editingItem.voletMonobloc || false,
         voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
+        cintrageType: normalizeCintrageType(editingItem.cintrageType) || CINTRAGE_TYPES.IMPOSTE,
+        cintrageFlecheMm:
+          editingItem.cintrageFlecheMm != null ? String(editingItem.cintrageFlecheMm) : '',
+        cintrageImpostePriceHt:
+          editingItem.cintrageImpostePriceHt != null
+            ? String(editingItem.cintrageImpostePriceHt)
+            : '',
+        cintrageManualPriceHt:
+          editingItem.cintrageManualPriceHt != null
+            ? String(editingItem.cintrageManualPriceHt)
+            : '',
       })
     );
   }, [editingItem]);
@@ -1970,8 +2059,12 @@ export default function ProductSelector({
       return;
     }
 
-    if (!effectiveSimplePriceData && !canForceOutOfGrid) return;
-    if (canForceOutOfGrid && !confirmOutOfGrid()) return;
+    if (workingIsCintre && (!cintrageGeometry || !isCintragePriceValid)) return;
+    // Cintre intégré : prix total manuel, pas de contrôle de grille tarifaire.
+    if (!isCintreManualPrice) {
+      if (!effectiveSimplePriceData && !canForceOutOfGrid) return;
+      if (canForceOutOfGrid && !confirmOutOfGrid()) return;
+    }
 
     const nextSimpleItem = {
       id: editingItem ? editingItem.id : createCartItemId(),
@@ -1983,11 +2076,12 @@ export default function ProductSelector({
       heightMm: parsePositiveInt(simpleConfig.heightMm),
       // Hors grille : cotes facturées et prix de base viennent du tarif de
       // repli (cote débordante ramenée au maximum de la grille).
-      billedHeightCm: effectiveSimplePriceData?.billedHeight ?? null,
-      billedWidthCm: effectiveSimplePriceData?.billedWidth ?? null,
+      billedHeightCm: isCintreManualPrice ? null : effectiveSimplePriceData?.billedHeight ?? null,
+      billedWidthCm: isCintreManualPrice ? null : effectiveSimplePriceData?.billedWidth ?? null,
       quantity,
-      unitPrice: effectiveSimplePriceData?.price ?? 0,
-      outOfGridPricing: !simplePriceData,
+      unitPrice: isCintreManualPrice ? 0 : effectiveSimplePriceData?.price ?? 0,
+      outOfGridPricing: !isCintreManualPrice && !simplePriceData,
+      ...cintrageItemFields,
       colorOption: workingColorOption,
       ...(workingIsVolet
         ? { petitsBoisH: 0, petitsBoisV: 0 }
@@ -2435,6 +2529,171 @@ export default function ProductSelector({
           )}
     </>
   );
+  // Menuiserie cintrée (Formes spéciales) : type de cintrage, flèche et prix.
+  const cintrageMaxFleche = getMaxFlecheMm(
+    workingCintrageType,
+    parsePositiveInt(simpleConfig.widthMm),
+    parsePositiveInt(simpleConfig.heightMm)
+  );
+  const cintrageDefaultFleche = getDefaultFlecheMm(
+    workingCintrageType,
+    parsePositiveInt(simpleConfig.widthMm),
+    parsePositiveInt(simpleConfig.heightMm)
+  );
+  const cintrageFields = workingIsCintre ? (
+    <details open className="group rounded-2xl border border-orange-200 bg-orange-50/40 p-4">
+      <summary className="flex cursor-pointer list-none items-center justify-between text-sm font-bold text-slate-800">
+        Cintrage
+        <ChevronDown size={18} className="text-slate-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-4 space-y-4">
+        <div className="grid gap-3 md:grid-cols-2">
+          {CINTRAGE_TYPE_OPTIONS.map((option) => {
+            const isActive = workingCintrageType === option.id;
+            return (
+              <label
+                key={option.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 transition-all ${
+                  isActive
+                    ? 'border-orange-500 ring-2 ring-orange-500/10'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  checked={isActive}
+                  onChange={() => updateSimpleOptions({ cintrageType: option.id })}
+                  className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-orange-500"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-800">{option.label}</span>
+                  <span className="mt-1 block text-xs text-slate-500">{option.description}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Flèche du cintre (mm)
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min={MIN_FLECHE_MM}
+                max={cintrageMaxFleche || undefined}
+                step={10}
+                {...NUMERIC_INPUT_PROPS}
+                value={simpleConfig.cintrageFlecheMm}
+                onChange={(event) =>
+                  updateSimpleOptions({ cintrageFlecheMm: event.target.value })
+                }
+                placeholder={
+                  cintrageDefaultFleche ? `${cintrageDefaultFleche}` : 'Saisir la largeur'
+                }
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-semibold text-slate-400">
+                mm
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Hauteur de l&apos;arc, de sa naissance au sommet.
+              {cintrageMaxFleche
+                ? ` Maximum ${cintrageMaxFleche} mm (plein cintre = L/2).`
+                : ''}
+            </p>
+            {cintrageMaxFleche > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  updateSimpleOptions({ cintrageFlecheMm: String(cintrageMaxFleche) })
+                }
+                className="mt-2 rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-xs font-bold text-orange-600 transition-colors hover:bg-orange-50"
+              >
+                Plein cintre ({cintrageMaxFleche} mm)
+              </button>
+            )}
+          </div>
+
+          <div>
+            {isCintreManualPrice ? (
+              <>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Prix total HT de la menuiserie
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    {...DECIMAL_INPUT_PROPS}
+                    value={simpleConfig.cintrageManualPriceHt}
+                    onChange={(event) =>
+                      updateSimpleOptions({ cintrageManualPriceHt: event.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-bold text-slate-400">
+                    €
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Menuiserie sous-traitée : calcul automatique désactivé. Saisissez le
+                  prix complet (menuiserie, vitrage, options). La pose reste à cocher
+                  plus bas.
+                </p>
+              </>
+            ) : (
+              <>
+                <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                  Prix HT du fixe cintré
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    {...DECIMAL_INPUT_PROPS}
+                    value={simpleConfig.cintrageImpostePriceHt}
+                    onChange={(event) =>
+                      updateSimpleOptions({ cintrageImpostePriceHt: event.target.value })
+                    }
+                    placeholder="0.00"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-bold text-slate-400">
+                    €
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Ajouté au prix calculé de la partie basse (avant remise).
+                </p>
+              </>
+            )}
+            {!isCintragePriceValid && (
+              <p className="mt-1 text-xs font-semibold text-red-600">
+                Prix requis pour ajouter au panier.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {cintrageGeometry && (
+          <p className="text-xs font-semibold text-slate-600">
+            {cintrageGeometry.type === CINTRAGE_TYPES.IMPOSTE
+              ? `Hauteur totale hors tout : ${cintrageGeometry.totalHeightMm} mm (partie basse ${cintrageGeometry.bodyHeightMm} mm + imposte ${cintrageGeometry.flecheMm} mm)`
+              : `Flèche retenue : ${cintrageGeometry.flecheMm} mm${
+                  cintrageGeometry.isPleinCintre ? ' (plein cintre)' : ''
+                } sur ${cintrageGeometry.widthMm} mm de largeur`}
+          </p>
+        )}
+      </div>
+    </details>
+  ) : null;
   // Contrôles commerciaux (quantité, ajustement net, remise, pose) réutilisés par le composé.
   const commercialControls = (
     <>
@@ -2623,7 +2882,14 @@ export default function ProductSelector({
                     sheetName={entry.sheet}
                     width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
                     height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
-                    options={{ productId: entry.id, colorOption: { id: 'blanc' } }}
+                    options={{
+                      productId: entry.id,
+                      colorOption: { id: 'blanc' },
+                      // Formes spéciales : vignette avec un fixe cintré en imposte.
+                      ...(entry.shape === 'cintre'
+                        ? { cintrageType: CINTRAGE_TYPES.IMPOSTE }
+                        : {}),
+                    }}
                     className="h-full w-full"
                   />
                 )}
@@ -2771,6 +3037,8 @@ export default function ProductSelector({
                 svgColor: simpleMarketing.svgColor,
                 voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
                 voletMonoblocManoeuvre: simpleConfig.voletMonoblocManoeuvre,
+                cintrageType: workingCintrageType,
+                cintrageFlecheMm: simpleConfig.cintrageFlecheMm,
               }}
               className="h-48 sm:h-72 md:h-80"
             />
@@ -3394,10 +3662,19 @@ export default function ProductSelector({
                   placeholder="Ex : 1250"
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                 />
+                {workingIsCintre && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {isCintreManualPrice
+                      ? 'Hauteur hors tout, cintre compris.'
+                      : 'Hauteur de la partie basse, hors imposte cintrée.'}
+                  </p>
+                )}
               </div>
             </div>
           </details>
           )}
+
+          {workingIsCintre && cintrageFields}
 
           {menuiserieConfigFields}
 
@@ -3637,6 +3914,19 @@ export default function ProductSelector({
               {previewCalc?.posePrice ? (
                 <p className="mt-1 text-sm text-slate-500">
                   Pose : {(previewCalc.posePrice * quantity).toFixed(2)} EUR
+                </p>
+              ) : null}
+              {previewItem?.cintrageType === CINTRAGE_TYPES.IMPOSTE &&
+              previewItem.cintrageImpostePriceHt > 0 ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  dont fixe cintré en imposte :{' '}
+                  {(previewItem.cintrageImpostePriceHt * quantity).toFixed(2)} EUR HT (avant
+                  remise)
+                </p>
+              ) : null}
+              {previewItem?.cintrageType === CINTRAGE_TYPES.INTEGRE ? (
+                <p className="mt-1 text-xs font-semibold text-orange-600">
+                  Prix fournisseur saisi manuellement (calcul automatique désactivé)
                 </p>
               ) : null}
             </div>

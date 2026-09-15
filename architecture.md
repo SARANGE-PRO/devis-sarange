@@ -603,6 +603,7 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/products.js` | Coeur du moteur de catalogue, categories, options, composites, pricing unitaire et lineaire, dechets, thermiques. |
 | `lib/glazing.js` | Regles de vitrage, panneaux sandwich, surfaces utiles, prix au m2, indicateurs thermiques et store des vitrages personnalises. |
 | `lib/menuiserie.js` | Construction de configurations de rendu a partir des options produit. |
+| `lib/cintrage.mjs` | Menuiseries cintrees (categorie « Formes speciales ») : geometrie de l'arc (rayon, fleche bornee a L/2, hauteur totale), regle de prix (fixe cintre en imposte ajoute au calcul standard, ou prix total manuel qui desactive le calcul automatique en cintre integre sous-traite), lignes de designation. Module pur, teste dans `tests/cintrage.test.mjs`. |
 | `lib/MenuiserieRenderer.js` | Rendu canvas des menuiseries pour l'UI et le PDF. |
 | `lib/designation-generator.js` | Generation des designations lisibles inserees dans le PDF. |
 | `lib/pdf-generator.js` | Generation du PDF client complet et memorisation des ancres de signature. |
@@ -697,6 +698,7 @@ Ce dossier ne fait pas partie du runtime Next actuel. Il documente l'ancienne ar
 - coulissants,
 - portes-fenetres,
 - portes,
+- formes speciales (menuiseries cintrees PVC/alu, adossees au produit standard : meme grille et meme coefficient, champs `cintrageType`, `cintrageFlecheMm`, `cintrageImpostePriceHt`, `cintrageManualPriceHt` sur la ligne),
 - volets,
 - services,
 - custom.

@@ -44,6 +44,7 @@ import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/lib/quote-totals.mjs';
+import { formatCintrageShortLabel } from '@/lib/cintrage.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -128,6 +129,7 @@ function SortableCartItem({
   const tvaCorrection = getItemTvaCorrection(item, defaultTvaRate);
   const petitsBoisConfig = getPetitsBoisConfig(item);
   const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
+  const cintrageLabel = formatCintrageShortLabel(item);
   const isTextOnly = item.productId === 'text-only';
 
   const sashEntries = item.sashOptions ? Object.values(item.sashOptions) : [];
@@ -268,6 +270,8 @@ function SortableCartItem({
               svgColor: item.svgColor,
               voletMonobloc: item.voletMonobloc,
               voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
+              cintrageType: item.cintrageType,
+              cintrageFlecheMm: item.cintrageFlecheMm,
             }}
             className="h-16 w-16 shrink-0 border-slate-100 bg-white p-1"
           />
@@ -363,6 +367,9 @@ function SortableCartItem({
                   <span className="ml-1">
                     · {formatCompositeModules(item.compositionTree ?? item.composition ?? item.modules)}
                   </span>
+                )}
+                {cintrageLabel && (
+                  <span className="ml-1 font-bold text-orange-600">· {cintrageLabel}</span>
                 )}
                 {item.colorOption?.id && item.colorOption.id !== 'blanc' && (
                   <span className="ml-1">· {item.colorOption.label}</span>
