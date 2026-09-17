@@ -5,8 +5,10 @@ import {
   NOT_FOUND_DGFIP_ALERT,
   TVA_VERIFICATION_STATUSES,
   VAT_LOOKUP_OUTCOMES,
+  VAT_SOURCE_STATES,
   buildManualVatConfirmation,
   buildVatPatchFromLookup,
+  describeVatLookupSources,
   isTvaVerified,
   resolveClientVatState,
 } from '../lib/vat-verification.mjs';
@@ -362,6 +364,35 @@ run('un numéro déclaré non confirmé par VIES est conservé, non vérifié', 
 run("l'alerte de numéro non vérifié est celle attendue", () => {
   assert.ok(CALCULATED_UNVERIFIED_ALERT.includes('prérempli depuis le SIREN'));
   assert.ok(CALCULATED_UNVERIFIED_ALERT.includes('source officielle'));
+});
+
+run('un numéro communiqué que VIES ne reconnaît pas est conservé, non vérifié', () => {
+  const patch = buildVatPatchFromLookup({
+    outcome: VAT_LOOKUP_OUTCOMES.INVALID_VIES,
+    siren: SIREN,
+    declaredNumber: 'DE 811569869',
+  });
+
+  // Jamais effacé, jamais remplacé par le numéro que la formule produirait.
+  assert.equal(patch.tvaIntra, 'DE811569869');
+  assert.equal(patch.tvaVerificationStatus, TVA_VERIFICATION_STATUSES.CALCULATED_UNVERIFIED);
+  assert.equal(patch.tvaVerifiedNumber, '');
+});
+
+run('libellé de diagnostic : état de chaque source', () => {
+  assert.equal(
+    describeVatLookupSources({
+      dgfip: VAT_SOURCE_STATES.UNAVAILABLE,
+      vies: VAT_SOURCE_STATES.UNAVAILABLE,
+    }),
+    'Index DGFiP : injoignable ou saturé · VIES : injoignable ou saturé'
+  );
+  assert.equal(
+    describeVatLookupSources({ dgfip: VAT_SOURCE_STATES.SKIPPED, vies: VAT_SOURCE_STATES.INVALID }),
+    'Index DGFiP : non consulté · VIES : numéro non reconnu'
+  );
+  // Sources absentes : rien n'a été consulté.
+  assert.equal(describeVatLookupSources(), 'Index DGFiP : non consulté · VIES : non consulté');
 });
 
 console.log('Tous les tests de vérification du n° de TVA ont reussi.');

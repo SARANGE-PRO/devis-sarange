@@ -33,7 +33,9 @@ import {
 } from '@/lib/client-type.mjs';
 import {
   CALCULATED_UNVERIFIED_ALERT,
+  INVALID_VIES_ALERT,
   NOT_FOUND_DGFIP_ALERT,
+  SOURCES_UNAVAILABLE_ALERT,
   VAT_LOOKUP_OUTCOMES,
   buildManualVatConfirmation,
   buildVatPatchFromLookup,
@@ -222,7 +224,8 @@ export default function ClientForm({
   };
 
   /**
-   * Vérification du n° de TVA auprès des sources OFFICIELLES (DGFiP puis VIES).
+   * Vérification du n° de TVA auprès des sources OFFICIELLES (index DGFiP
+   * publié, puis VIES).
    * Un numéro déjà communiqué par le client — y compris étranger — est soumis
    * tel quel ; sinon la recherche part du SIREN, DGFiP en priorité.
    */
@@ -262,9 +265,13 @@ export default function ClientForm({
 
       if (data.outcome === VAT_LOOKUP_OUTCOMES.NOT_FOUND_DGFIP) {
         setVatLookupNotice(NOT_FOUND_DGFIP_ALERT);
+      } else if (data.outcome === VAT_LOOKUP_OUTCOMES.INVALID_VIES) {
+        setVatLookupNotice(INVALID_VIES_ALERT);
       } else if (data.outcome === VAT_LOOKUP_OUTCOMES.UNAVAILABLE) {
+        // Le détail par source (renvoyé par l'API) évite de deviner laquelle
+        // est en panne.
         setVatLookupNotice(
-          'Sources officielles injoignables : le numéro reste à vérifier ou à confirmer.'
+          data.detail ? `${SOURCES_UNAVAILABLE_ALERT} (${data.detail})` : SOURCES_UNAVAILABLE_ALERT
         );
       }
     } catch (error) {

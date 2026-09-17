@@ -4,22 +4,19 @@
  * ─────────────────────────────────────────────────────────────────────────────
  * Supervision de l'index DGFiP des numéros de TVA, et vérification après
  * déploiement. À lancer :
- *   npm run check-dgfip-vat-index
- *
- * Deux modes, choisis automatiquement :
- *   - PRODUCTION : index publié sur Vercel Blob (DGFIP_BLOB_BASE_URL défini) ;
- *   - LOCAL      : index de développement construit par
- *                  `npm run update-dgfip-vat-index`.
+ *   npm run check-dgfip-vat-index             (index PUBLIÉ sur GitHub Releases)
+ *   npm run check-dgfip-vat-index -- --local  (index LOCAL de développement)
  *
  * Contrôles (code de sortie 1 dès qu'un seul échoue) :
  *   - index présent et lisible (producteur DGFiP vérifié) ;
- *   - index actualisé depuis moins de trente-cinq jours ;
+ *   - index actualisé depuis moins de vingt et un jours ;
  *   - volume d'entrées cohérent (~4,8 millions attendus) ;
  *   - sonde fonctionnelle : SIREN 820001014 -> FR22820001014 ;
  *   - sonde négative : un SIREN inconnu ne produit PAS de faux VERIFIED_DGFIP.
  *
- * Destiné à être branché sur une supervision : toute alerte est écrite sur la
- * sortie d'erreur et le code de sortie devient non nul.
+ * Exécuté par GitHub Actions après chaque publication : toute alerte est
+ * écrite sur la sortie d'erreur et le code de sortie devient non nul, ce qui
+ * marque l'exécution en échec (et déclenche les notifications GitHub).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -36,34 +33,38 @@ process.env.TVA_DGFIP_INDEX_PATH = isAbsolute(CONFIGURED_INDEX_PATH)
   ? CONFIGURED_INDEX_PATH
   : resolve(PROJECT_ROOT, CONFIGURED_INDEX_PATH);
 
+// Mode LOCAL sur demande : l'index publié est ignoré.
+if (process.argv.includes('--local')) process.env.DGFIP_INDEX_BASE_URL = 'off';
+
 const { getDgfipIndexStatus, lookupVatNumberInDgfipIndex } = await import(
   '../lib/dgfip-vat-index.js'
 );
-const { getDgfipBlobStatus, isDgfipBlobConfigured, lookupVatNumberInDgfipBlob } = await import(
-  '../lib/dgfip-vat-blob.js'
-);
+const {
+  getDgfipRemoteBaseUrl,
+  getDgfipRemoteStatus,
+  isDgfipRemoteConfigured,
+  lookupVatNumberInDgfipRemote,
+} = await import('../lib/dgfip-vat-remote.js');
 const { getDgfipIndexHealth } = await import('../lib/dgfip-vat-index-builder.mjs');
 const { VAT_LOOKUP_OUTCOMES } = await import('../lib/vat-verification.mjs');
 
-// Mode PRODUCTION dès que le magasin Vercel Blob est configuré.
-const useBlob = isDgfipBlobConfigured();
+const useRemote = isDgfipRemoteConfigured();
 
 const loadStatus = async () => {
-  if (!useBlob) {
+  if (!useRemote) {
     const status = await getDgfipIndexStatus();
-    return { metadata: status.metadata, lookup: lookupVatNumberInDgfipIndex };
+    return { metadata: status.metadata, error: '', lookup: lookupVatNumberInDgfipIndex };
   }
 
-  const status = await getDgfipBlobStatus();
+  const status = await getDgfipRemoteStatus();
   const manifest = status.manifest;
 
   return {
     // getDgfipIndexHealth attend `refreshedAt` : le manifeste porte la date de
     // génération de la version publiée.
-    metadata: manifest
-      ? { ...manifest, refreshedAt: manifest.generatedAt }
-      : null,
-    lookup: lookupVatNumberInDgfipBlob,
+    metadata: manifest ? { ...manifest, refreshedAt: manifest.generatedAt } : null,
+    error: status.error || '',
+    lookup: lookupVatNumberInDgfipRemote,
   };
 };
 
@@ -78,21 +79,22 @@ const report = (label, ok, detail = '') => {
   if (!ok) problems.push(label);
 };
 
-const { metadata, lookup } = await loadStatus();
+const { metadata, error, lookup } = await loadStatus();
 const health = getDgfipIndexHealth(metadata);
 
 console.log(
-  useBlob
-    ? `Mode PRODUCTION — Vercel Blob : ${process.env.DGFIP_BLOB_BASE_URL}`
+  useRemote
+    ? `Mode PUBLIÉ — GitHub Releases : ${getDgfipRemoteBaseUrl()}`
     : `Mode LOCAL — ${process.env.TVA_DGFIP_INDEX_PATH}`
 );
 
-report('Index présent et lisible', Boolean(metadata));
+report('Index présent et lisible', Boolean(metadata), error);
 
 if (metadata) {
   console.log(
     [
       `  producteur : ${metadata.producer}`,
+      `version : ${metadata.version || 'locale'}`,
       `publication : ${metadata.publishedAt || 'inconnue'}`,
       `actualisé : ${metadata.refreshedAt}`,
       `entrées : ${metadata.entryCount}`,
@@ -100,7 +102,7 @@ if (metadata) {
   );
 
   report(
-    'Index actualisé depuis moins de trente-cinq jours',
+    'Index actualisé depuis moins de vingt et un jours',
     !health.issues.includes('index-obsolete'),
     `${health.ageInDays} jour(s)`
   );

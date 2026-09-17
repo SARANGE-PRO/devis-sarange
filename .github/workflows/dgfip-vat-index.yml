@@ -1,27 +1,23 @@
 name: Index DGFiP des numéros de TVA
 
-# Publie l'extraction DGFiP découpée par préfixe de SIREN sur Vercel Blob.
-# Le jeton d'écriture provient du secret BLOB_READ_WRITE_TOKEN : il n'est ni
-# affiché ni écrit dans le dépôt.
+# Publie l'extraction DGFiP, découpée en fichiers équilibrés, sur les GitHub
+# Releases de ce dépôt. Aucun secret à configurer : GITHUB_TOKEN est fourni
+# automatiquement, et l'application lit les fichiers par URL publique.
+#
+# Historique : l'index était publié sur Vercel Blob. Le plan Hobby n'inclut que
+# 2 000 opérations par mois et bloque le magasin trente jours au-delà : avec
+# ~1 800 opérations par publication, le magasin a été bloqué du 05/08 au 02/09
+# puis à partir du 06/09/2026, et la vérification des numéros de TVA ne
+# fonctionnait plus. Les releases GitHub n'ont pas de quota de ce type.
 
 on:
   schedule:
-    # MENSUEL, le 10 à 04h30 heure de Paris, fuseau explicite (sinon l'horaire
-    # est interprété en UTC et dérive entre heure d'été et heure d'hiver).
-    #
-    # Pourquoi pas tous les jours : une publication écrit 892 fichiers de
-    # préfixe + le manifeste, et chaque `put()` compte comme une « Advanced
-    # Operation » Vercel Blob, dont le plan Hobby n'inclut que 2 000 par mois.
-    # En quotidien le quota était épuisé en trois jours et Vercel bloquait le
-    # magasin pendant trente jours — en lecture comme en écriture —, ce qui
-    # faisait échouer le workflow tous les jours (constaté du 05/08 au 02/09
-    # puis à partir du 06/09/2026). En mensuel : ~895 opérations, soit moins de
-    # la moitié du quota, avec de la marge pour un déclenchement manuel.
-    #
-    # Le 10 plutôt que le 1er : après un blocage, le magasin ne redevient
-    # accessible qu'une fois la fenêtre glissante de trente jours écoulée.
-    - cron: '30 4 10 * *'
-      timezone: 'Europe/Paris'
+    # HEBDOMADAIRE, le lundi à 03h30 UTC (05h30 à Paris en été, 04h30 en
+    # hiver). L'extraction DGFiP est publiée chaque jour : un rythme
+    # hebdomadaire suffit (VIES et la confirmation manuelle couvrent les
+    # immatriculations de la semaine), et limite le nombre d'exécutions à
+    # surveiller.
+    - cron: '30 3 * * 1'
   workflow_dispatch:
 
 # Une seule publication à la fois : équivalent du verrou d'exécution.
@@ -31,11 +27,12 @@ concurrency:
 
 jobs:
   publish:
-    name: Publier l'index sur Vercel Blob
+    name: Publier l'index sur les GitHub Releases
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read
+      # Création des releases, envoi des fichiers, élagage.
+      contents: write
 
     steps:
       - name: Récupérer le dépôt
@@ -52,11 +49,40 @@ jobs:
 
       - name: Publier l'index DGFiP
         env:
-          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
-          DGFIP_BLOB_BASE_URL: ${{ vars.DGFIP_BLOB_BASE_URL }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Les tags des releases sont rattachés à la branche par défaut, quel
+          # que soit la branche depuis laquelle le workflow est lancé.
+          DGFIP_INDEX_TARGET: ${{ github.event.repository.default_branch }}
           # L'extraction complète (~4,8 millions d'entrées) est construite en
           # mémoire avant découpage.
           NODE_OPTIONS: --max-old-space-size=6144
         # Le script sort en code non nul si la publication échoue : l'exécution
         # est alors marquée en erreur, et la version précédente reste active.
         run: npm run publish-dgfip-vat-index
+
+  check:
+    name: Contrôler l'index publié
+    needs: publish
+    # Même si la publication a échoué : on vérifie que la version active reste
+    # lisible et fraîche. Un échec ici marque l'exécution en erreur.
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Contrôler l'index publié
+        run: npm run check-dgfip-vat-index
