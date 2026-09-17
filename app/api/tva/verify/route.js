@@ -35,6 +35,8 @@ export async function GET(request) {
     // source depuis les journaux Vercel.
     if (lookup.outcome === VAT_LOOKUP_OUTCOMES.UNAVAILABLE) {
       console.warn(`[tva/verify] Sources officielles injoignables (${detail})`);
+    } else if (lookup.outcome === VAT_LOOKUP_OUTCOMES.NOT_FOUND_DGFIP) {
+      console.info(`[tva/verify] SIREN ${siren} absent de l’extraction DGFiP (${detail})`);
     }
 
     return NextResponse.json({

@@ -34,9 +34,9 @@ import {
 import {
   CALCULATED_UNVERIFIED_ALERT,
   INVALID_VIES_ALERT,
-  NOT_FOUND_DGFIP_ALERT,
   SOURCES_UNAVAILABLE_ALERT,
   VAT_LOOKUP_OUTCOMES,
+  buildNotFoundDgfipNotice,
   buildManualVatConfirmation,
   buildVatPatchFromLookup,
   getTvaVerificationLabel,
@@ -264,7 +264,8 @@ export default function ClientForm({
       setFormData((prev) => ({ ...prev, ...data.patch }));
 
       if (data.outcome === VAT_LOOKUP_OUTCOMES.NOT_FOUND_DGFIP) {
-        setVatLookupNotice(NOT_FOUND_DGFIP_ALERT);
+        // VIES a été consulté juste après : le message dit ce qu'il a répondu.
+        setVatLookupNotice(buildNotFoundDgfipNotice(data.sources));
       } else if (data.outcome === VAT_LOOKUP_OUTCOMES.INVALID_VIES) {
         setVatLookupNotice(INVALID_VIES_ALERT);
       } else if (data.outcome === VAT_LOOKUP_OUTCOMES.UNAVAILABLE) {

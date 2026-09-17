@@ -7,6 +7,7 @@ import {
   VAT_LOOKUP_OUTCOMES,
   VAT_SOURCE_STATES,
   buildManualVatConfirmation,
+  buildNotFoundDgfipNotice,
   buildVatPatchFromLookup,
   describeVatLookupSources,
   isTvaVerified,
@@ -377,6 +378,30 @@ run('un numéro communiqué que VIES ne reconnaît pas est conservé, non vérif
   assert.equal(patch.tvaIntra, 'DE811569869');
   assert.equal(patch.tvaVerificationStatus, TVA_VERIFICATION_STATUSES.CALCULATED_UNVERIFIED);
   assert.equal(patch.tvaVerifiedNumber, '');
+});
+
+run('SIREN absent de l’extraction : le message dit ce que VIES a répondu', () => {
+  // VIES saturé (cas fréquent côté français) : inviter à réessayer.
+  const saturated = buildNotFoundDgfipNotice({
+    dgfip: VAT_SOURCE_STATES.NOT_FOUND,
+    vies: VAT_SOURCE_STATES.UNAVAILABLE,
+  });
+  assert.ok(saturated.startsWith(NOT_FOUND_DGFIP_ALERT));
+  assert.ok(saturated.includes('saturé ou injoignable'));
+  assert.ok(saturated.includes('relancez la vérification'));
+
+  // VIES a répondu : le numéro calculé n'est pas reconnu non plus.
+  const invalid = buildNotFoundDgfipNotice({
+    dgfip: VAT_SOURCE_STATES.NOT_FOUND,
+    vies: VAT_SOURCE_STATES.INVALID,
+  });
+  assert.ok(invalid.includes('ne reconnaît pas non plus'));
+
+  // Sans détail (VIES non consulté) : l'alerte seule.
+  assert.equal(buildNotFoundDgfipNotice({ vies: VAT_SOURCE_STATES.SKIPPED }), NOT_FOUND_DGFIP_ALERT);
+  assert.equal(buildNotFoundDgfipNotice(), NOT_FOUND_DGFIP_ALERT);
+  // Le message n'envoie plus l'utilisateur consulter VIES à la main.
+  assert.ok(!NOT_FOUND_DGFIP_ALERT.includes('faites-le valider par VIES'));
 });
 
 run('libellé de diagnostic : état de chaque source', () => {
