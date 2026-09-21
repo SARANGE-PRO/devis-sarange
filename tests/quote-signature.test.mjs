@@ -6,7 +6,25 @@ import {
   getQuoteNumberDisplay,
   normalizeQuoteSignatureStatus,
   quoteNeedsResend,
+  quoteNumberMatchesSearch,
 } from '../lib/quote-signature.js';
+
+// Recherche par numéro : avec ou sans « DV », avec ou sans séparateurs, ou par
+// une partie du numéro.
+assert.equal(quoteNumberMatchesSearch('DV-262341234', 'DV-262341234'), true);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', 'dv 262341234'), true);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', 'dv262341234'), true);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', '262341234'), true);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', '1234'), true, 'fin du numéro');
+assert.equal(quoteNumberMatchesSearch('DV-262341234', '2623'), true, 'début du numéro');
+assert.equal(quoteNumberMatchesSearch('262341234', 'DV 262341234'), true, 'numéro stocké sans préfixe');
+// Trop court, autre numéro, terme non numérique, numéro absent : aucun faux positif.
+assert.equal(quoteNumberMatchesSearch('DV-262341234', '26'), false);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', '999999'), false);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', 'dupont'), false);
+assert.equal(quoteNumberMatchesSearch('DV-262341234', 'dv'), false);
+assert.equal(quoteNumberMatchesSearch('', '262341234'), false);
+assert.equal(quoteNumberMatchesSearch(undefined, '262341234'), false);
 
 assert.equal(normalizeQuoteSignatureStatus('SIGNED'), 'signed');
 assert.equal(normalizeQuoteSignatureStatus(' viewed '), 'viewed');

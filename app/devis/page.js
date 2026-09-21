@@ -26,24 +26,28 @@ import { isKnownClientType } from '@/lib/client-type.mjs';
 import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import {
   buildSignatureDocumentHref,
+  buildSignaturePageHref,
   canQuoteBeSent,
   getQuoteDisplayStatus,
   getQuoteSignatureReminderMeta,
   getQuoteSignatureStatusMeta,
   getQuoteSignatureWorkflow,
   quoteNeedsResend,
+  quoteNumberMatchesSearch,
 } from '@/lib/quote-signature';
 import { getCompletionReminderMeta, getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
 import CompletionSendModal from '@/components/CompletionSendModal';
 import LiftSendModal from '@/components/LiftSendModal';
 import {
   BellRing,
+  Check,
   ChevronDown,
   Copy,
   ExternalLink,
   FileCheck2,
   FileDown,
   FolderOpen,
+  Link2,
   Loader2,
   LogOut,
   Mail,
@@ -120,6 +124,38 @@ const getQuoteSearchText = (quote) =>
         .filter(Boolean)
         .join(' ')
   );
+
+// Numéro figé sur le devis (racine) ; repli sur le workflow de signature.
+const getQuoteNumber = (quote) =>
+  quote?.quoteNumber || getQuoteSignatureWorkflow(quote).quoteNumber || '';
+
+// Copie dans le presse-papiers, avec repli pour les navigateurs sans API
+// Clipboard (contexte non sécurisé, anciens WebView).
+const copyTextToClipboard = async (value) => {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Repli ci-dessous.
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+};
 
 const getQuoteProductPreview = (quote) => {
   const labels = (quote.payload?.cartItems || [])
@@ -332,6 +368,7 @@ function QuoteCard({
   onSendForSignature,
   onSendReminder,
   onOpenSignedQuote,
+  onCopySignatureLink,
   onGenerateCompletion,
   onSendCompletionReminder,
   onSendReservesLift,
@@ -350,6 +387,19 @@ function QuoteCard({
   const canSendReminder = canQuoteReceiveReminder(quote);
   const needsResend = quoteNeedsResend(quote);
   const lastReminderMeta = getQuoteSignatureReminderMeta(workflow.lastReminderLevel);
+  // Lien de signature partageable (WhatsApp, SMS…) : il existe dès l'envoi
+  // pour signature, et reste valable tant que le devis n'a pas changé.
+  const canCopySignatureLink =
+    Boolean(workflow.sessionId) &&
+    workflow.deliveryMode === 'signature' &&
+    !needsResend &&
+    !['expired', 'refused', 'archived'].includes(displayStatus);
+  const [signatureLinkCopied, setSignatureLinkCopied] = useState(false);
+  useEffect(() => {
+    if (!signatureLinkCopied) return undefined;
+    const timeoutId = setTimeout(() => setSignatureLinkCopied(false), 2500);
+    return () => clearTimeout(timeoutId);
+  }, [signatureLinkCopied]);
   const quoteClient =
     quote.clientName ||
     getClientDisplayName(quote.payload?.clientData) ||
@@ -626,6 +676,25 @@ function QuoteCard({
 
           {/* Secondary icon actions */}
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              title={
+                canCopySignatureLink
+                  ? 'Copier le lien de signature (WhatsApp, SMS…)'
+                  : 'Envoyez d’abord le devis pour signature pour obtenir son lien'
+              }
+              onClick={async () => {
+                if (await onCopySignatureLink(quote)) setSignatureLinkCopied(true);
+              }}
+              disabled={isWorking || !canCopySignatureLink}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:opacity-50"
+            >
+              {signatureLinkCopied ? (
+                <Check size={15} className="text-emerald-600" />
+              ) : (
+                <Link2 size={15} />
+              )}
+            </button>
             <button
               type="button"
               title="Télécharger PDF"
@@ -1044,6 +1113,28 @@ export default function SavedQuotesPage() {
     }
   };
 
+  const handleCopySignatureLink = async (quote) => {
+    const sessionId = getQuoteSignatureWorkflow(quote).sessionId;
+    if (!sessionId) {
+      setActionError("Aucun lien de signature : envoyez d'abord le devis pour signature.");
+      return false;
+    }
+
+    const link = `${window.location.origin}${buildSignaturePageHref(sessionId)}`;
+    const copied = await copyTextToClipboard(link);
+
+    if (copied) {
+      setActionError('');
+      setActionMessage(
+        'Lien de signature copié. Collez-le dans WhatsApp ou un SMS : le client verra un aperçu à son nom avec son numéro de devis.'
+      );
+    } else {
+      setActionError(`Copie impossible sur cet appareil. Lien de signature : ${link}`);
+    }
+
+    return copied;
+  };
+
   const handleOpenSignedQuote = (quote) => {
     const sessionId = getQuoteSignatureWorkflow(quote).sessionId;
     if (!sessionId) return;
@@ -1065,7 +1156,13 @@ export default function SavedQuotesPage() {
 
   const filteredQuotes = sortQuotes(
     quotes.filter((q) => {
-      if (normalizedSearch && !matchesSearchTerm(getQuoteSearchText(q), normalizedSearch)) return false;
+      if (
+        normalizedSearch &&
+        !matchesSearchTerm(getQuoteSearchText(q), normalizedSearch) &&
+        !quoteNumberMatchesSearch(getQuoteNumber(q), normalizedSearch)
+      ) {
+        return false;
+      }
       if (statusFilter !== 'all' && getQuoteDisplayStatus(q) !== statusFilter) return false;
       if (clientFilter !== 'all' && getQuoteClientId(q) !== clientFilter) return false;
       return matchesPeriodFilter(q, periodFilter);
@@ -1236,7 +1333,7 @@ export default function SavedQuotesPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Nom, email, référence, ville..."
+                  placeholder="Nom, n° de devis, email, référence, ville..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
                 />
                 {searchTerm && (
@@ -1440,6 +1537,7 @@ export default function SavedQuotesPage() {
                   onSendForSignature={handleSendForSignature}
                   onSendReminder={handleSendReminder}
                   onOpenSignedQuote={handleOpenSignedQuote}
+                  onCopySignatureLink={handleCopySignatureLink}
                   onGenerateCompletion={handleGenerateCompletion}
                   onSendCompletionReminder={handleSendCompletionReminder}
                   onSendReservesLift={handleSendReservesLift}
