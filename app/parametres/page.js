@@ -173,8 +173,9 @@ const useIsMounted = () =>
   useSyncExternalStore(subscribeNoop, () => true, () => false);
 
 // Lien FIXE (pas un token par session) : donné une fois aux poseurs, à
-// utiliser quand le bon de fin de chantier n'a pas pu être préparé à
-// l'avance depuis une fiche devis. Voir components/GenericCompletionPage.jsx.
+// utiliser quand le bon (fin de chantier, livraison ou enlèvement) n'a pas pu
+// être préparé à l'avance depuis une fiche devis. Le client choisit la
+// prestation à la première étape. Voir components/GenericCompletionPage.jsx.
 function GenericCompletionLinkSection() {
   const [copied, setCopied] = useState(false);
   const fullUrl = `${PUBLIC_BASE}/reception-generale`;
@@ -196,14 +197,17 @@ function GenericCompletionLinkSection() {
           <ClipboardCheck size={18} />
         </div>
         <div>
-          <p className="text-xs font-black uppercase tracking-widest text-orange-500">Bon de fin de chantier</p>
+          <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+            Bon de fin de chantier, de livraison ou d&apos;enlèvement
+          </p>
           <h3 className="text-lg font-bold text-slate-900">Version générale (sans devis lié)</h3>
         </div>
       </div>
       <p className="mb-4 text-sm text-slate-500">
         À utiliser quand le bon n&apos;a pas pu être préparé à l&apos;avance depuis une fiche devis : le client
-        saisit lui-même ses coordonnées. Ce lien est fixe (pas un lien à usage unique) : donnez-le une fois à vos
-        poseurs pour qu&apos;ils l&apos;utilisent directement en fin d&apos;intervention.
+        choisit d&apos;abord la prestation (pose, livraison ou enlèvement) puis saisit lui-même ses coordonnées.
+        Un seul lien pour les trois cas, fixe (pas un lien à usage unique) : donnez-le une fois à vos poseurs
+        pour qu&apos;ils l&apos;utilisent directement en fin d&apos;intervention ou de remise.
       </p>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="min-w-0 flex-1">

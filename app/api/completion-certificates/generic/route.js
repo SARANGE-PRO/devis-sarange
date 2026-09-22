@@ -19,6 +19,7 @@ export async function POST(request) {
     const body = await request.json();
 
     const result = await submitGenericCompletion({
+      docType: body?.docType,
       nom: body?.nom,
       prenom: body?.prenom,
       email: body?.email,
@@ -41,6 +42,6 @@ export async function POST(request) {
       error: error?.message,
       statusCode: error?.statusCode,
     });
-    return toRouteErrorResponse(error, "Impossible d'enregistrer le bon de fin de chantier.");
+    return toRouteErrorResponse(error, "Impossible d'enregistrer le bon.");
   }
 }

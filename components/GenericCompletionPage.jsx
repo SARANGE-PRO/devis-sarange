@@ -6,17 +6,24 @@ import {
   ArrowLeft,
   ArrowRight,
   ClipboardCheck,
+  Hammer,
   Loader2,
+  Package,
   PenLine,
   Star,
+  Truck,
   UserRound,
 } from 'lucide-react';
 import { formatPhoneNumber, formatPhoneWhileTyping } from '@/lib/phone.mjs';
+import {
+  capitalizeLabel,
+  getCompletionDocTypeLabel,
+  getCompletionRatingCriteria,
+} from '@/lib/completion-certificate.mjs';
 import SignaturePad from './SignaturePad';
 import AddressAutocomplete from './AddressAutocomplete';
 import ReservePhotoInput from './ReservePhotoInput';
 import {
-  RATING_CRITERIA,
   StarRow,
   StepAlert,
   StepBar,
@@ -25,19 +32,45 @@ import {
   fetchJson,
 } from './CompletionSignaturePage';
 
-const STEPS = ['Coordonnées', 'Validation', 'Satisfaction', 'Signature'];
+const STEPS = ['Prestation', 'Coordonnées', 'Validation', 'Satisfaction', 'Signature'];
+
+// Un seul lien pour les trois cas : le client choisit d'abord la prestation,
+// et tout le parcours (textes, critères de satisfaction, PDF, e-mails) suit
+// le type de document, comme pour le bon lié à un devis.
+const DOC_TYPE_OPTIONS = [
+  {
+    id: 'reception',
+    label: 'Pose',
+    description: 'Travaux réalisés chez vous : bon de fin de chantier.',
+    Icon: Hammer,
+  },
+  {
+    id: 'livraison',
+    label: 'Livraison',
+    description: 'Menuiseries livrées sans pose : bon de livraison.',
+    Icon: Truck,
+  },
+  {
+    id: 'enlevement',
+    label: 'Enlèvement',
+    description: "Menuiseries retirées à l'atelier : bon d'enlèvement.",
+    Icon: Package,
+  },
+];
 
 const inputClassName =
   'w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10';
 
 /**
- * Variante générale du bon de fin de chantier : pas de devis lié (lien fixe
- * donné aux poseurs, voir /parametres), le client saisit ses coordonnées
- * lui-même. Tout est soumis en un seul appel à la signature (voir
+ * Variante générale du bon (fin de chantier, livraison ou enlèvement) : pas de
+ * devis lié (lien fixe donné aux poseurs, voir /parametres), le client choisit
+ * la prestation puis saisit ses coordonnées lui-même. Tout est soumis en un
+ * seul appel à la signature (voir
  * lib/completion-signature-service.js#submitGenericCompletion).
  */
 export default function GenericCompletionPage() {
   const [stepIndex, setStepIndex] = useState(0);
+  const [docType, setDocType] = useState('');
   const [contact, setContact] = useState({
     nom: '',
     prenom: '',
@@ -67,15 +100,25 @@ export default function GenericCompletionPage() {
     setShowMissing(false);
   }, [stepIndex]);
 
+  const isRemise = docType === 'livraison' || docType === 'enlevement';
+  const docLabel = docType ? getCompletionDocTypeLabel(docType) : 'bon';
+  const ratingCriteria = getCompletionRatingCriteria(docType || 'reception');
+  const addressLabel =
+    docType === 'livraison'
+      ? 'Adresse de livraison'
+      : docType === 'enlevement'
+        ? 'Votre adresse'
+        : 'Adresse du chantier';
+
   // Seuls nom, prénom et adresse bloquent la suite du parcours.
   const REQUIRED_CONTACT_FIELDS = [
     ['nom', 'votre nom'],
     ['prenom', 'votre prénom'],
-    ['adresse', "l'adresse du chantier"],
+    ['adresse', addressLabel.toLowerCase().replace(/^adresse/, "l'adresse")],
   ];
   const missingContactFields = REQUIRED_CONTACT_FIELDS.filter(([key]) => !contact[key].trim());
   const contactComplete = missingContactFields.length === 0;
-  const allRated = RATING_CRITERIA.every((criterion) => ratings[criterion.key] > 0);
+  const allRated = ratingCriteria.every((criterion) => ratings[criterion.key] > 0);
   const hasReserves = validationChoice === 'warn';
 
   // Téléphone : mise en forme automatique pendant la frappe (06 62 68 90 84).
@@ -97,6 +140,15 @@ export default function GenericCompletionPage() {
   const isFieldMissing = (key) => showMissing && !contact[key].trim();
   const missingFieldClass = (key) => (isFieldMissing(key) ? ' border-amber-400 ring-4 ring-amber-500/10' : '');
 
+  const handleContinueDocType = () => {
+    if (!docType) {
+      setStepError('Choisissez la prestation concernée pour continuer.');
+      setShowMissing(true);
+      return;
+    }
+    setStepIndex(1);
+  };
+
   const handleContinueContact = () => {
     if (!contactComplete) {
       setStepError(
@@ -105,7 +157,7 @@ export default function GenericCompletionPage() {
       setShowMissing(true);
       return;
     }
-    setStepIndex(1);
+    setStepIndex(2);
   };
 
   const handleContinueValidation = () => {
@@ -114,7 +166,7 @@ export default function GenericCompletionPage() {
       setShowMissing(true);
       return;
     }
-    setStepIndex(2);
+    setStepIndex(3);
   };
 
   const handleContinueRatings = () => {
@@ -123,7 +175,7 @@ export default function GenericCompletionPage() {
       setShowMissing(true);
       return;
     }
-    setStepIndex(3);
+    setStepIndex(4);
   };
 
   const handleSubmit = async () => {
@@ -146,6 +198,7 @@ export default function GenericCompletionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...contact,
+          docType,
           reserves: hasReserves ? [{ description: validationComment || 'Problème signalé par le client' }] : [],
           // Secours uniquement : les photos téléversées en staging sont déjà
           // côté serveur, référencées par photoUploadId.
@@ -158,7 +211,7 @@ export default function GenericCompletionPage() {
         }),
       });
       setResult(payload);
-      setStepIndex(4);
+      setStepIndex(5);
     } catch (error) {
       setSubmitError(error.message);
     } finally {
@@ -168,16 +221,49 @@ export default function GenericCompletionPage() {
 
   const clientLabel = `${contact.prenom} ${contact.nom}`.trim();
 
+  // Textes de validation et de récapitulatif selon la prestation.
+  const validationTitle = isRemise ? 'Validation des produits' : 'Validation des travaux';
+  const validationQuestion = isRemise
+    ? 'Confirmez-vous la bonne réception de vos menuiseries ?'
+    : 'Confirmez-vous la bonne réalisation des travaux ?';
+  const validationOkLabel = isRemise ? 'Je valide les produits remis' : 'Je valide les travaux réalisés';
+  const recapSubtitle = isRemise
+    ? 'Relisez le constat puis signez pour confirmer la remise des produits.'
+    : 'Relisez le constat puis signez pour prononcer la réception des travaux.';
+  const recapWord = isRemise ? 'Remise' : 'Réception';
+  const recapOkDetail = isRemise
+    ? 'Les produits ont été validés conformes.'
+    : 'Les travaux ont été validés conformes.';
+  const recapWarnDetail = isRemise
+    ? "Un problème a été signalé. Cela n'empêche pas la remise : SARANGE s'engage à le traiter dans un délai standard de 30 jours."
+    : "Un problème a été signalé. Cela n'empêche pas la réception : SARANGE s'engage à le corriger dans un délai standard de 30 jours.";
+  const confirmationText =
+    docType === 'livraison'
+      ? 'Je confirme la livraison des produits,'
+      : docType === 'enlevement'
+        ? "Je confirme l'enlèvement des produits,"
+        : 'Je prononce la réception des travaux,';
+
+  const continueButtonClass = (enabled) =>
+    `inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
+      enabled ? '' : 'opacity-60'
+    }`;
+
+  const backButtonClass =
+    'inline-flex items-center gap-2 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700';
+
   return (
     <PageShell
       headerLeft={
         <>
-          <span className="truncate font-bold text-slate-800">Bon de fin de chantier</span>
-          {clientLabel && stepIndex > 0 && <span className="hidden truncate sm:inline">— {clientLabel}</span>}
+          <span className="truncate font-bold text-slate-800">
+            {docType ? capitalizeLabel(docLabel) : 'Bon SARANGE'}
+          </span>
+          {clientLabel && stepIndex > 1 && <span className="hidden truncate sm:inline">· {clientLabel}</span>}
         </>
       }
       stepBar={
-        stepIndex < 4 ? (
+        stepIndex < 5 ? (
           <StepBar steps={STEPS} currentIndex={stepIndex} onStepClick={setStepIndex} />
         ) : null
       }
@@ -186,12 +272,63 @@ export default function GenericCompletionPage() {
         <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
+              <ClipboardCheck size={22} />
+            </div>
+            <div>
+              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Quelle prestation ?</h1>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">
+                Choisissez ce que SARANGE vient de réaliser pour vous : le bon à signer s&apos;adapte.
+              </p>
+            </div>
+          </div>
+
+          <div className={`space-y-3 ${showMissing && !docType ? 'rounded-2xl ring-4 ring-amber-500/10' : ''}`}>
+            {DOC_TYPE_OPTIONS.map(({ id, label, description, Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setDocType(id);
+                  setStepError('');
+                }}
+                className={`flex w-full items-center gap-4 rounded-2xl border-2 bg-white px-6 py-5 text-left transition-colors ${
+                  docType === id
+                    ? 'border-orange-400 bg-orange-50 text-orange-700'
+                    : 'border-slate-200 text-slate-700 hover:border-slate-300'
+                }`}
+              >
+                <Icon size={26} className={docType === id ? 'text-orange-500' : 'text-slate-400'} />
+                <span>
+                  <span className="block text-base font-bold">{label}</span>
+                  <span className="block text-sm font-medium text-slate-500">{description}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6">
+            <StepAlert message={stepError} />
+          </div>
+
+          <div className="mt-2 flex justify-center">
+            <button type="button" onClick={handleContinueDocType} className={continueButtonClass(Boolean(docType))}>
+              Continuer
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stepIndex === 1 && (
+        <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
+          <div className="mb-6 flex items-start gap-3">
+            <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
               <UserRound size={22} />
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Vos coordonnées</h1>
               <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                Merci de renseigner vos informations pour ce bon de fin de chantier.
+                Merci de renseigner vos informations pour ce {docLabel}.
               </p>
             </div>
           </div>
@@ -224,7 +361,7 @@ export default function GenericCompletionPage() {
               </div>
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-xs font-black uppercase tracking-widest text-slate-500">
-                  Adresse du chantier
+                  {addressLabel}
                 </label>
                 <div className={isFieldMissing('adresse') ? 'rounded-xl ring-4 ring-amber-500/10' : ''}>
                   <AddressAutocomplete
@@ -284,14 +421,12 @@ export default function GenericCompletionPage() {
             <StepAlert message={stepError} />
           </div>
 
-          <div className="mt-2 flex justify-center">
-            <button
-              type="button"
-              onClick={handleContinueContact}
-              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
-                contactComplete ? '' : 'opacity-60'
-              }`}
-            >
+          <div className="mt-2 flex items-center justify-between">
+            <button type="button" onClick={() => setStepIndex(0)} className={backButtonClass}>
+              <ArrowLeft size={16} />
+              Retour
+            </button>
+            <button type="button" onClick={handleContinueContact} className={continueButtonClass(contactComplete)}>
               Continuer
               <ArrowRight size={18} />
             </button>
@@ -299,17 +434,15 @@ export default function GenericCompletionPage() {
         </div>
       )}
 
-      {stepIndex === 1 && (
+      {stepIndex === 2 && (
         <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
               <ClipboardCheck size={22} />
             </div>
             <div>
-              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Validation des travaux</h1>
-              <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                Confirmez-vous la bonne réalisation des travaux ?
-              </p>
+              <h1 className="text-xl font-black text-slate-900 sm:text-2xl">{validationTitle}</h1>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">{validationQuestion}</p>
             </div>
           </div>
 
@@ -326,7 +459,7 @@ export default function GenericCompletionPage() {
                   : 'border-slate-200 text-slate-700 hover:border-slate-300'
               }`}
             >
-              <span className="text-2xl">✓</span> Je valide les travaux réalisés
+              <span className="text-2xl">✓</span> {validationOkLabel}
             </button>
             <button
               type="button"
@@ -367,20 +500,14 @@ export default function GenericCompletionPage() {
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStepIndex(0)}
-              className="inline-flex items-center gap-2 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700"
-            >
+            <button type="button" onClick={() => setStepIndex(1)} className={backButtonClass}>
               <ArrowLeft size={16} />
               Retour
             </button>
             <button
               type="button"
               onClick={handleContinueValidation}
-              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
-                validationChoice ? '' : 'opacity-60'
-              }`}
+              className={continueButtonClass(Boolean(validationChoice))}
             >
               Continuer
               <ArrowRight size={18} />
@@ -389,7 +516,7 @@ export default function GenericCompletionPage() {
         </div>
       )}
 
-      {stepIndex === 2 && (
+      {stepIndex === 3 && (
         <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
@@ -404,7 +531,7 @@ export default function GenericCompletionPage() {
           </div>
 
           <div className="space-y-3">
-            {RATING_CRITERIA.map((criterion) => (
+            {ratingCriteria.map((criterion) => (
               <StarRow
                 key={criterion.key}
                 label={criterion.label}
@@ -423,21 +550,11 @@ export default function GenericCompletionPage() {
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStepIndex(1)}
-              className="inline-flex items-center gap-2 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700"
-            >
+            <button type="button" onClick={() => setStepIndex(2)} className={backButtonClass}>
               <ArrowLeft size={16} />
               Retour
             </button>
-            <button
-              type="button"
-              onClick={handleContinueRatings}
-              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 ${
-                allRated ? '' : 'opacity-60'
-              }`}
-            >
+            <button type="button" onClick={handleContinueRatings} className={continueButtonClass(allRated)}>
               Continuer
               <ArrowRight size={18} />
             </button>
@@ -445,7 +562,7 @@ export default function GenericCompletionPage() {
         </div>
       )}
 
-      {stepIndex === 3 && (
+      {stepIndex === 4 && (
         <div className="mx-auto max-w-2xl duration-300 animate-in fade-in">
           <div className="mb-6 flex items-start gap-3">
             <div className="rounded-2xl bg-orange-100 p-3 text-orange-600">
@@ -453,27 +570,22 @@ export default function GenericCompletionPage() {
             </div>
             <div>
               <h1 className="text-xl font-black text-slate-900 sm:text-2xl">Récapitulatif &amp; signature</h1>
-              <p className="mt-1 text-sm text-slate-500 sm:text-base">
-                Relisez le constat puis signez pour prononcer la réception des travaux.
-              </p>
+              <p className="mt-1 text-sm text-slate-500 sm:text-base">{recapSubtitle}</p>
             </div>
           </div>
 
           {hasReserves ? (
             <div className="mb-5 rounded-2xl border border-amber-300 bg-amber-50 p-5 text-amber-800">
-              <p className="text-base font-bold">Réception avec réserve</p>
-              <p className="mt-1.5 text-sm leading-6">
-                Un problème a été signalé. Cela n&apos;empêche pas la réception : SARANGE s&apos;engage à le
-                corriger dans un délai standard de 30 jours.
-              </p>
+              <p className="text-base font-bold">{recapWord} avec réserve</p>
+              <p className="mt-1.5 text-sm leading-6">{recapWarnDetail}</p>
               {validationComment && (
                 <p className="mt-3 rounded-xl bg-white/60 px-3.5 py-2 text-sm">{validationComment}</p>
               )}
             </div>
           ) : (
             <div className="mb-5 rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-800">
-              <p className="text-base font-bold">Réception sans réserve</p>
-              <p className="mt-1.5 text-sm">Les travaux ont été validés conformes.</p>
+              <p className="text-base font-bold">{recapWord} sans réserve</p>
+              <p className="mt-1.5 text-sm">{recapOkDetail}</p>
             </div>
           )}
 
@@ -492,8 +604,7 @@ export default function GenericCompletionPage() {
               className="mt-0.5 h-5 w-5 accent-orange-500"
             />
             <span className="text-sm text-slate-800 sm:text-base">
-              Je prononce la réception des travaux,{' '}
-              <strong>{hasReserves ? 'avec réserve' : 'sans réserve'}</strong>
+              {confirmationText} <strong>{hasReserves ? 'avec réserve' : 'sans réserve'}</strong>
             </span>
           </label>
 
@@ -519,11 +630,7 @@ export default function GenericCompletionPage() {
           </div>
 
           <div className="mt-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setStepIndex(2)}
-              className="inline-flex items-center gap-2 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700"
-            >
+            <button type="button" onClick={() => setStepIndex(3)} className={backButtonClass}>
               <ArrowLeft size={16} />
               Retour
             </button>
@@ -531,9 +638,7 @@ export default function GenericCompletionPage() {
               type="button"
               disabled={submitting}
               onClick={handleSubmit}
-              className={`inline-flex items-center gap-2 rounded-full bg-orange-500 px-10 py-4 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 disabled:opacity-50 ${
-                confirmed && signatureDataUrl ? '' : 'opacity-60'
-              }`}
+              className={`${continueButtonClass(Boolean(confirmed && signatureDataUrl))} disabled:opacity-50`}
             >
               {submitting && <Loader2 size={17} className="animate-spin" />}
               Signer et envoyer
@@ -542,7 +647,7 @@ export default function GenericCompletionPage() {
         </div>
       )}
 
-      {stepIndex === 4 && <FinalScreen result={result} />}
+      {stepIndex === 5 && <FinalScreen result={result} />}
     </PageShell>
   );
 }

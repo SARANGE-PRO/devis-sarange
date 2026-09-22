@@ -8,7 +8,7 @@ import { GENERIC_COMPLETION_LINK_TEXTS } from '@/lib/completion-link-preview.mjs
 export const runtime = 'nodejs';
 export const size = LINK_PREVIEW_SIZE;
 export const contentType = 'image/png';
-export const alt = 'Réception de vos travaux SARANGE';
+export const alt = 'Votre bon SARANGE à signer en ligne';
 
 export default async function GenericReceptionLinkImage() {
   return new ImageResponse(<LinkPreviewImage texts={GENERIC_COMPLETION_LINK_TEXTS} />, {

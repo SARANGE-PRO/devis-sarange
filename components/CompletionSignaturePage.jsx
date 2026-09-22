@@ -178,7 +178,8 @@ export function FinalScreen({ result }) {
         </div>
         <h2 className="text-2xl font-black text-slate-900">Merci&nbsp;!</h2>
         <p className="mx-auto mt-3 max-w-md text-base leading-7 text-slate-600">
-          Votre bon de réception est signé et transmis à SARANGE. Votre exemplaire arrive par e-mail.
+          Votre {result?.docType ? getCompletionDocTypeLabel(result.docType) : 'bon'} est signé et
+          transmis à SARANGE. Votre exemplaire arrive par e-mail.
         </p>
       </div>
     </div>

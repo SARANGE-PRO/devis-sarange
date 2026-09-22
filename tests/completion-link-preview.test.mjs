@@ -97,7 +97,8 @@ run('session inconnue et lien général : textes propres', () => {
   assert.ok(sparse.description.startsWith('Bonjour, vos travaux sont terminés'));
   assert.equal(sparse.details, '');
 
-  assert.equal(GENERIC_COMPLETION_LINK_TEXTS.title, 'Réception de vos travaux SARANGE');
+  assert.equal(GENERIC_COMPLETION_LINK_TEXTS.title, 'Votre bon SARANGE en ligne');
+  assert.ok(GENERIC_COMPLETION_LINK_TEXTS.description.includes('livraison ou enlèvement'));
   noEmDash(GENERIC_COMPLETION_LINK_TEXTS);
 });
 
