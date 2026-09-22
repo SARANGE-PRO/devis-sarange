@@ -1321,6 +1321,9 @@ export default function HomePageClient() {
         throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
       }
       const pdfPreviewUrl = pdfDocument.blob ? URL.createObjectURL(pdfDocument.blob) : '';
+      // Pendant la vérification, le chargeur plein écran « Envoi en cours »
+      // est retiré : rien n'est en cours d'envoi, et il masquerait la fenêtre.
+      setDeliveryAction('');
       const confirmed = await requestEmailConfirmation({
         title:
           deliveryMode === 'signature'
@@ -1335,6 +1338,7 @@ export default function HomePageClient() {
         setDeliveryMessage("Envoi annulé : rien n'a été envoyé au client.");
         return;
       }
+      setDeliveryAction(deliveryMode);
 
       // Téléversements (PDF principal puis PDF de chaque variante), après
       // confirmation seulement.

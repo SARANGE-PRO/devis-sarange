@@ -11,33 +11,45 @@
 // return;` juste avant l'appel d'envoi, et `<EmailConfirmationModal … />` dans
 // le rendu.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ExternalLink, Loader2, Mail, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
 
 export const useEmailConfirmation = () => {
   const [confirmation, setConfirmation] = useState(null);
+  // Résolution de la promesse en attente, hors de l'état React (jamais
+  // d'effet de bord dans un « setState »).
+  const pendingResolveRef = useRef(null);
+
+  const settle = useCallback((answer) => {
+    const resolve = pendingResolveRef.current;
+    pendingResolveRef.current = null;
+    setConfirmation(null);
+    resolve?.(answer);
+  }, []);
 
   const requestEmailConfirmation = useCallback(
     (payload) =>
       new Promise((resolve) => {
-        setConfirmation({ ...payload, resolve });
+        // Une demande encore ouverte (double clic) est annulée, jamais
+        // laissée en suspens : l'appelant précédent reprend la main.
+        pendingResolveRef.current?.(false);
+        pendingResolveRef.current = resolve;
+        setConfirmation(payload);
       }),
     []
   );
 
-  const confirmEmail = useCallback(() => {
-    setConfirmation((current) => {
-      current?.resolve?.(true);
-      return null;
-    });
-  }, []);
+  const confirmEmail = useCallback(() => settle(true), [settle]);
+  const cancelEmail = useCallback(() => settle(false), [settle]);
 
-  const cancelEmail = useCallback(() => {
-    setConfirmation((current) => {
-      current?.resolve?.(false);
-      return null;
-    });
-  }, []);
+  // Page quittée pendant l'attente : l'appelant est libéré (annulation).
+  useEffect(
+    () => () => {
+      pendingResolveRef.current?.(false);
+      pendingResolveRef.current = null;
+    },
+    []
+  );
 
   return { confirmation, requestEmailConfirmation, confirmEmail, cancelEmail };
 };
@@ -70,7 +82,9 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
   const expiresLabel = formatDateLabel(preview?.expiresAt);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
+    // Au-dessus de TOUS les calques de l'app : chargeur plein écran (80),
+    // fenêtres de type de client et de TVA (200), modales d'envoi (50).
+    <div className="fixed inset-0 z-[300] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
       <div className="flex max-h-[94vh] w-full max-w-lg flex-col rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-3">
