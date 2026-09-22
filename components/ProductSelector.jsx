@@ -41,8 +41,8 @@ import {
   getMaterialVariantId,
   compositeIncludesPorte,
   getProductVariant,
-  getProductType,
-  getPosePriceForType,
+  getCataloguePosePrice,
+  normalizePosePriceOverride,
   calculateItemPrice,
   calculateWasteManagementForItems,
   createCatalogServiceCartItem,
@@ -68,6 +68,7 @@ import {
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import CompositeFrameEditor from '@/components/CompositeFrameEditor';
 import VeluxConfigurator from '@/components/VeluxConfigurator';
+import PosePriceEditor from '@/components/PosePriceEditor';
 import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
@@ -757,6 +758,8 @@ export default function ProductSelector({
   const [simpleConfig, setSimpleConfig] = useState(() => createSimpleConfig());
   const [quantity, setQuantity] = useState(1);
   const [includePose, setIncludePose] = useState(false);
+  // Tarif de pose spécifique à la ligne (null = tarif catalogue).
+  const [posePriceOverride, setPosePriceOverride] = useState(null);
   const [remise, setRemise] = useState(0);
   const [netAdjustmentMode, setNetAdjustmentMode] = useState('margin');
   const [netMarginWanted, setNetMarginWanted] = useState(0);
@@ -1308,6 +1311,7 @@ export default function ProductSelector({
         outOfGridPricing: canForceOutOfGrid,
         quantity,
         includePose,
+        posePriceOverride,
         remise,
         netMarginWanted,
         netDiscountWanted,
@@ -1371,6 +1375,7 @@ export default function ProductSelector({
       ...cintrageItemFields,
       quantity,
       includePose,
+      posePriceOverride,
       remise,
       netMarginWanted,
       netDiscountWanted,
@@ -1601,6 +1606,7 @@ export default function ProductSelector({
 
     setQuantity(editingItem.quantity || 1);
     setIncludePose(Boolean(editingItem.includePose));
+    setPosePriceOverride(normalizePosePriceOverride(editingItem.posePriceOverride));
     setRemise(editingItem.remise || 0);
     setNetAdjustmentMode(
       editingItem.netAdjustmentMode === 'discount' ||
@@ -1792,6 +1798,7 @@ export default function ProductSelector({
         unitPrice: compositeUnitPrice,
         outOfGridPricing: canForceOutOfGrid,
         includePose,
+        posePriceOverride,
         remise,
         netAdjustmentMode,
         netMarginWanted,
@@ -2089,6 +2096,7 @@ export default function ProductSelector({
         ? { petitsBoisH: 0, petitsBoisV: 0 }
         : buildPetitsBoisState(simpleConfig)),
       includePose,
+      posePriceOverride,
       remise,
       netAdjustmentMode,
       netMarginWanted,
@@ -2765,18 +2773,26 @@ export default function ProductSelector({
           </div>
 
           {!isFixedPriceProduct && (
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              checked={includePose}
-              onChange={(event) => setIncludePose(event.target.checked)}
-              className="h-4 w-4 accent-orange-500"
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <label className="flex flex-1 cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={includePose}
+                onChange={(event) => setIncludePose(event.target.checked)}
+                className="h-4 w-4 accent-orange-500"
+              />
+              <Wrench size={14} className="text-slate-400" />
+              Inclure la pose
+            </label>
+            {/* Tarif de pose : pastille cliquable, modifiable en place. */}
+            <PosePriceEditor
+              value={posePriceOverride}
+              defaultValue={getCataloguePosePrice(
+                previewItem || { productId: product?.id, sheetName: product?.sheet }
+              )}
+              onChange={setPosePriceOverride}
             />
-            <Wrench size={14} className="text-slate-400" />
-            Inclure la pose (
-            {getPosePriceForType(getProductType(product?.sheet))} EUR
-            )
-          </label>
+          </div>
           )}
 
           {!isFixedPriceProduct && (
