@@ -35,7 +35,16 @@ import {
   quoteNeedsResend,
   quoteNumberMatchesSearch,
 } from '@/lib/quote-signature';
-import { getCompletionReminderMeta, getCompletionStatusMeta, getCompletionWorkflow } from '@/lib/completion-certificate.mjs';
+import {
+  capitalizeLabel,
+  getCompletionDocTypeLabel,
+  getCompletionDocumentLabel,
+  getCompletionReminderMeta,
+  getCompletionStatusMeta,
+  getCompletionWorkflow,
+} from '@/lib/completion-certificate.mjs';
+import { quoteIncludesPose } from '@/lib/line-nature.mjs';
+import EmailConfirmationModal, { useEmailConfirmation } from '@/components/EmailConfirmationModal';
 import CompletionSendModal from '@/components/CompletionSendModal';
 import LiftSendModal from '@/components/LiftSendModal';
 import {
@@ -381,6 +390,12 @@ function QuoteCard({
     STATUS_META.draft;
   const completionWorkflow = getCompletionWorkflow(quote);
   const completionStatusMeta = completionWorkflow.status ? getCompletionStatusMeta(completionWorkflow.status) : null;
+  // « Bon de fin de chantier » avec pose ; « bon de livraison » (puis le type
+  // réellement choisi à l'envoi) en fourniture seule.
+  const completionLabel = getCompletionDocumentLabel({
+    docType: completionWorkflow.docType,
+    withPose: quoteIncludesPose(quote),
+  });
   const hasClientEmail = Boolean(quote.clientEmail || quote.payload?.clientData?.email);
   const canSend = canQuoteBeSent(quote) && hasClientEmail;
   const canOpenSignedQuote = Boolean(workflow.sessionId && workflow.signedPdfAvailable);
@@ -535,10 +550,10 @@ function QuoteCard({
               onClick={() => onGenerateCompletion(quote)}
               disabled={isWorking}
               className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-orange-300 hover:text-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Générer le bon de fin de chantier"
+              title={`Générer le ${completionLabel}`}
             >
               <FileCheck2 size={14} />
-              Bon de fin de chantier
+              {capitalizeLabel(completionLabel)}
             </button>
           )}
           {['received_no_reserves', 'received_with_reserves', 'reserves_lifted'].includes(completionWorkflow.status) &&
@@ -590,7 +605,7 @@ function QuoteCard({
               <div className="flex items-center gap-2">
                 <BellRing size={14} className="text-orange-500" />
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                  Relances bon de fin de chantier
+                  Relances {completionLabel}
                 </p>
               </div>
               {completionWorkflow.lastReminderAt && getCompletionReminderMeta(completionWorkflow.lastReminderLevel) && (
@@ -804,6 +819,9 @@ export default function SavedQuotesPage() {
   const [actionMessage, setActionMessage] = useState('');
   const [completionQuote, setCompletionQuote] = useState(null);
   const [liftQuote, setLiftQuote] = useState(null);
+  // Vérification avant tout envoi d'e-mail au client (aperçu serveur).
+  const { confirmation: emailConfirmation, requestEmailConfirmation, confirmEmail, cancelEmail } =
+    useEmailConfirmation();
   const [searchTerm, setSearchTerm]   = useState('');
   const [statusFilter, setStatusFilter]   = useState('all');
   const [clientFilter, setClientFilter]   = useState('all');
@@ -961,12 +979,52 @@ export default function SavedQuotesPage() {
         getQuotePdfOptions(quote)
       );
       const idToken = await user.getIdToken();
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      };
+      const pdfInfo = {
+        filename: pdfDocument.filename,
+        quoteNumber: pdfDocument.quoteNumber,
+        issueDate: pdfDocument.issueDate,
+        totalHT: pdfDocument.totals?.totalHT || 0,
+        totalTTC: pdfDocument.totals?.totalTTC || 0,
+        quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
+        tvaRate: pdfDocument.tvaRate,
+        paymentMilestones: pdfDocument.paymentMilestones || null,
+        signatureAnchors: pdfDocument.signatureAnchors,
+      };
+
+      // Vérification avant envoi : l'aperçu vient du serveur, avec les mêmes
+      // gabarits que l'e-mail réel. Rien ne part sans confirmation.
+      const previewResponse = await fetch('/api/quote-signatures/preview', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ kind: 'delivery', quoteId: quote.id, deliveryMode, pdfInfo }),
+      });
+      const preview = await readJsonResponse(previewResponse);
+      if (!previewResponse.ok) {
+        throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+      }
+      const pdfPreviewUrl = pdfDocument.blob ? URL.createObjectURL(pdfDocument.blob) : '';
+      const confirmed = await requestEmailConfirmation({
+        title:
+          deliveryMode === 'signature'
+            ? `Devis ${preview.quoteNumber || ''} pour signature`.trim()
+            : `Devis ${preview.quoteNumber || ''} par e-mail`.trim(),
+        subtitle: quote.title || '',
+        preview,
+        pdfPreviewUrl,
+      });
+      if (pdfPreviewUrl) setTimeout(() => URL.revokeObjectURL(pdfPreviewUrl), 60_000);
+      if (!confirmed) {
+        setActionMessage("Envoi annulé : rien n'a été envoyé au client.");
+        return;
+      }
+
       const response = await fetch('/api/quote-signatures/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           quoteId: quote.id,
           deliveryMode,
@@ -976,17 +1034,7 @@ export default function SavedQuotesPage() {
             idToken,
             arrayBuffer: pdfDocument.arrayBuffer,
           }),
-          pdfInfo: {
-            filename: pdfDocument.filename,
-            quoteNumber: pdfDocument.quoteNumber,
-            issueDate: pdfDocument.issueDate,
-            totalHT: pdfDocument.totals?.totalHT || 0,
-            totalTTC: pdfDocument.totals?.totalTTC || 0,
-            quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
-            tvaRate: pdfDocument.tvaRate,
-            paymentMilestones: pdfDocument.paymentMilestones || null,
-            signatureAnchors: pdfDocument.signatureAnchors,
-          },
+          pdfInfo,
         }),
       });
       // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)
@@ -1014,8 +1062,13 @@ export default function SavedQuotesPage() {
     setCompletionQuote(quote);
   };
 
-  const handleCompletionSent = () => {
-    setActionMessage('Le bon de fin de chantier a été envoyé au client.');
+  const handleCompletionSent = (data) => {
+    const label = data?.docType ? getCompletionDocTypeLabel(data.docType) : 'bon';
+    setActionMessage(
+      data?.deliveryMode === 'link'
+        ? `Le lien du ${label} a été créé et copié.`
+        : `Le ${label} a été envoyé au client.`
+    );
   };
 
   const handleSendCompletionReminder = async (quote, reminderLevel) => {
@@ -1029,14 +1082,36 @@ export default function SavedQuotesPage() {
     setActionMessage('');
     try {
       const idToken = await user.getIdToken();
+      const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` };
+
+      const previewResponse = await fetch('/api/completion-certificates/preview', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ kind: 'reminder', sessionId, reminderLevel }),
+      });
+      const preview = await readJsonResponse(previewResponse);
+      if (!previewResponse.ok) {
+        throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+      }
+      const docLabel = preview.docLabel || 'bon';
+      const confirmed = await requestEmailConfirmation({
+        title: `Relance du ${docLabel}`,
+        subtitle: quote.title || '',
+        preview,
+      });
+      if (!confirmed) {
+        setActionMessage("Envoi annulé : rien n'a été envoyé au client.");
+        return;
+      }
+
       const response = await fetch('/api/completion-certificates/remind', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        headers: authHeaders,
         body: JSON.stringify({ sessionId, reminderLevel }),
       });
       const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer la relance.");
-      setActionMessage('Relance du bon de fin de chantier envoyée au client.');
+      setActionMessage(`Relance du ${docLabel} envoyée au client.`);
     } catch (error) {
       setActionError(error.message);
     } finally {
@@ -1083,12 +1158,33 @@ export default function SavedQuotesPage() {
 
     try {
       const idToken = await user.getIdToken();
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      };
+
+      const previewResponse = await fetch('/api/quote-signatures/preview', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ kind: 'reminder', sessionId: workflow.sessionId, reminderLevel }),
+      });
+      const preview = await readJsonResponse(previewResponse);
+      if (!previewResponse.ok) {
+        throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+      }
+      const confirmed = await requestEmailConfirmation({
+        title: `${reminderMeta?.label || 'Relance'} du devis ${preview.quoteNumber || ''}`.trim(),
+        subtitle: quote.title || '',
+        preview,
+      });
+      if (!confirmed) {
+        setActionMessage("Envoi annulé : rien n'a été envoyé au client.");
+        return;
+      }
+
       const response = await fetch('/api/quote-signatures/remind', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           sessionId: workflow.sessionId,
           reminderLevel,
@@ -1563,6 +1659,12 @@ export default function SavedQuotesPage() {
               onSent={handleLiftSent}
             />
           )}
+
+          <EmailConfirmationModal
+            confirmation={emailConfirmation}
+            onConfirm={confirmEmail}
+            onCancel={cancelEmail}
+          />
         </div>
       )}
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link2, Loader2, Mail, Sparkles, X } from 'lucide-react';
 
 import CreatedLinkPanel from './CreatedLinkPanel';
+import EmailConfirmationModal, { useEmailConfirmation } from './EmailConfirmationModal';
 import { useFirebaseAuth } from './FirebaseProvider';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
@@ -38,6 +39,9 @@ export default function LiftSendModal({ quote, onClose, onSent }) {
   const [missingField, setMissingField] = useState('');
   const [createdLink, setCreatedLink] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  // Vérification avant l'envoi de l'e-mail (aperçu serveur).
+  const { confirmation: emailConfirmation, requestEmailConfirmation, confirmEmail, cancelEmail } =
+    useEmailConfirmation();
 
   const amountDue = parseAmount(amount);
 
@@ -71,6 +75,34 @@ export default function LiftSendModal({ quote, onClose, onSent }) {
     setMissingField('');
     try {
       const idToken = await user.getIdToken();
+
+      // Vérification avant envoi : aperçu produit par le serveur avec le
+      // gabarit réel de l'e-mail (montant réclamé compris). Rien ne part sans
+      // confirmation. (Le mode « lien » n'envoie aucun e-mail.)
+      if (deliveryMode === 'email') {
+        const previewResponse = await fetch('/api/completion-certificates/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({
+            kind: 'lift',
+            quoteId: quote.id,
+            amountDue,
+            paymentReference: paymentReference.trim(),
+            overrideEmail: email.trim(),
+          }),
+        });
+        const preview = await previewResponse.json().catch(() => ({}));
+        if (!previewResponse.ok) {
+          throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+        }
+        const confirmed = await requestEmailConfirmation({
+          title: 'PV de levée des réserves',
+          subtitle: workflow.completionNumber ? `Bon n°${workflow.completionNumber}` : '',
+          preview,
+        });
+        if (!confirmed) return;
+      }
+
       const response = await fetch('/api/completion-certificates/lift/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
@@ -221,6 +253,11 @@ export default function LiftSendModal({ quote, onClose, onSent }) {
           </>
         )}
       </div>
+      <EmailConfirmationModal
+        confirmation={emailConfirmation}
+        onConfirm={confirmEmail}
+        onCancel={cancelEmail}
+      />
     </div>
   );
 }

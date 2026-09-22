@@ -3,10 +3,16 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Link2, Loader2, Mail, Package, Receipt, Truck, X } from 'lucide-react';
 import CreatedLinkPanel from './CreatedLinkPanel';
+import EmailConfirmationModal, { useEmailConfirmation } from './EmailConfirmationModal';
 import { useFirebaseAuth } from './FirebaseProvider';
 import { getQuoteDisplayStatus, getQuoteSignatureWorkflow } from '@/lib/quote-signature';
-import { CONTRACT_TYPES, resolveContractType } from '@/lib/line-nature.mjs';
+import {
+  CONTRACT_TYPES,
+  resolveContractType,
+  resolveQuoteVariantSource,
+} from '@/lib/line-nature.mjs';
 import { computeQuoteTotals } from '@/lib/quote-totals.mjs';
+import { capitalizeLabel, getCompletionDocumentLabel } from '@/lib/completion-certificate.mjs';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 
@@ -42,6 +48,9 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const [deliveryType, setDeliveryType] = useState('');
+  // Vérification avant l'envoi de l'e-mail (aperçu serveur).
+  const { confirmation: emailConfirmation, requestEmailConfirmation, confirmEmail, cancelEmail } =
+    useEmailConfirmation();
 
   // Détection AUTOMATIQUE pose / fourniture seule + montant TTC, sur la
   // VARIANTE RETENUE À LA SIGNATURE (jamais la variante "active" par défaut,
@@ -55,29 +64,26 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
   // refait la même détection et exige le choix.
   const { totalTTC, withPose } = useMemo(() => {
     const workflow = getQuoteSignatureWorkflow(quote);
-    const payload = quote?.payload || {};
-    let cartItems = Array.isArray(payload.cartItems) ? payload.cartItems : [];
-    let settings = payload.quoteSettings || {};
-    let resolvedTotalTTC = Number(quote?.totalTTC) || 0;
-
-    if (payload.variantsMode === true && Array.isArray(payload.variants) && payload.variants.length) {
-      const wantedVariantId = workflow.selectedVariantId || payload.activeVariantId || '';
-      const variant =
-        payload.variants.find((entry) => entry?.id === wantedVariantId) || payload.variants[0] || {};
-      cartItems = Array.isArray(variant.cartItems) ? variant.cartItems : [];
-      settings = variant.quoteSettings || {};
-      resolvedTotalTTC =
-        workflow.selectedVariantTotalTTC != null
-          ? Number(workflow.selectedVariantTotalTTC)
-          : computeQuoteTotals(cartItems, variant.tvaRate).totalTTC;
-    }
+    // Variante qui fait foi (même règle que la liste des devis et le serveur).
+    const source = resolveQuoteVariantSource(quote);
+    const resolvedTotalTTC = source.variant
+      ? workflow.selectedVariantTotalTTC != null
+        ? Number(workflow.selectedVariantTotalTTC)
+        : computeQuoteTotals(source.cartItems, source.tvaRate).totalTTC
+      : Number(quote?.totalTTC) || 0;
 
     return {
       totalTTC: resolvedTotalTTC,
       withPose:
-        resolveContractType(cartItems, settings?.contractTypeOverride) === CONTRACT_TYPES.AVEC_POSE,
+        resolveContractType(source.cartItems, source.quoteSettings?.contractTypeOverride) ===
+        CONTRACT_TYPES.AVEC_POSE,
     };
   }, [quote]);
+
+  const docLabel = getCompletionDocumentLabel({
+    docType: withPose ? 'reception' : deliveryType,
+    withPose,
+  });
 
   const isDigitallySigned = getQuoteDisplayStatus(quote) === 'signed';
   const computedSolde = Math.max(0, totalTTC - parseAmount(acompte));
@@ -123,6 +129,33 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
     setMissingField('');
     try {
       const idToken = await user.getIdToken();
+
+      // Vérification avant envoi : aperçu produit par le serveur avec le
+      // gabarit réel de l'e-mail. Rien ne part sans confirmation. (Le mode
+      // « lien » n'envoie aucun e-mail.)
+      if (deliveryMode === 'email') {
+        const previewResponse = await fetch('/api/completion-certificates/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({
+            kind: 'send',
+            quoteId: quote.id,
+            deliveryType: withPose ? '' : deliveryType,
+            overrideEmail: email.trim(),
+          }),
+        });
+        const preview = await previewResponse.json().catch(() => ({}));
+        if (!previewResponse.ok) {
+          throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+        }
+        const confirmed = await requestEmailConfirmation({
+          title: capitalizeLabel(preview.docLabel || docLabel),
+          subtitle: quote?.title || '',
+          preview,
+        });
+        if (!confirmed) return;
+      }
+
       // Le montant qui fait foi est le SOLDE AFFICHÉ (modifiable) : l'acompte
       // transmis en est déduit, pour que le PDF reflète exactement ce que
       // l'utilisateur a validé à l'écran, y compris après une saisie manuelle
@@ -142,7 +175,7 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data?.error || "Impossible d'envoyer le bon de fin de chantier.");
+        throw new Error(data?.error || `Impossible d'envoyer le ${docLabel}.`);
       }
       if (deliveryMode === 'link') {
         // La modale reste ouverte : le lien vient d'être créé, il faut
@@ -360,6 +393,11 @@ export default function CompletionSendModal({ quote, onClose, onSent }) {
           </>
         )}
       </div>
+      <EmailConfirmationModal
+        confirmation={emailConfirmation}
+        onConfirm={confirmEmail}
+        onCancel={cancelEmail}
+      />
     </div>
   );
 }

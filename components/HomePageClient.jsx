@@ -6,6 +6,7 @@ import ClientForm from '@/components/ClientForm';
 import ProductSelector from '@/components/ProductSelector';
 import Cart from '@/components/Cart';
 import QuoteSummary from '@/components/QuoteSummary';
+import EmailConfirmationModal, { useEmailConfirmation } from '@/components/EmailConfirmationModal';
 import VariantBar from '@/components/VariantBar';
 import AppShell from '@/components/AppShell';
 
@@ -360,6 +361,9 @@ export default function HomePageClient() {
   const [deliveryAction, setDeliveryAction] = useState('');
   const [deliveryMessage, setDeliveryMessage] = useState('');
   const [deliveryError, setDeliveryError] = useState('');
+  // Vérification avant tout envoi d'e-mail au client (aperçu serveur).
+  const { confirmation: emailConfirmation, requestEmailConfirmation, confirmEmail, cancelEmail } =
+    useEmailConfirmation();
   const cartRef = useRef(null);
   const [cartVisible, setCartVisible] = useState(true);
   const [dismissedPoseSafetyKey, setDismissedPoseSafetyKey] = useState('');
@@ -1254,10 +1258,8 @@ export default function HomePageClient() {
             panelSelections: buildPanelSelections(source.cartItems),
             filename: variant.filename,
             signatureAnchors: variant.signatureAnchors,
-            pdfUploadId: await uploadQuoteDeliveryPdf({
-              idToken,
-              arrayBuffer: variant.arrayBuffer,
-            }),
+            // Téléversé seulement après confirmation de l'envoi.
+            arrayBuffer: variant.arrayBuffer,
           });
         }
       } else {
@@ -1280,12 +1282,75 @@ export default function HomePageClient() {
         );
       }
 
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      };
+      const pdfInfo = {
+        filename: pdfDocument.filename,
+        quoteNumber: pdfDocument.quoteNumber,
+        issueDate: pdfDocument.issueDate,
+        totalHT: pdfDocument.totals?.totalHT || 0,
+        totalTTC: pdfDocument.totals?.totalTTC || 0,
+        quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
+        tvaRate: pdfDocument.tvaRate,
+        paymentMilestones: pdfDocument.paymentMilestones || null,
+        signatureAnchors: pdfDocument.signatureAnchors,
+      };
+      // Métadonnées des variantes (sans les PDF) pour l'aperçu.
+      const variantsMeta = variantsPayload
+        ? variantsPayload.map(({ arrayBuffer: _pdf, ...meta }) => meta)
+        : null;
+
+      // Vérification avant envoi : l'aperçu vient du serveur, avec les mêmes
+      // gabarits que l'e-mail réel. Rien ne part (ni ne se téléverse) sans
+      // confirmation.
+      const previewResponse = await fetch('/api/quote-signatures/preview', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({
+          kind: 'delivery',
+          quoteId: savedQuote.id,
+          deliveryMode,
+          pdfInfo,
+          ...(variantsMeta ? { variants: variantsMeta } : {}),
+        }),
+      });
+      const preview = await readJsonResponse(previewResponse);
+      if (!previewResponse.ok) {
+        throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+      }
+      const pdfPreviewUrl = pdfDocument.blob ? URL.createObjectURL(pdfDocument.blob) : '';
+      const confirmed = await requestEmailConfirmation({
+        title:
+          deliveryMode === 'signature'
+            ? `Devis ${preview.quoteNumber || ''} pour signature`.trim()
+            : `Devis ${preview.quoteNumber || ''} par e-mail`.trim(),
+        subtitle: savedQuote.title || '',
+        preview,
+        pdfPreviewUrl,
+      });
+      if (pdfPreviewUrl) setTimeout(() => URL.revokeObjectURL(pdfPreviewUrl), 60_000);
+      if (!confirmed) {
+        setDeliveryMessage("Envoi annulé : rien n'a été envoyé au client.");
+        return;
+      }
+
+      // Téléversements (PDF principal puis PDF de chaque variante), après
+      // confirmation seulement.
+      const variantsForSend = [];
+      if (variantsPayload) {
+        for (const { arrayBuffer, ...meta } of variantsPayload) {
+          variantsForSend.push({
+            ...meta,
+            pdfUploadId: await uploadQuoteDeliveryPdf({ idToken, arrayBuffer }),
+          });
+        }
+      }
+
       const response = await fetch('/api/quote-signatures/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${idToken}`,
-        },
+        headers: authHeaders,
         body: JSON.stringify({
           quoteId: savedQuote.id,
           deliveryMode,
@@ -1293,18 +1358,8 @@ export default function HomePageClient() {
             idToken,
             arrayBuffer: pdfDocument.arrayBuffer,
           }),
-          pdfInfo: {
-            filename: pdfDocument.filename,
-            quoteNumber: pdfDocument.quoteNumber,
-            issueDate: pdfDocument.issueDate,
-            totalHT: pdfDocument.totals?.totalHT || 0,
-            totalTTC: pdfDocument.totals?.totalTTC || 0,
-            quantityWithPose: pdfDocument.totals?.quantityWithPose || 0,
-            tvaRate: pdfDocument.tvaRate,
-            paymentMilestones: pdfDocument.paymentMilestones || null,
-            signatureAnchors: pdfDocument.signatureAnchors,
-          },
-          ...(variantsPayload ? { variants: variantsPayload } : {}),
+          pdfInfo,
+          ...(variantsPayload ? { variants: variantsForSend } : {}),
         }),
       });
       // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)
@@ -1405,6 +1460,11 @@ export default function HomePageClient() {
       title="Nouveau Devis"
       actions={headerActions}
     >
+      <EmailConfirmationModal
+        confirmation={emailConfirmation}
+        onConfirm={confirmEmail}
+        onCancel={cancelEmail}
+      />
       {(quoteLoadError || saveError || (saveMessage && isSavingQuote === false)) && (
         <div className="mx-auto mb-4 max-w-3xl px-4 sm:px-0">
           {quoteLoadError && (

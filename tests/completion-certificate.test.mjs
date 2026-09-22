@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {
   RETENTION_DE_GARANTIE_RATE,
   buildCompletionBalanceDisplay,
+  capitalizeLabel,
+  getCompletionDocumentLabel,
   computeCompletionBalance,
   getDocTypeTexts,
   getReceptionReservesPaymentText,
@@ -169,6 +171,23 @@ run('texte échéance finale : 95 % à réception, 5 % non exigibles avant la le
   assert.ok(text.includes('limité à 95 %'));
   assert.ok(text.includes("n'est pas exigible à la réception"));
   assert.ok(text.includes('levée écrite'));
+});
+
+run('libellé du document : jamais « fin de chantier » sans pose', () => {
+  // Avant l'envoi : seule la présence de pose est connue.
+  assert.equal(getCompletionDocumentLabel({ withPose: true }), 'bon de fin de chantier');
+  assert.equal(getCompletionDocumentLabel({ withPose: false }), 'bon de livraison');
+  assert.equal(getCompletionDocumentLabel(), 'bon de fin de chantier');
+
+  // Après l'envoi : le type choisi fait foi, quelle que soit la pose.
+  assert.equal(getCompletionDocumentLabel({ docType: 'enlevement', withPose: false }), "bon d'enlèvement");
+  assert.equal(getCompletionDocumentLabel({ docType: 'livraison', withPose: true }), 'bon de livraison');
+  assert.equal(getCompletionDocumentLabel({ docType: 'reception', withPose: false }), 'bon de fin de chantier');
+  // Type inconnu : retour à la règle « pose ».
+  assert.equal(getCompletionDocumentLabel({ docType: 'autre', withPose: false }), 'bon de livraison');
+
+  assert.equal(capitalizeLabel('bon de livraison'), 'Bon de livraison');
+  assert.equal(capitalizeLabel(''), '');
 });
 
 console.log('completion-certificate.test.mjs : tous les tests passent');

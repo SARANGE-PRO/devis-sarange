@@ -5,8 +5,11 @@ import {
   detectContractType,
   isChantierNature,
   normalizeNatureOverride,
+  quoteIncludesPose,
   resolveContractType,
   resolveLineNature,
+  resolveQuoteContractType,
+  resolveQuoteVariantSource,
 } from '../lib/line-nature.mjs';
 
 const run = (name, fn) => {
@@ -135,6 +138,46 @@ run('ventile en multi-TVA et signale un devis sans chantier', () => {
   assert.equal(empty.hasChantier, false);
   assert.equal(empty.fabrication.totalTTC, 550);
   assert.equal(empty.chantier.totalTTC, 0);
+});
+
+run('niveau devis : la variante retenue à la signature fait foi', () => {
+  const withPose = { id: 'p', productId: 'fenetre-1v', includePose: true, quantity: 1 };
+  const supplyOnly = { id: 's', productId: 'fenetre-1v', includePose: false, quantity: 1 };
+
+  // Mono-variante : les lignes racine.
+  assert.equal(quoteIncludesPose({ payload: { cartItems: [withPose] } }), true);
+  assert.equal(quoteIncludesPose({ payload: { cartItems: [supplyOnly] } }), false);
+  assert.equal(quoteIncludesPose(null), false);
+
+  const quote = {
+    payload: {
+      variantsMode: true,
+      activeVariantId: 'v-pose',
+      variants: [
+        { id: 'v-pose', cartItems: [withPose], tvaRate: 10, quoteSettings: {} },
+        { id: 'v-seule', cartItems: [supplyOnly], tvaRate: 20, quoteSettings: {} },
+      ],
+    },
+  };
+
+  // Sans signature : la variante active.
+  assert.equal(resolveQuoteVariantSource(quote).variant.id, 'v-pose');
+  assert.equal(quoteIncludesPose(quote), true);
+
+  // Signée sur l'autre variante : c'est elle qui compte, pas l'active.
+  const signed = { ...quote, signatureWorkflow: { selectedVariantId: 'v-seule' } };
+  assert.equal(resolveQuoteVariantSource(signed).variant.id, 'v-seule');
+  assert.equal(resolveQuoteVariantSource(signed).tvaRate, 20);
+  assert.equal(quoteIncludesPose(signed), false);
+
+  // Correction manuelle des réglages de la variante.
+  const forced = {
+    payload: {
+      cartItems: [supplyOnly],
+      quoteSettings: { contractTypeOverride: CONTRACT_TYPES.AVEC_POSE },
+    },
+  };
+  assert.equal(resolveQuoteContractType(forced), CONTRACT_TYPES.AVEC_POSE);
 });
 
 console.log('Tous les tests de natures de ligne et ventilation ont reussi.');
