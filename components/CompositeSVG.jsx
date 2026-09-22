@@ -2,6 +2,7 @@ import { Fragment, useMemo } from 'react';
 import { buildCompositeModuleConfig } from '@/lib/menuiserie';
 import { normalizeCompositeComposition } from '@/lib/products';
 import { computeCompositeLayout, collectLeaves, isTreeNode } from '@/lib/composite-layout';
+import { getVoletMonoblocCouleurHex } from '@/lib/volet-monobloc.mjs';
 
 const COLORS = {
   frameBorder: '#4A4A4A',
@@ -859,6 +860,7 @@ export default function CompositeSVG({
   frameColor = '#FFFFFF',
   voletMonobloc = false,
   voletMonoblocManoeuvre = null,
+  voletMonoblocCouleur = '',
   className = '',
   selectedLeafId = null,
   onSelectLeaf = null,
@@ -901,6 +903,8 @@ export default function CompositeSVG({
   // On réserve une bande en haut, on décale le châssis vers le bas, et on
   // affiche les premières lames du tablier sur le haut de l'ensemble.
   const monoMetrics = getMetrics(layout.totalWidth, layout.totalHeight);
+  // Coffre et tablier : coloris propre du volet, sinon celui de la menuiserie.
+  const voletColor = getVoletMonoblocCouleurHex(voletMonoblocCouleur) || frameColor;
   const coffreHeight = voletMonobloc ? monoMetrics.shutterBoxHeight : 0;
   const apronHeight = voletMonobloc
     ? Math.min(layout.totalHeight * 0.22, monoMetrics.shutterBoxHeight * 1.4)
@@ -935,7 +939,7 @@ export default function CompositeSVG({
               y={0}
               width={layout.totalWidth}
               height={coffreHeight}
-              fill={frameColor}
+              fill={voletColor}
               stroke={COLORS.frameBorder}
               strokeWidth={monoStroke}
             />
@@ -1003,7 +1007,7 @@ export default function CompositeSVG({
               y={coffreHeight}
               width={layout.totalWidth}
               height={apronHeight}
-              fill={frameColor}
+              fill={voletColor}
               stroke={COLORS.frameBorder}
               strokeWidth={monoStroke}
             />

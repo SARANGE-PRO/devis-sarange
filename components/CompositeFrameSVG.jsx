@@ -12,6 +12,7 @@ import {
 } from '@/lib/composite-frame';
 import { CompositeModule } from '@/components/CompositeSVG';
 import { getProductById, resolveSvgColor } from '@/lib/products';
+import { getVoletMonoblocCouleurHex } from '@/lib/volet-monobloc.mjs';
 
 const COLORS = {
   frame: '#0f172a',
@@ -87,7 +88,8 @@ export default function CompositeFrameSVG({
   const showCoffre = Boolean(frame.voletMonobloc) && !editingStructure;
   const coffreMm = showCoffre ? Math.min(H * 0.06, 180) : 0;
   const apronMm = coffreMm > 0 ? Math.min(H * 0.16, coffreMm * 1.4) : 0;
-  const coffreColor = '#FFFFFF';
+  // Coloris propre du volet, sinon blanc (couleur de menuiserie par défaut).
+  const coffreColor = getVoletMonoblocCouleurHex(frame.voletMonoblocCouleur) || '#FFFFFF';
   const slatMm = apronMm > 0 ? Math.max(apronMm / 6, 18) : 0;
   const apronLines = [];
   for (let ly = slatMm; ly < apronMm && slatMm > 0; ly += slatMm) apronLines.push(ly);

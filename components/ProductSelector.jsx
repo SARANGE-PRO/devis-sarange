@@ -69,6 +69,7 @@ import MenuiserieVisual from '@/components/MenuiserieVisual';
 import CompositeFrameEditor from '@/components/CompositeFrameEditor';
 import VeluxConfigurator from '@/components/VeluxConfigurator';
 import PosePriceEditor from '@/components/PosePriceEditor';
+import VoletMonoblocCouleurPicker from '@/components/VoletMonoblocCouleurPicker';
 import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
@@ -143,6 +144,8 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   allegeHeightMm: '',
   voletMonobloc: false,
   voletMonoblocManoeuvre: 'manuel',
+  // Couleur du volet ('' = ton menuiserie), voir lib/volet-monobloc.mjs.
+  voletMonoblocCouleur: '',
   // Menuiseries cintrées (Formes spéciales) : type de cintrage, flèche et prix
   // saisi (fixe cintré en imposte, ou prix total en cintre intégré). Aucun
   // type par défaut : ce formulaire est recopié tel quel dans les options des
@@ -1319,6 +1322,7 @@ export default function ProductSelector({
         compositeFrame,
         voletMonobloc: Boolean(compositeFrame.voletMonobloc),
         voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
+        voletMonoblocCouleur: compositeFrame.voletMonoblocCouleur || '',
         modules: compositePricing.modules,
       };
       const thermalMetrics = getItemThermalMetrics(compositePreviewItem);
@@ -1401,6 +1405,7 @@ export default function ProductSelector({
       voletMonoblocManoeuvre: workingSupportsMonobloc
         ? simpleConfig.voletMonoblocManoeuvre
         : 'manuel',
+      voletMonoblocCouleur: workingSupportsMonobloc ? simpleConfig.voletMonoblocCouleur || '' : '',
     };
     const thermalMetrics = getItemThermalMetrics(simplePreviewItem);
     return {
@@ -1723,6 +1728,7 @@ export default function ProductSelector({
         allegeHeightMm: editingItem.allegeHeightMm ?? '',
         voletMonobloc: editingItem.voletMonobloc || false,
         voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
+        voletMonoblocCouleur: editingItem.voletMonoblocCouleur || '',
         cintrageType: normalizeCintrageType(editingItem.cintrageType),
         cintrageFlecheMm:
           editingItem.cintrageFlecheMm != null ? String(editingItem.cintrageFlecheMm) : '',
@@ -1809,6 +1815,7 @@ export default function ProductSelector({
         compositeFrame,
         voletMonobloc: Boolean(compositeFrame.voletMonobloc),
         voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
+        voletMonoblocCouleur: compositeFrame.voletMonoblocCouleur || '',
         modules: frameModules,
         modulePricing: frameModules,
       };
@@ -2126,6 +2133,7 @@ export default function ProductSelector({
       voletMonoblocManoeuvre: workingSupportsMonobloc
         ? simpleConfig.voletMonoblocManoeuvre
         : 'manuel',
+      voletMonoblocCouleur: workingSupportsMonobloc ? simpleConfig.voletMonoblocCouleur || '' : '',
       rawColorState: simpleConfig.rawColorState,
       repere,
       showThermalData,
@@ -2436,6 +2444,10 @@ export default function ProductSelector({
                             );
                           })}
                         </div>
+                        <VoletMonoblocCouleurPicker
+                          value={simpleConfig.voletMonoblocCouleur}
+                          onChange={(couleur) => updateSimpleOptions({ voletMonoblocCouleur: couleur })}
+                        />
                         <p className="mt-2 text-xs text-slate-400">
                           La pose de l&apos;ensemble menuiserie + volet reste facturée une
                           seule fois (pas de pose en double).
@@ -3055,6 +3067,7 @@ export default function ProductSelector({
                 svgColor: simpleMarketing.svgColor,
                 voletMonobloc: workingSupportsMonobloc && simpleConfig.voletMonobloc,
                 voletMonoblocManoeuvre: simpleConfig.voletMonoblocManoeuvre,
+                voletMonoblocCouleur: simpleConfig.voletMonoblocCouleur,
                 cintrageType: workingCintrageType,
                 cintrageFlecheMm: simpleConfig.cintrageFlecheMm,
               }}
@@ -3763,6 +3776,7 @@ export default function ProductSelector({
           Volet roulant monobloc intégré (un seul coffre sur tout le châssis)
         </label>
         {compositeFrame.voletMonobloc && (
+          <>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               { id: 'manuel', label: 'Manuel' },
@@ -3789,6 +3803,13 @@ export default function ProductSelector({
               </button>
             ))}
           </div>
+          <VoletMonoblocCouleurPicker
+            value={compositeFrame.voletMonoblocCouleur}
+            onChange={(couleur) =>
+              setCompositeFrame((previous) => ({ ...previous, voletMonoblocCouleur: couleur }))
+            }
+          />
+          </>
         )}
       </div>
 

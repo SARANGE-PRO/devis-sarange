@@ -3,6 +3,8 @@ import {
   RETENTION_DE_GARANTIE_RATE,
   buildCompletionBalanceDisplay,
   capitalizeLabel,
+  composeCompletionAddress,
+  formatCompletionDateTime,
   getCompletionDocumentLabel,
   computeCompletionBalance,
   getDocTypeTexts,
@@ -188,6 +190,31 @@ run('libellé du document : jamais « fin de chantier » sans pose', () => {
 
   assert.equal(capitalizeLabel('bon de livraison'), 'Bon de livraison');
   assert.equal(capitalizeLabel(''), '');
+});
+
+run('adresse du chantier : jamais la ville deux fois', () => {
+  // Bon général : l'autocomplétion fournit l'adresse complète, ville comprise.
+  assert.equal(
+    composeCompletionAddress('5 Rue Parmentier 92130 Issy-les-Moulineaux', '92130', 'Issy-les-Moulineaux'),
+    '5 Rue Parmentier 92130 Issy-les-Moulineaux'
+  );
+  // Insensible à la casse et aux accents.
+  assert.equal(
+    composeCompletionAddress('12 avenue de la Gare 77380 COMBS-LA-VILLE', '', 'Combs-la-Ville'),
+    '12 avenue de la Gare 77380 COMBS-LA-VILLE'
+  );
+  // Bon lié à un devis : champs séparés, composés comme avant.
+  assert.equal(composeCompletionAddress('5 Rue Parmentier', '92130', 'Issy-les-Moulineaux'), '5 Rue Parmentier, 92130, Issy-les-Moulineaux');
+  assert.equal(composeCompletionAddress('', '', ''), '');
+  assert.equal(composeCompletionAddress('Chemin des Vignes', '', ''), 'Chemin des Vignes');
+});
+
+run('date de signature : jour et heure de Paris', () => {
+  // 12:35 UTC en septembre = 14:35 à Paris (heure d'été).
+  assert.equal(formatCompletionDateTime(new Date('2026-09-22T12:35:00Z')), '22/09/2026 à 14:35');
+  // 23:30 UTC en janvier = 00:30 le lendemain à Paris : la date suit l'heure locale.
+  assert.equal(formatCompletionDateTime(new Date('2026-01-15T23:30:00Z')), '16/01/2026 à 00:30');
+  assert.equal(formatCompletionDateTime('n importe quoi'), '');
 });
 
 console.log('completion-certificate.test.mjs : tous les tests passent');

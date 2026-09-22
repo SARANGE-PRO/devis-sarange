@@ -70,6 +70,7 @@ export default function MenuiserieVisual({
         frameColor={options.svgColor}
         voletMonobloc={options.voletMonobloc}
         voletMonoblocManoeuvre={options.voletMonoblocManoeuvre}
+        voletMonoblocCouleur={options.voletMonoblocCouleur}
         className={className}
         selectedLeafId={options.selectedLeafId ?? null}
         onSelectLeaf={options.onSelectLeaf ?? null}

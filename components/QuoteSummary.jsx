@@ -520,6 +520,7 @@ export default function QuoteSummary({
                             svgColor: item.svgColor,
                             voletMonobloc: item.voletMonobloc,
                             voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
+                            voletMonoblocCouleur: item.voletMonoblocCouleur,
                             cintrageType: item.cintrageType,
                             cintrageFlecheMm: item.cintrageFlecheMm,
                           }}
@@ -786,6 +787,7 @@ export default function QuoteSummary({
                                   svgColor: item.svgColor,
                                   voletMonobloc: item.voletMonobloc,
                                   voletMonoblocManoeuvre: item.voletMonoblocManoeuvre,
+                                  voletMonoblocCouleur: item.voletMonoblocCouleur,
                                   cintrageType: item.cintrageType,
                                   cintrageFlecheMm: item.cintrageFlecheMm,
                                 }}

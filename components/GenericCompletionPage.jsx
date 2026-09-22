@@ -76,6 +76,7 @@ export default function GenericCompletionPage() {
     prenom: '',
     email: '',
     adresse: '',
+    codePostal: '',
     ville: '',
     telephone: '',
     quoteReference: '',
@@ -370,7 +371,9 @@ export default function GenericCompletionPage() {
                       setContact((prev) => ({ ...prev, adresse: value }));
                       setStepError('');
                     }}
-                    onSelect={({ label, ville }) => setContact((prev) => ({ ...prev, adresse: label, ville }))}
+                    onSelect={({ label, codePostal, ville }) =>
+                      setContact((prev) => ({ ...prev, adresse: label, codePostal, ville }))
+                    }
                     placeholder="Numéro et nom de rue, ville…"
                   />
                 </div>

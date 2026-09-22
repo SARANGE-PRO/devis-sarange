@@ -24,6 +24,7 @@ export async function POST(request) {
       prenom: body?.prenom,
       email: body?.email,
       adresse: body?.adresse,
+      codePostal: body?.codePostal,
       ville: body?.ville,
       telephone: body?.telephone,
       quoteReference: body?.quoteReference,
