@@ -32,6 +32,7 @@ export async function POST(request) {
       customSubject: body?.customSubject,
       customMessage: body?.customMessage,
       extraAttachments: body?.extraAttachments,
+      recipients: body?.recipients,
     });
 
     return NextResponse.json(result);

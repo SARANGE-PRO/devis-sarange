@@ -1018,6 +1018,7 @@ export default function SavedQuotesPage() {
         pdfPreviewUrl,
         // Objet et message modifiables, pièces jointes supplémentaires.
         editable: {
+          recipients: preview.to || '',
           subject: preview.subject,
           message: preview.message || preview.defaultMessage || '',
           allowAttachments: true,
@@ -1054,6 +1055,7 @@ export default function SavedQuotesPage() {
           pdfInfo,
           customSubject: decision.subject || '',
           customMessage: decision.message || '',
+          recipients: decision.recipients || [],
           extraAttachments,
         }),
       });

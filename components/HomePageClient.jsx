@@ -37,6 +37,7 @@ import { MAX_VARIANTS } from '@/lib/quote-cloud';
 import {
   describeQuoteSendFailure,
   readJsonResponse,
+  uploadQuoteDeliveryFile,
   uploadQuoteDeliveryPdf,
 } from '@/lib/quote-delivery-upload';
 import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
@@ -1334,6 +1335,7 @@ export default function HomePageClient() {
         pdfPreviewUrl,
         // Objet et message modifiables, pièces jointes supplémentaires.
         editable: {
+          recipients: preview.to || '',
           subject: preview.subject,
           message: preview.message || preview.defaultMessage || '',
           allowAttachments: true,
@@ -1382,6 +1384,7 @@ export default function HomePageClient() {
           ...(variantsPayload ? { variants: variantsForSend } : {}),
           customSubject: decision.subject || '',
           customMessage: decision.message || '',
+          recipients: decision.recipients || [],
           extraAttachments,
         }),
       });

@@ -25,6 +25,7 @@ import {
   MAX_CUSTOM_MESSAGE_LENGTH,
   MAX_CUSTOM_SUBJECT_LENGTH,
 } from '@/lib/email-custom-message.mjs';
+import { parseRecipientEmails, validateRecipientEmails } from '@/lib/email-recipients.mjs';
 
 export const useEmailConfirmation = () => {
   const [confirmation, setConfirmation] = useState(null);
@@ -93,6 +94,8 @@ let nextFileKey = 0;
  */
 function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
   const { title, subtitle, preview, pdfPreviewUrl, loading, error, editable } = confirmation;
+  const [recipients, setRecipients] = useState(editable?.recipients ?? preview?.to ?? '');
+  const [recipientError, setRecipientError] = useState('');
   const [subject, setSubject] = useState(editable?.subject ?? '');
   const [message, setMessage] = useState(editable?.message ?? '');
   const [files, setFiles] = useState([]);
@@ -137,7 +140,14 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
       onConfirm();
       return;
     }
+    const recipientList = parseRecipientEmails(recipients);
+    const recipientProblem = validateRecipientEmails(recipientList);
+    if (recipientProblem) {
+      setRecipientError(recipientProblem);
+      return;
+    }
     onConfirm({
+      recipients: recipientList,
       subject: subject.trim(),
       message: message.trim(),
       files: files.map((entry) => entry.file),
@@ -188,15 +198,40 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
 
           {preview && (
             <>
-              <Section label="Destinataire">
+              <Section label={editable ? 'Destinataires' : 'Destinataire'}>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   {preview.recipientName && (
                     <p className="text-sm font-bold text-slate-900">{preview.recipientName}</p>
                   )}
-                  <p className="flex items-center gap-1.5 text-sm font-semibold text-orange-700">
-                    <Mail size={13} />
-                    {preview.to}
-                  </p>
+                  {editable ? (
+                    <>
+                      <input
+                        type="text"
+                        value={recipients}
+                        onChange={(event) => {
+                          setRecipients(event.target.value);
+                          setRecipientError('');
+                        }}
+                        placeholder="client@exemple.fr, conjoint@exemple.fr"
+                        aria-label="Adresses e-mail des destinataires"
+                        className={`mt-1 w-full rounded-lg border bg-white px-2.5 py-1.5 text-sm font-semibold text-orange-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200 ${
+                          recipientError ? 'border-rose-300' : 'border-slate-200'
+                        }`}
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Plusieurs adresses possibles, séparées par des virgules. La première est celle du client
+                        pour les relances.
+                      </p>
+                      {recipientError && (
+                        <p className="mt-1 text-xs font-semibold text-rose-600">{recipientError}</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-orange-700">
+                      <Mail size={13} />
+                      {preview.to}
+                    </p>
+                  )}
                 </div>
               </Section>
 
