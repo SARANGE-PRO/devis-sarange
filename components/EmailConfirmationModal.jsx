@@ -1,24 +1,37 @@
 'use client';
 
 // Vérification AVANT tout envoi d'e-mail au client : destinataire, objet,
-// pièce jointe, lien inclus et texte intégral du message, tels que le serveur
-// va réellement les envoyer (l'aperçu est produit par les mêmes gabarits que
-// l'envoi). Rien ne part tant que l'utilisateur n'a pas confirmé ici.
+// pièces jointes, lien inclus et texte intégral du message, tels que le
+// serveur va réellement les envoyer (l'aperçu est produit par les mêmes
+// gabarits que l'envoi). Rien ne part tant que l'utilisateur n'a pas confirmé.
+//
+// Pour l'envoi d'un devis, la fenêtre est aussi un petit éditeur : objet et
+// message personnel modifiables (le reste du gabarit reste figé), pièces
+// jointes supplémentaires (PDF, JPG, PNG). La confirmation renvoie alors ces
+// choix à l'appelant.
 //
 // Usage : `const { confirmation, requestEmailConfirmation, confirmEmail,
 // cancelEmail } = useEmailConfirmation();` puis
-// `if (!(await requestEmailConfirmation({ title, preview, pdfPreviewUrl })))
-// return;` juste avant l'appel d'envoi, et `<EmailConfirmationModal … />` dans
-// le rendu.
+// `const decision = await requestEmailConfirmation({ title, preview,
+// pdfPreviewUrl, editable })` (faux si annulé, sinon `{ subject, message,
+// files }` ou `true`), et `<EmailConfirmationModal … />` dans le rendu.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ExternalLink, Loader2, Mail, Paperclip, Send, ShieldCheck, X } from 'lucide-react';
+import { ExternalLink, Loader2, Mail, Paperclip, Plus, Send, ShieldCheck, Trash2, X } from 'lucide-react';
+
+import { ATTACHMENT_ACCEPT, formatFileSize, validateAttachmentSelection } from '@/lib/email-attachments.mjs';
+import {
+  CUSTOM_MESSAGE_PLACEHOLDER,
+  MAX_CUSTOM_MESSAGE_LENGTH,
+  MAX_CUSTOM_SUBJECT_LENGTH,
+} from '@/lib/email-custom-message.mjs';
 
 export const useEmailConfirmation = () => {
   const [confirmation, setConfirmation] = useState(null);
   // Résolution de la promesse en attente, hors de l'état React (jamais
   // d'effet de bord dans un « setState »).
   const pendingResolveRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   const settle = useCallback((answer) => {
     const resolve = pendingResolveRef.current;
@@ -34,12 +47,16 @@ export const useEmailConfirmation = () => {
         // laissée en suspens : l'appelant précédent reprend la main.
         pendingResolveRef.current?.(false);
         pendingResolveRef.current = resolve;
-        setConfirmation(payload);
+        requestIdRef.current += 1;
+        setConfirmation({ ...payload, requestId: requestIdRef.current });
       }),
     []
   );
 
-  const confirmEmail = useCallback(() => settle(true), [settle]);
+  const confirmEmail = useCallback(
+    (details) => settle(details && typeof details === 'object' ? details : true),
+    [settle]
+  );
   const cancelEmail = useCallback(() => settle(false), [settle]);
 
   // Page quittée pendant l'attente : l'appelant est libéré (annulation).
@@ -68,18 +85,64 @@ const Section = ({ label, children }) => (
   </div>
 );
 
-/**
- * @param {object} props
- * @param {object|null} props.confirmation  { title, subtitle, preview, pdfPreviewUrl }
- * @param {() => void} props.onConfirm
- * @param {() => void} props.onCancel
- */
-export default function EmailConfirmationModal({ confirmation, onConfirm, onCancel }) {
-  if (!confirmation) return null;
+let nextFileKey = 0;
 
-  const { title, subtitle, preview, pdfPreviewUrl, loading, error } = confirmation;
-  const attachments = Array.isArray(preview?.attachments) ? preview.attachments : [];
+/**
+ * Contenu de la fenêtre : remonté à chaque demande (clé = requestId) pour
+ * repartir des textes par défaut.
+ */
+function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
+  const { title, subtitle, preview, pdfPreviewUrl, loading, error, editable } = confirmation;
+  const [subject, setSubject] = useState(editable?.subject ?? '');
+  const [message, setMessage] = useState(editable?.message ?? '');
+  const [files, setFiles] = useState([]);
+  const [attachmentError, setAttachmentError] = useState('');
+  const fileInputRef = useRef(null);
+
+  const baseAttachments = Array.isArray(preview?.attachments) ? preview.attachments : [];
   const expiresLabel = formatDateLabel(preview?.expiresAt);
+  const effectiveMessage = message.trim() || editable?.message || '';
+  const previewText =
+    editable && preview?.textTemplate
+      ? preview.textTemplate.split(CUSTOM_MESSAGE_PLACEHOLDER).join(effectiveMessage)
+      : preview?.text || '';
+
+  const addFiles = (fileList) => {
+    const incoming = Array.from(fileList || []).map((file) => ({
+      key: `f-${(nextFileKey += 1)}`,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    }));
+    if (!incoming.length) return;
+
+    const next = [...files, ...incoming];
+    const problem = validateAttachmentSelection(next, { extraBytes: editable?.baseAttachmentBytes || 0 });
+    if (problem) {
+      setAttachmentError(problem);
+      return;
+    }
+    setAttachmentError('');
+    setFiles(next);
+  };
+
+  const removeFile = (key) => {
+    setFiles((current) => current.filter((entry) => entry.key !== key));
+    setAttachmentError('');
+  };
+
+  const handleConfirm = () => {
+    if (!editable) {
+      onConfirm();
+      return;
+    }
+    onConfirm({
+      subject: subject.trim(),
+      message: message.trim(),
+      files: files.map((entry) => entry.file),
+    });
+  };
 
   return (
     // Au-dessus de TOUS les calques de l'app : chargeur plein écran (80),
@@ -138,22 +201,51 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
               </Section>
 
               <Section label="Objet du mail">
-                <p className="text-sm font-semibold text-slate-800">{preview.subject}</p>
+                {editable ? (
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(event) => setSubject(event.target.value)}
+                    maxLength={MAX_CUSTOM_SUBJECT_LENGTH}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                ) : (
+                  <p className="text-sm font-semibold text-slate-800">{preview.subject}</p>
+                )}
               </Section>
 
-              {attachments.length > 0 && (
-                <Section label={attachments.length > 1 ? 'Pièces jointes' : 'Pièce jointe'}>
+              {editable && (
+                <Section label="Votre message">
+                  <textarea
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    maxLength={MAX_CUSTOM_MESSAGE_LENGTH}
+                    rows={5}
+                    className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                  />
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Modifiable à votre guise. Le bouton de signature, les étapes et les modalités de règlement
+                    restent ajoutés automatiquement.
+                  </p>
+                </Section>
+              )}
+
+              {(baseAttachments.length > 0 || editable?.allowAttachments) && (
+                <Section label="Pièces jointes">
                   <ul className="space-y-1">
-                    {attachments.map((attachment) => (
+                    {baseAttachments.map((attachment) => (
                       <li
-                        key={attachment.filename}
+                        key={`base-${attachment.filename}`}
                         className="flex items-center justify-between gap-2 text-sm text-slate-700"
                       >
                         <span className="flex min-w-0 items-center gap-1.5">
                           <Paperclip size={13} className="shrink-0 text-slate-400" />
                           <span className="truncate">{attachment.filename}</span>
+                          {attachment.size ? (
+                            <span className="shrink-0 text-xs text-slate-400">{formatFileSize(attachment.size)}</span>
+                          ) : null}
                         </span>
-                        {pdfPreviewUrl && attachments.length === 1 && (
+                        {pdfPreviewUrl && baseAttachments.length === 1 && (
                           <a
                             href={pdfPreviewUrl}
                             target="_blank"
@@ -166,7 +258,50 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
                         )}
                       </li>
                     ))}
+                    {files.map((entry) => (
+                      <li key={entry.key} className="flex items-center justify-between gap-2 text-sm text-slate-700">
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <Paperclip size={13} className="shrink-0 text-orange-500" />
+                          <span className="truncate">{entry.name}</span>
+                          <span className="shrink-0 text-xs text-slate-400">{formatFileSize(entry.size)}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeFile(entry.key)}
+                          title="Retirer cette pièce jointe"
+                          className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </li>
+                    ))}
                   </ul>
+                  {editable?.allowAttachments && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept={ATTACHMENT_ACCEPT}
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                          addFiles(event.target.files);
+                          event.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-orange-300 hover:text-orange-700"
+                      >
+                        <Plus size={13} />
+                        Ajouter un PDF ou une image
+                      </button>
+                      {attachmentError && (
+                        <p className="mt-1.5 text-xs font-semibold text-rose-600">{attachmentError}</p>
+                      )}
+                    </>
+                  )}
                 </Section>
               )}
 
@@ -183,7 +318,7 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
 
               <Section label="Message tel qu’il sera reçu">
                 <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-sans text-xs leading-relaxed text-slate-700">
-                  {preview.text}
+                  {previewText}
                 </pre>
               </Section>
             </>
@@ -200,8 +335,8 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            disabled={!preview || Boolean(loading)}
+            onClick={handleConfirm}
+            disabled={!preview || Boolean(loading) || Boolean(attachmentError)}
             className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Send size={14} />
@@ -210,5 +345,24 @@ export default function EmailConfirmationModal({ confirmation, onConfirm, onCanc
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * @param {object} props
+ * @param {object|null} props.confirmation  { title, subtitle, preview, pdfPreviewUrl, editable? }
+ * @param {(details?: object) => void} props.onConfirm
+ * @param {() => void} props.onCancel
+ */
+export default function EmailConfirmationModal({ confirmation, onConfirm, onCancel }) {
+  if (!confirmation) return null;
+
+  return (
+    <ConfirmationDialog
+      key={confirmation.requestId || 0}
+      confirmation={confirmation}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }

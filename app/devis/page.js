@@ -20,6 +20,7 @@ import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
   describeQuoteSendFailure,
   readJsonResponse,
+  uploadQuoteDeliveryFile,
   uploadQuoteDeliveryPdf,
 } from '@/lib/quote-delivery-upload';
 import { isKnownClientType } from '@/lib/client-type.mjs';
@@ -1007,7 +1008,7 @@ export default function SavedQuotesPage() {
         throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
       }
       const pdfPreviewUrl = pdfDocument.blob ? URL.createObjectURL(pdfDocument.blob) : '';
-      const confirmed = await requestEmailConfirmation({
+      const decision = await requestEmailConfirmation({
         title:
           deliveryMode === 'signature'
             ? `Devis ${preview.quoteNumber || ''} pour signature`.trim()
@@ -1015,11 +1016,27 @@ export default function SavedQuotesPage() {
         subtitle: quote.title || '',
         preview,
         pdfPreviewUrl,
+        // Objet et message modifiables, pièces jointes supplémentaires.
+        editable: {
+          subject: preview.subject,
+          message: preview.message || preview.defaultMessage || '',
+          allowAttachments: true,
+          baseAttachmentBytes: pdfDocument.arrayBuffer?.byteLength || 0,
+        },
       });
       if (pdfPreviewUrl) setTimeout(() => URL.revokeObjectURL(pdfPreviewUrl), 60_000);
-      if (!confirmed) {
+      if (!decision) {
         setActionMessage("Envoi annulé : rien n'a été envoyé au client.");
         return;
+      }
+
+      // Pièces jointes supplémentaires : téléversées après confirmation seulement.
+      const extraAttachments = [];
+      for (const file of decision.files || []) {
+        extraAttachments.push({
+          filename: file.name,
+          uploadId: await uploadQuoteDeliveryFile({ idToken, arrayBuffer: await file.arrayBuffer() }),
+        });
       }
 
       const response = await fetch('/api/quote-signatures/send', {
@@ -1035,6 +1052,9 @@ export default function SavedQuotesPage() {
             arrayBuffer: pdfDocument.arrayBuffer,
           }),
           pdfInfo,
+          customSubject: decision.subject || '',
+          customMessage: decision.message || '',
+          extraAttachments,
         }),
       });
       // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)

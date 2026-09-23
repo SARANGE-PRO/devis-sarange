@@ -1324,7 +1324,7 @@ export default function HomePageClient() {
       // Pendant la vérification, le chargeur plein écran « Envoi en cours »
       // est retiré : rien n'est en cours d'envoi, et il masquerait la fenêtre.
       setDeliveryAction('');
-      const confirmed = await requestEmailConfirmation({
+      const decision = await requestEmailConfirmation({
         title:
           deliveryMode === 'signature'
             ? `Devis ${preview.quoteNumber || ''} pour signature`.trim()
@@ -1332,13 +1332,29 @@ export default function HomePageClient() {
         subtitle: savedQuote.title || '',
         preview,
         pdfPreviewUrl,
+        // Objet et message modifiables, pièces jointes supplémentaires.
+        editable: {
+          subject: preview.subject,
+          message: preview.message || preview.defaultMessage || '',
+          allowAttachments: true,
+          baseAttachmentBytes: pdfDocument.arrayBuffer?.byteLength || 0,
+        },
       });
       if (pdfPreviewUrl) setTimeout(() => URL.revokeObjectURL(pdfPreviewUrl), 60_000);
-      if (!confirmed) {
+      if (!decision) {
         setDeliveryMessage("Envoi annulé : rien n'a été envoyé au client.");
         return;
       }
       setDeliveryAction(deliveryMode);
+
+      // Pièces jointes supplémentaires : téléversées après confirmation seulement.
+      const extraAttachments = [];
+      for (const file of decision.files || []) {
+        extraAttachments.push({
+          filename: file.name,
+          uploadId: await uploadQuoteDeliveryFile({ idToken, arrayBuffer: await file.arrayBuffer() }),
+        });
+      }
 
       // Téléversements (PDF principal puis PDF de chaque variante), après
       // confirmation seulement.
@@ -1364,6 +1380,9 @@ export default function HomePageClient() {
           }),
           pdfInfo,
           ...(variantsPayload ? { variants: variantsForSend } : {}),
+          customSubject: decision.subject || '',
+          customMessage: decision.message || '',
+          extraAttachments,
         }),
       });
       // Lecture tolérante : une erreur d'infrastructure (413, passerelle...)

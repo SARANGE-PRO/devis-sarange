@@ -35,6 +35,9 @@ export async function POST(request) {
         deliveryMode: body?.deliveryMode,
         pdfInfo: body?.pdfInfo,
         variants: body?.variants,
+        customSubject: body?.customSubject,
+        customMessage: body?.customMessage,
+        extraAttachments: body?.extraAttachments,
       })
     );
   } catch (error) {

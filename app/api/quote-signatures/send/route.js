@@ -29,6 +29,9 @@ export async function POST(request) {
       pdfUploadId: body?.pdfUploadId,
       pdfInfo: body?.pdfInfo,
       variants: body?.variants,
+      customSubject: body?.customSubject,
+      customMessage: body?.customMessage,
+      extraAttachments: body?.extraAttachments,
     });
 
     return NextResponse.json(result);

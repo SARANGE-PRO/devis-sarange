@@ -48,6 +48,7 @@ import {
   getQuoteSignatureStatusMeta,
 } from '@/lib/quote-signature';
 import PdfGenerationLoader from './PdfGenerationLoader';
+import { formatFileSize } from '@/lib/email-attachments.mjs';
 
 const SUPPORT_PHONE = '09 86 71 34 44';
 const FETCH_TIMEOUT_MS = 15000;
@@ -1786,6 +1787,31 @@ export default function QuoteSignaturePage({ token }) {
                     heightClass="h-[68vh]"
                   />
                 </div>
+
+                {/* Pièces jointes supplémentaires de l'envoi (plans, photos, notices…) */}
+                {Array.isArray(session.attachments) && session.attachments.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900">
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">Documents joints</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {session.attachments.map((attachment) => (
+                        <li key={attachment.index}>
+                          <a
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 text-sm font-semibold text-orange-700 hover:underline dark:text-orange-300"
+                          >
+                            <Download size={14} />
+                            <span>{attachment.filename}</span>
+                            {attachment.size ? (
+                              <span className="text-xs font-normal text-slate-400">({formatFileSize(attachment.size)})</span>
+                            ) : null}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {canAct && (
                   <ValidityBadge
