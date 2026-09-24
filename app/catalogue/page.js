@@ -2,7 +2,10 @@
 
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import {
+  Building2,
+  ClipboardCheck,
   Cloud,
+  KeyRound,
   Loader2,
   Plus,
   RotateCcw,
@@ -12,7 +15,12 @@ import {
   UsersRound,
   Wrench,
 } from 'lucide-react';
+import AccessSettingsSection from '@/components/AccessSettingsSection';
 import AppShell from '@/components/AppShell';
+import GenericCompletionLinkSection from '@/components/settings/GenericCompletionLinkSection';
+import InsuranceSection from '@/components/settings/InsuranceSection';
+import { SettingsGroup, SettingsGroupHeading, SettingsNav } from '@/components/settings/SettingsGroups';
+import VatThresholdCheckSection from '@/components/settings/VatThresholdCheckSection';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { getCurrentCataloguePayload } from '@/lib/catalogue-cloud';
 import {
@@ -47,6 +55,37 @@ import {
   subscribeToCataloguePricing,
 } from '@/lib/catalogue-pricing';
 import { saveUserCatalogueConfig } from '@/lib/firebase/catalogue';
+
+// Organisation de la page en groupes (barre d'ancres en tête). Les tarifs du
+// catalogue, les plus longs, viennent en dernier : les réglages courts restent
+// accessibles sans défilement.
+const PARAMETRES_GROUPS = [
+  {
+    id: 'societe',
+    label: 'Société',
+    icon: Building2,
+    description: 'Informations reprises dans vos devis et réglages de calcul de ce poste.',
+  },
+  {
+    id: 'acces',
+    label: 'Accès à l’application',
+    icon: KeyRound,
+    description: 'Qui peut se connecter à l’application, et avec quel rôle.',
+  },
+  {
+    id: 'reception',
+    label: 'Bons de réception',
+    icon: ClipboardCheck,
+    description: 'Bon de fin de chantier, de livraison ou d’enlèvement à faire signer au client.',
+  },
+  {
+    id: 'tarifs',
+    label: 'Tarifs du catalogue',
+    icon: SlidersHorizontal,
+    description:
+      'Synchronisation cloud, hausse matière première, prix de pose et de vitrages, coefficients par produit.',
+  },
+];
 
 const CONFIGURABLE_CATEGORY_IDS = [
   'fenetres',
@@ -397,19 +436,41 @@ export default function CataloguePage() {
   return (
     <AppShell
       title="Paramètres"
-      subtitle="Le catalogue est maintenant pense pour etre synchronise dans Firebase afin de partager les coefficients, les prix et les vitrages personnalises."
-      actions={
-        <button
-          type="button"
-          onClick={handleResetAll}
-          className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
-        >
-          <RotateCcw size={14} />
-          Tout remettre a 1
-        </button>
-      }
+      subtitle="Société, accès à l’application, bons de réception et tarifs du catalogue."
     >
       <div className="mx-auto max-w-6xl space-y-6">
+        <SettingsNav groups={PARAMETRES_GROUPS} />
+
+        <SettingsGroup groups={PARAMETRES_GROUPS} id="societe">
+          <InsuranceSection />
+          <VatThresholdCheckSection />
+        </SettingsGroup>
+
+        <SettingsGroup groups={PARAMETRES_GROUPS} id="acces">
+          {/* Statut du compte pour tous ; gestion des comptes pour les administrateurs. */}
+          <AccessSettingsSection />
+        </SettingsGroup>
+
+        <SettingsGroup groups={PARAMETRES_GROUPS} id="reception">
+          <GenericCompletionLinkSection />
+        </SettingsGroup>
+
+        {/* Tarifs du catalogue : les cartes suivent directement (pas de conteneur),
+            le bouton de remise à 1 des coefficients reste à côté de son titre. */}
+        <SettingsGroupHeading
+          groups={PARAMETRES_GROUPS}
+          id="tarifs"
+          actions={
+            <button
+              type="button"
+              onClick={handleResetAll}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-500 transition-all hover:bg-slate-50 hover:text-slate-700"
+            >
+              <RotateCcw size={14} />
+              Tout remettre à 1
+            </button>
+          }
+        />
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>

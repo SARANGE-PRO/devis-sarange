@@ -13,6 +13,7 @@ const PAGE_TITLES = {
   '/clients':   'Clients',
   '/compta':    'Compta',
   '/catalogue': 'Paramètres',
+  '/parametres': 'Catalogues',
 };
 
 export default function AppShell({ title, subtitle, actions = null, children }) {

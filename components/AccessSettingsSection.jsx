@@ -24,8 +24,7 @@ import {
   normalizeEmail,
 } from '@/lib/access-rules.mjs';
 import { isEmailAddress } from '@/lib/email-recipients.mjs';
-
-const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://devis.sarange.fr').replace(/\/$/, '');
+import { PUBLIC_BASE_URL } from '@/lib/public-base-url.mjs';
 
 const formatDateTime = (value) => {
   if (!value) return '';
@@ -201,7 +200,7 @@ export default function AccessSettingsSection() {
   };
 
   const copyInvitation = async (email) => {
-    const text = buildAccessInvitationText({ email, appUrl: APP_URL });
+    const text = buildAccessInvitationText({ email, appUrl: PUBLIC_BASE_URL });
     try {
       await navigator.clipboard.writeText(text);
       setCopiedKey(email);
