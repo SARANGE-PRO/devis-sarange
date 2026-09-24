@@ -15,36 +15,120 @@ import { hydrateCatalogueCoefficients } from '@/lib/catalogue-coefficients';
 import { hydrateCataloguePricing } from '@/lib/catalogue-pricing';
 import { hydrateCustomGlazingOptions } from '@/lib/glazing';
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase/client';
+import { describeAccessDenial } from '@/lib/access-rules.mjs';
 // Importé pour son effet de bord : branche le réglage « contrôle des seuils
 // TVA 5,5 % » (/parametres) sur le moteur de TVA, sur toutes les pages.
 import '@/lib/vat-check-settings';
+
+// Décision d'accès du compte connecté (voir lib/access-rules.mjs) :
+//  - checked : la réponse vient bien du serveur (false = indisponible) ;
+//  - isAdmin : peut gérer la liste des comptes dans Paramètres > Accès.
+const DEFAULT_ACCESS = Object.freeze({
+  checked: false,
+  allowed: false,
+  isAdmin: false,
+  enforced: false,
+  reason: '',
+});
 
 const FirebaseContext = createContext({
   user: null,
   initializing: true,
   isConfigured: false,
   accessError: '',
+  access: DEFAULT_ACCESS,
   signIn: async () => {},
   signInWithGoogle: async () => {},
   signUp: async () => {},
   signOut: async () => {},
 });
 
-// Liste blanche d'accès (étape 5). Emails autorisés, séparés par des virgules,
-// dans NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS. Si la liste est VIDE, l'accès reste ouvert
-// (comportement historique) — aucun risque de verrouillage involontaire.
+// Liste blanche historique : emails autorisés, séparés par des virgules, dans
+// NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS. Vérifiée localement (sans réseau) en plus
+// de la liste gérée dans l'app. Si elle est VIDE, elle ne restreint rien.
 const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS || '')
   .split(',')
   .map((value) => value.trim().toLowerCase())
   .filter(Boolean);
 
 const isEmailAllowed = (email) => {
-  if (ALLOWED_EMAILS.length === 0) return true; // liste non configurée → accès ouvert
+  if (ALLOWED_EMAILS.length === 0) return true; // liste non configurée → pas de filtre local
   return ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
 };
 
-const ACCESS_DENIED_MESSAGE =
-  "Accès non autorisé. Contactez l'administrateur pour obtenir l'accès à cette application.";
+// ---------------------------------------------------------------------------
+// Vérification serveur (liste gérée dans Paramètres > Accès à l'application).
+// Une décision positive est gardée 10 min dans la session du navigateur : au
+// rechargement de la page, l'app s'ouvre immédiatement et la vérification se
+// refait en arrière-plan (un compte retiré entre-temps est déconnecté).
+// ---------------------------------------------------------------------------
+const ACCESS_CHECK_TIMEOUT_MS = 12_000;
+const ACCESS_CACHE_KEY = 'devis-sarange:access-decision';
+const ACCESS_CACHE_TTL_MS = 10 * 60_000;
+
+const readCachedAccess = (uid) => {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(ACCESS_CACHE_KEY) || 'null');
+    if (parsed?.uid === uid && parsed.expiresAt > Date.now() && parsed.decision?.allowed) {
+      return parsed.decision;
+    }
+  } catch {
+    // stockage indisponible : on vérifiera simplement en ligne
+  }
+  return null;
+};
+
+const writeCachedAccess = (uid, decision) => {
+  try {
+    if (decision.checked && decision.allowed) {
+      window.sessionStorage.setItem(
+        ACCESS_CACHE_KEY,
+        JSON.stringify({ uid, decision, expiresAt: Date.now() + ACCESS_CACHE_TTL_MS })
+      );
+    } else {
+      window.sessionStorage.removeItem(ACCESS_CACHE_KEY);
+    }
+  } catch {
+    // ignoré
+  }
+};
+
+/**
+ * En cas de panne réseau ou serveur, l'accès est accordé par défaut (les
+ * données restent de toute façon cloisonnées par UID dans Firestore) : seule
+ * une réponse explicite du serveur refuse un compte.
+ */
+const fetchServerAccess = async (firebaseUser) => {
+  try {
+    const idToken = await firebaseUser.getIdToken();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ACCESS_CHECK_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch('/api/access/me', {
+        headers: { Authorization: `Bearer ${idToken}` },
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    return {
+      checked: true,
+      allowed: payload?.allowed !== false,
+      isAdmin: payload?.isAdmin === true,
+      enforced: payload?.enforced === true,
+      reason: payload?.reason || '',
+    };
+  } catch (error) {
+    console.warn("Vérification d'accès indisponible, accès accordé par défaut :", error);
+    return { checked: false, allowed: true, isAdmin: false, enforced: false, reason: 'unavailable' };
+  }
+};
 
 const formatFirebaseError = (error) => {
   switch (error?.code) {
@@ -76,6 +160,7 @@ export function FirebaseProvider({ children }) {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(isFirebaseConfigured);
   const [accessError, setAccessError] = useState('');
+  const [access, setAccess] = useState(DEFAULT_ACCESS);
 
   useEffect(() => {
     if (!isFirebaseConfigured) {
@@ -87,20 +172,56 @@ export function FirebaseProvider({ children }) {
       return undefined;
     }
 
+    // Numéro de séquence : une réponse serveur qui arrive après un nouveau
+    // changement d'état (déconnexion, autre compte) est ignorée.
+    let sequence = 0;
+
+    const reject = (firebaseUser, reason) => {
+      setAccessError(describeAccessDenial({ email: firebaseUser.email, reason }));
+      setUser(null);
+      setAccess(DEFAULT_ACCESS);
+      setInitializing(false);
+      writeCachedAccess(firebaseUser.uid, DEFAULT_ACCESS);
+      void signOut(auth).catch(() => {});
+    };
+
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      // Filtre d'accès (étape 5) : un compte hors liste blanche est déconnecté
-      // immédiatement. Ses données restent de toute façon cloisonnées par UID.
-      if (nextUser && !isEmailAllowed(nextUser.email)) {
-        setAccessError(ACCESS_DENIED_MESSAGE);
+      const current = ++sequence;
+
+      if (!nextUser) {
+        // Le message de refus éventuel reste affiché sur l'écran de connexion.
         setUser(null);
+        setAccess(DEFAULT_ACCESS);
         setInitializing(false);
-        void signOut(auth).catch(() => {});
         return;
       }
 
-      setAccessError('');
-      setUser(nextUser);
-      setInitializing(false);
+      // Filtre local (liste d'environnement) : immédiat, sans réseau.
+      if (!isEmailAllowed(nextUser.email)) {
+        reject(nextUser, 'not-listed');
+        return;
+      }
+
+      const cached = readCachedAccess(nextUser.uid);
+      if (cached) {
+        setAccessError('');
+        setAccess(cached);
+        setUser(nextUser);
+        setInitializing(false);
+      }
+
+      void fetchServerAccess(nextUser).then((decision) => {
+        if (current !== sequence) return;
+        if (!decision.allowed) {
+          reject(nextUser, decision.reason);
+          return;
+        }
+        writeCachedAccess(nextUser.uid, decision);
+        setAccessError('');
+        setAccess(decision);
+        setUser(nextUser);
+        setInitializing(false);
+      });
     });
 
     return unsubscribe;
@@ -131,6 +252,7 @@ export function FirebaseProvider({ children }) {
       initializing,
       isConfigured: isFirebaseConfigured,
       accessError,
+      access,
       signIn: async ({ email, password }) => {
         const auth = getFirebaseAuth();
         if (!auth) {
@@ -185,7 +307,7 @@ export function FirebaseProvider({ children }) {
         }
       },
     }),
-    [initializing, user, accessError]
+    [initializing, user, accessError, access]
   );
 
   return <FirebaseContext.Provider value={value}>{children}</FirebaseContext.Provider>;

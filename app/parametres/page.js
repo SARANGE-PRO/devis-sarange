@@ -17,6 +17,7 @@ import {
   Sparkles,
   Tag,
 } from 'lucide-react';
+import AccessSettingsSection from '@/components/AccessSettingsSection';
 import AppShell from '@/components/AppShell';
 import QrCode from '@/components/QrCode';
 import {
@@ -440,6 +441,8 @@ export default function ParametresPage() {
         <InsuranceSection />
         <VatThresholdCheckSection />
         <GenericCompletionLinkSection />
+        {/* Administrateurs uniquement (rend null sinon). */}
+        <AccessSettingsSection />
         {/* Bandeau d'introduction */}
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-sm sm:p-8">
           <div className="flex items-start gap-3 sm:gap-4">
