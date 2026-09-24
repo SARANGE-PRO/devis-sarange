@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -37,6 +37,7 @@ const FirebaseContext = createContext({
   isConfigured: false,
   accessError: '',
   access: DEFAULT_ACCESS,
+  refreshAccess: async () => null,
   signIn: async () => {},
   signInWithGoogle: async () => {},
   signUp: async () => {},
@@ -161,6 +162,8 @@ export function FirebaseProvider({ children }) {
   const [initializing, setInitializing] = useState(isFirebaseConfigured);
   const [accessError, setAccessError] = useState('');
   const [access, setAccess] = useState(DEFAULT_ACCESS);
+  // Relance de la vérification serveur pour le compte courant (voir refreshAccess).
+  const accessCheckRef = useRef(null);
 
   useEffect(() => {
     if (!isFirebaseConfigured) {
@@ -184,6 +187,21 @@ export function FirebaseProvider({ children }) {
       writeCachedAccess(firebaseUser.uid, DEFAULT_ACCESS);
       void signOut(auth).catch(() => {});
     };
+
+    const runCheck = (firebaseUser, current) =>
+      fetchServerAccess(firebaseUser).then((decision) => {
+        if (current !== sequence) return decision;
+        if (!decision.allowed) {
+          reject(firebaseUser, decision.reason);
+          return decision;
+        }
+        writeCachedAccess(firebaseUser.uid, decision);
+        setAccessError('');
+        setAccess(decision);
+        setUser(firebaseUser);
+        setInitializing(false);
+        return decision;
+      });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       const current = ++sequence;
@@ -210,21 +228,15 @@ export function FirebaseProvider({ children }) {
         setInitializing(false);
       }
 
-      void fetchServerAccess(nextUser).then((decision) => {
-        if (current !== sequence) return;
-        if (!decision.allowed) {
-          reject(nextUser, decision.reason);
-          return;
-        }
-        writeCachedAccess(nextUser.uid, decision);
-        setAccessError('');
-        setAccess(decision);
-        setUser(nextUser);
-        setInitializing(false);
-      });
+      void runCheck(nextUser, current);
     });
 
-    return unsubscribe;
+    accessCheckRef.current = (firebaseUser) => runCheck(firebaseUser, sequence);
+
+    return () => {
+      accessCheckRef.current = null;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -253,6 +265,12 @@ export function FirebaseProvider({ children }) {
       isConfigured: isFirebaseConfigured,
       accessError,
       access,
+      refreshAccess: async () => {
+        const auth = getFirebaseAuth();
+        const currentUser = auth?.currentUser;
+        if (!currentUser || !accessCheckRef.current) return null;
+        return accessCheckRef.current(currentUser);
+      },
       signIn: async ({ email, password }) => {
         const auth = getFirebaseAuth();
         if (!auth) {

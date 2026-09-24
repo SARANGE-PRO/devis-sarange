@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from 'react';
 import {
   AlertTriangle,
   BookOpen,
+  Building2,
   Check,
   ClipboardCheck,
   Copy,
@@ -12,7 +13,9 @@ import {
   Eye,
   FileText,
   Info,
+  KeyRound,
   Link2,
+  Percent,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -394,8 +397,18 @@ function VatThresholdCheckSection() {
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-      <h3 className="text-lg font-black text-slate-900">TVA 5,5 % — contrôle des seuils</h3>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="rounded-xl bg-sky-100 p-2 text-sky-600">
+          <Percent size={18} />
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-sky-600">
+            Paramètres société
+          </p>
+          <h3 className="text-lg font-bold text-slate-900">TVA 5,5 % : contrôle des seuils</h3>
+        </div>
+      </div>
+      <p className="text-sm leading-relaxed text-slate-600">
         Quand ce contrôle est actif, une ligne saisie à 5,5 % dont les performances
         thermiques ne respectent pas l&apos;article 30-0 D bis de l&apos;annexe IV du CGI est
         <strong> automatiquement ramenée à 10 %</strong> : fenêtres Uw ≤ 1,3 et Sw ≥ 0,3 (ou
@@ -431,122 +444,184 @@ function VatThresholdCheckSection() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Organisation de la page : quatre groupes, chacun avec son titre et ses
+// cartes. La barre d'ancres en tête permet d'aller droit au groupe voulu.
+// ---------------------------------------------------------------------------
+const SETTINGS_GROUPS = [
+  {
+    id: 'societe',
+    label: 'Société',
+    icon: Building2,
+    description: 'Informations reprises dans vos devis et réglages de calcul de ce poste.',
+  },
+  {
+    id: 'acces',
+    label: 'Accès à l’application',
+    icon: KeyRound,
+    description: 'Qui peut se connecter à l’application, et avec quel rôle.',
+  },
+  {
+    id: 'reception',
+    label: 'Bons de réception',
+    icon: ClipboardCheck,
+    description: 'Bon de fin de chantier, de livraison ou d’enlèvement à faire signer au client.',
+  },
+  {
+    id: 'catalogues',
+    label: 'Catalogues panneaux de porte',
+    icon: DoorOpen,
+    description:
+      'Trois vues clients du même catalogue : sans surcoût (le plus envoyé), avec les suppléments par rapport au standard, ou sans aucun prix. Ouvrez-les en un clic ou copiez le lien pour l’envoyer.',
+  },
+];
+
+function SettingsNav() {
+  return (
+    <nav aria-label="Sections des paramètres" className="flex flex-wrap gap-2">
+      {SETTINGS_GROUPS.map((group) => (
+        <a
+          key={group.id}
+          href={`#${group.id}`}
+          className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-sm font-semibold text-slate-600 transition-colors hover:border-orange-300 hover:text-orange-600"
+        >
+          <group.icon size={14} />
+          {group.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function SettingsGroup({ id, children }) {
+  const group = SETTINGS_GROUPS.find((entry) => entry.id === id);
+  const Icon = group.icon;
+  return (
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-24">
+      <div className="mb-3 flex items-start gap-3 px-1 sm:mb-4">
+        <div className="mt-0.5 shrink-0 rounded-xl bg-slate-900 p-2 text-white">
+          <Icon size={16} />
+        </div>
+        <div className="min-w-0">
+          <h2 id={`${id}-title`} className="text-base font-black uppercase tracking-widest text-slate-900">
+            {group.label}
+          </h2>
+          <p className="mt-0.5 text-sm text-slate-500">{group.description}</p>
+        </div>
+      </div>
+      <div className="space-y-4 sm:space-y-5">{children}</div>
+    </section>
+  );
+}
+
 export default function ParametresPage() {
   return (
     <AppShell
       title="Paramètres"
-      subtitle="Catalogues à partager et paramètres société."
+      subtitle="Société, bons de réception, catalogues et accès à l’application."
     >
-      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
-        <InsuranceSection />
-        <VatThresholdCheckSection />
-        <GenericCompletionLinkSection />
-        {/* Administrateurs uniquement (rend null sinon). */}
-        <AccessSettingsSection />
-        {/* Bandeau d'introduction */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-900 to-slate-800 p-5 text-white shadow-sm sm:p-8">
-          <div className="flex items-start gap-3 sm:gap-4">
-            <div className="shrink-0 rounded-2xl bg-white/10 p-2.5 backdrop-blur sm:p-3">
-              <DoorOpen size={24} className="text-orange-400" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-orange-400 sm:tracking-[0.24em]">
-                Catalogues panneaux de porte
-              </p>
-              <h3 className="mt-1 text-xl font-black sm:text-2xl">
-                Tous vos liens de catalogue, au même endroit
-              </h3>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
-                Trois vues clients du même catalogue selon ce que vous montrez : sans aucun
-                surcoût (le plus envoyé), avec les suppléments par rapport au standard, ou sans
-                aucun prix. Ouvrez-les en un clic ou copiez le lien pour l&apos;envoyer.
-              </p>
-            </div>
-          </div>
-        </section>
+      <div className="mx-auto max-w-6xl space-y-8 sm:space-y-10">
+        <SettingsNav />
 
-        {/* Section liens */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-5 flex items-center gap-2">
-            <div className="rounded-xl bg-orange-100 p-2 text-orange-600">
-              <Link2 size={18} />
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest text-orange-500">
-                Liens de partage
-              </p>
-              <h3 className="text-lg font-bold text-slate-900">Les 3 catalogues</h3>
-            </div>
-          </div>
+        <SettingsGroup id="societe">
+          <InsuranceSection />
+          <VatThresholdCheckSection />
+        </SettingsGroup>
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {CATALOGUE_LINKS.map((link) => (
-              <CatalogueLinkCard key={link.id} link={link} />
-            ))}
-          </div>
-        </section>
+        <SettingsGroup id="acces">
+          {/* Statut du compte pour tous ; gestion des comptes pour les administrateurs. */}
+          <AccessSettingsSection />
+        </SettingsGroup>
 
-        {/* Gammes disponibles */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <div className="rounded-xl bg-violet-100 p-2 text-violet-600">
-              <BookOpen size={18} />
+        <SettingsGroup id="reception">
+          <GenericCompletionLinkSection />
+        </SettingsGroup>
+
+        <SettingsGroup id="catalogues">
+          {/* Section liens */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center gap-2">
+              <div className="rounded-xl bg-orange-100 p-2 text-orange-600">
+                <Link2 size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-orange-500">
+                  Liens de partage
+                </p>
+                <h3 className="text-lg font-bold text-slate-900">Les 3 catalogues</h3>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-black uppercase tracking-widest text-violet-500">
-                Contenu
-              </p>
-              <h3 className="text-lg font-bold text-slate-900">Gammes disponibles</h3>
+
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {CATALOGUE_LINKS.map((link) => (
+                <CatalogueLinkCard key={link.id} link={link} />
+              ))}
             </div>
-          </div>
-          <p className="mb-4 text-sm text-slate-500">
-            Le catalogue regroupe l&apos;ensemble des modèles, toutes gammes confondues.
-            Chaque panneau peut être fabriqué dans la couleur définie au devis, sans
-            supplément.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {GAMMES.map((gamme) => (
-              <span
-                key={gamme.name}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-sm font-semibold text-slate-700"
-              >
-                <Sparkles size={13} className="text-orange-400" />
-                {gamme.name}
-                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-400">
-                  {gamme.count}
+          </section>
+
+          {/* Gammes disponibles */}
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="rounded-xl bg-violet-100 p-2 text-violet-600">
+                <BookOpen size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest text-violet-500">
+                  Contenu
+                </p>
+                <h3 className="text-lg font-bold text-slate-900">Gammes disponibles</h3>
+              </div>
+            </div>
+            <p className="mb-4 text-sm text-slate-500">
+              Le catalogue regroupe l&apos;ensemble des modèles, toutes gammes confondues.
+              Chaque panneau peut être fabriqué dans la couleur définie au devis, sans
+              supplément.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {GAMMES.map((gamme) => (
+                <span
+                  key={gamme.name}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3.5 py-1.5 text-sm font-semibold text-slate-700"
+                >
+                  <Sparkles size={13} className="text-orange-400" />
+                  {gamme.name}
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-bold text-slate-400">
+                    {gamme.count}
+                  </span>
                 </span>
-              </span>
-            ))}
-          </div>
-        </section>
-
-        {/* Bon à savoir */}
-        <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm sm:p-6">
-          <div className="flex items-start gap-3">
-            <Info size={18} className="mt-0.5 shrink-0 text-sky-600" />
-            <div className="text-sm leading-relaxed text-sky-900">
-              <p className="font-bold">Bon à savoir</p>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sky-800">
-                <li>
-                  Aucun de ces liens n&apos;affiche votre prix d&apos;achat : « sans surcoût »
-                  ne montre que les modèles inclus, « avec suppléments » montre l&apos;écart au
-                  modèle standard, et « sans prix » ne montre aucun montant.
-                </li>
-                <li>
-                  Vous pouvez imposer un coloris en ajoutant{' '}
-                  <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-sky-700">
-                    ?couleur=Gris%20Anthracite
-                  </code>{' '}
-                  à la fin d&apos;un lien.
-                </li>
-                <li>
-                  À la signature d&apos;un devis, le bon catalogue (couleur incluse) s&apos;ouvre
-                  déjà automatiquement pour le client.
-                </li>
-              </ul>
+              ))}
             </div>
-          </div>
-        </section>
+          </section>
+
+          {/* Bon à savoir */}
+          <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm sm:p-6">
+            <div className="flex items-start gap-3">
+              <Info size={18} className="mt-0.5 shrink-0 text-sky-600" />
+              <div className="text-sm leading-relaxed text-sky-900">
+                <p className="font-bold">Bon à savoir</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sky-800">
+                  <li>
+                    Aucun de ces liens n&apos;affiche votre prix d&apos;achat : « sans surcoût »
+                    ne montre que les modèles inclus, « avec suppléments » montre l&apos;écart au
+                    modèle standard, et « sans prix » ne montre aucun montant.
+                  </li>
+                  <li>
+                    Vous pouvez imposer un coloris en ajoutant{' '}
+                    <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-sky-700">
+                      ?couleur=Gris%20Anthracite
+                    </code>{' '}
+                    à la fin d&apos;un lien.
+                  </li>
+                  <li>
+                    À la signature d&apos;un devis, le bon catalogue (couleur incluse) s&apos;ouvre
+                    déjà automatiquement pour le client.
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </SettingsGroup>
+
       </div>
     </AppShell>
   );
