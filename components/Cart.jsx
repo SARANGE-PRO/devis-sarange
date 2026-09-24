@@ -263,6 +263,8 @@ function SortableCartItem({
               panneauDecoratif: item.panneauDecoratif,
               hasSousBassement: item.hasSousBassement,
               sousBassementHeight: item.sousBassementHeight,
+              hasTraverse: item.hasTraverse,
+              traverseHeight: item.traverseHeight,
               sashOptions: item.sashOptions,
               productId: item.productId,
               openingDirection: item.openingDirection,
@@ -387,6 +389,11 @@ function SortableCartItem({
                 {item.hasSousBassement && (
                   <span className="ml-1 font-bold text-slate-600">
                     · Sous-bassement ({item.sousBassementHeight}mm)
+                  </span>
+                )}
+                {!item.hasSousBassement && item.hasTraverse && (
+                  <span className="ml-1 font-bold text-slate-600">
+                    · Traverse ({item.traverseHeight}mm)
                   </span>
                 )}
                 {hasSashOptions && (

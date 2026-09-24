@@ -330,6 +330,7 @@ const PanelContent = ({
   frameColor,
   panelType,
   sousBassement,
+  traverse,
   petitsBoisH,
   petitsBoisV,
   metrics,
@@ -371,7 +372,7 @@ const PanelContent = ({
       </Fragment>
     );
   };
-  const renderGlassPane = (panelX, panelY, panelWidth, panelHeight) => {
+  const renderGlassPane = (panelX, panelY, panelWidth, panelHeight, { withPetitsBois = true } = {}) => {
     if (panelWidth <= 0 || panelHeight <= 0) return null;
 
     return (
@@ -386,16 +387,18 @@ const PanelContent = ({
           strokeWidth={strokeWidth}
           rx={Math.max(2, 4 * metrics.scaleFactor)}
         />
-        <PetitBoisLines
-          x={panelX}
-          y={panelY}
-          width={panelWidth}
-          height={panelHeight}
-          petitsBoisH={petitsBoisH}
-          petitsBoisV={petitsBoisV}
-          stroke={petitsBoisColor}
-          scaleFactor={metrics.scaleFactor}
-        />
+        {withPetitsBois && (
+          <PetitBoisLines
+            x={panelX}
+            y={panelY}
+            width={panelWidth}
+            height={panelHeight}
+            petitsBoisH={petitsBoisH}
+            petitsBoisV={petitsBoisV}
+            stroke={petitsBoisColor}
+            scaleFactor={metrics.scaleFactor}
+          />
+        )}
       </Fragment>
     );
   };
@@ -457,6 +460,39 @@ const PanelContent = ({
     );
   }
 
+  // Traverse seule : même découpe que le soubassement, partie basse vitrée
+  // (sans petits bois : ils sont comptés sur la partie haute).
+  const validTraverse = clamp(traverse || 0, 0, Math.max(0, height - 40 * metrics.scaleFactor));
+
+  if (validTraverse > 0) {
+    const traverseHeight = Math.min(metrics.traverse, height);
+    const topGlassHeight = Math.max(0, height - validTraverse - traverseHeight);
+    const bottomY = y + topGlassHeight + traverseHeight;
+
+    return (
+      <Fragment>
+        {topGlassHeight > 0 &&
+          (isOpaquePanel ? (
+            renderPvcPanel(x, y, width, topGlassHeight)
+          ) : (
+            renderGlassPane(x, y, width, topGlassHeight)
+          ))}
+        <rect
+          x={x}
+          y={y + topGlassHeight}
+          width={width}
+          height={traverseHeight}
+          fill={frameColor}
+          stroke={COLORS.frameBorder}
+          strokeWidth={strokeWidth}
+        />
+        {isOpaquePanel
+          ? renderPvcPanel(x, bottomY, width, validTraverse)
+          : renderGlassPane(x, bottomY, width, validTraverse, { withPetitsBois: false })}
+      </Fragment>
+    );
+  }
+
   return isOpaquePanel ? (
     renderPvcPanel(x, y, width, height)
   ) : (
@@ -473,6 +509,7 @@ const CasementSash = ({
   frameColor,
   panelType,
   sousBassement,
+  traverse,
   metrics,
   handleFraction = 0.5,
 }) => {
@@ -518,6 +555,7 @@ const CasementSash = ({
         frameColor={frameColor}
         panelType={panelType}
         sousBassement={sousBassement}
+        traverse={traverse}
         petitsBoisH={metrics.scaleFactor ? sash.petitsBoisH : 0}
         petitsBoisV={metrics.scaleFactor ? sash.petitsBoisV : 0}
         metrics={metrics}
@@ -564,6 +602,7 @@ const SlidingSash = ({
   frameColor,
   panelType,
   sousBassement,
+  traverse,
   metrics,
   index,
   totalSashes,
@@ -606,6 +645,7 @@ const SlidingSash = ({
         height={glassHeight}
         frameColor={frameColor}
         sousBassement={sousBassement}
+        traverse={traverse}
         panelType={panelType}
         petitsBoisH={sash.petitsBoisH}
         petitsBoisV={sash.petitsBoisV}
@@ -825,6 +865,7 @@ export const CompositeModule = ({ module, frameColor }) => {
               frameColor={config.frameColor}
               panelType={config.panelType}
               sousBassement={config.sousBassement}
+              traverse={config.traverse}
               metrics={metrics}
               index={segment.index}
               totalSashes={sashSegments.length}
@@ -845,6 +886,7 @@ export const CompositeModule = ({ module, frameColor }) => {
               frameColor={config.frameColor}
               panelType={config.panelType}
               sousBassement={config.sousBassement}
+              traverse={config.traverse}
               metrics={metrics}
               handleFraction={config.handleHeightFraction}
             />

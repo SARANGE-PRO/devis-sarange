@@ -708,7 +708,7 @@ export default function CataloguePage() {
                   },
                   {
                     key: 'pricing:sousBassementTraversePricePerMl',
-                    label: 'Traverse soubassement (EUR/ml)',
+                    label: 'Traverse (soubassement ou traverse seule) (EUR/ml)',
                     value: currentPricing.sousBassementTraversePricePerMl,
                     onSave: (value) =>
                       setCataloguePricingValue('sousBassementTraversePricePerMl', value),

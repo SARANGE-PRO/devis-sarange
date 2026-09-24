@@ -136,6 +136,8 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   manualUd: '',
   hasSousBassement: false,
   sousBassementHeight: 400,
+  hasTraverse: false,
+  traverseHeight: 400,
   sashOptions: {},
   openingDirection: 'standard',
   glazingId: getDefaultGlazingId(material),
@@ -171,6 +173,7 @@ const EMPTY_FILLING_PRICING = {
   glazingExtra: 0,
   sousBassementTraversePrice: 0,
   sousBassementPanelExtra: 0,
+  traverseSeulePrice: 0,
   totalExtra: 0,
 };
 
@@ -183,6 +186,7 @@ const buildFillingSelectionMeta = ({
   glazingId,
   hasSousBassement = false,
   sousBassementHeight = 0,
+  hasTraverse = false,
   colorOptionId = 'blanc',
 }) => {
   if (!product || (!isEligible && !isGlazedProduct(product))) {
@@ -215,6 +219,7 @@ const buildFillingSelectionMeta = ({
           widthMm: parsedWidth,
           hasSousBassement,
           sousBassementHeightMm: sousBassementHeight,
+          hasTraverse,
           colorOptionId,
           isAlu,
         })
@@ -289,6 +294,47 @@ const getSoubassementPricingDetails = (pricing) => {
 
   return details.join(' | ');
 };
+
+const getTraversePricingDetails = (pricing) =>
+  pricing?.traverseSeulePrice > 0 ? `Traverse ${pricing.traverseSeulePrice.toFixed(2)} EUR` : '';
+
+/**
+ * Hauteur visible (mm, depuis le bas) d'un soubassement ou d'une traverse
+ * seule : curseur + saisie, bornés par la hauteur de la menuiserie.
+ */
+function SplitHeightField({ value, heightMm, onChange, details }) {
+  const max = Math.max(100, parsePositiveInt(heightMm, 1000) - 200);
+  return (
+    <div className="mt-4 space-y-3">
+      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        <span>Hauteur visible</span>
+        <span>{value} mm</span>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
+        <input
+          type="range"
+          min={100}
+          max={max}
+          step={10}
+          value={value}
+          onChange={(event) => onChange(Number.parseInt(event.target.value, 10))}
+          className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
+        />
+        <input
+          type="number"
+          min={100}
+          max={max}
+          step={10}
+          {...NUMERIC_INPUT_PROPS}
+          value={value}
+          onChange={(event) => onChange(Math.max(100, Number.parseInt(event.target.value, 10) || 100))}
+          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+        />
+      </div>
+      {details && <p className="text-xs font-semibold text-slate-500">{details}</p>}
+    </div>
+  );
+}
 
 const formatFrenchDecimal = (value, decimals = 2) =>
   Number(value || 0)
@@ -1207,6 +1253,7 @@ export default function ProductSelector({
     glazingId: simpleConfig.glazingId,
     hasSousBassement: simpleConfig.hasSousBassement,
     sousBassementHeight: simpleConfig.sousBassementHeight,
+    hasTraverse: simpleConfig.hasTraverse,
     colorOptionId: simpleConfig.colorOptionId,
   });
   const simpleGlassAreas = simpleFillingMeta.glassAreas;
@@ -1392,6 +1439,8 @@ export default function ProductSelector({
       sousBassementHeight: simpleConfig.hasSousBassement
         ? simpleConfig.sousBassementHeight
         : 0,
+      hasTraverse: !workingIsVolet && !simpleConfig.hasSousBassement && simpleConfig.hasTraverse,
+      traverseHeight: simpleConfig.hasTraverse ? simpleConfig.traverseHeight : 0,
       sashOptions: !workingIsVolet ? simpleConfig.sashOptions : {},
       openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
       glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
@@ -1718,6 +1767,8 @@ export default function ProductSelector({
         manualUd: Number.isFinite(editingItem.manualUd) ? String(editingItem.manualUd) : '',
         hasSousBassement: editingItem.hasSousBassement || false,
         sousBassementHeight: editingItem.sousBassementHeight || 400,
+        hasTraverse: editingItem.hasTraverse || false,
+        traverseHeight: editingItem.traverseHeight || 400,
         sashOptions: editingItem.sashOptions || {},
         openingDirection: editingItem.openingDirection || 'standard',
         glazingId:
@@ -1781,6 +1832,8 @@ export default function ProductSelector({
           panneauDecoratif: frameModule.options.panneauDecoratif,
           hasSousBassement: frameModule.options.hasSousBassement,
           sousBassementHeight: frameModule.options.sousBassementHeight,
+          hasTraverse: frameModule.options.hasTraverse,
+          traverseHeight: frameModule.options.traverseHeight,
           sashOptions: frameModule.options.sashOptions,
           openingDirection: frameModule.options.openingDirection,
           hasLockingHandle: frameModule.options.hasLockingHandle,
@@ -2117,6 +2170,8 @@ export default function ProductSelector({
       sousBassementHeight: simpleConfig.hasSousBassement
         ? simpleConfig.sousBassementHeight
         : 0,
+      hasTraverse: !workingIsVolet && !simpleConfig.hasSousBassement && simpleConfig.hasTraverse,
+      traverseHeight: simpleConfig.hasTraverse ? simpleConfig.traverseHeight : 0,
       sashOptions: !workingIsVolet ? simpleConfig.sashOptions : {},
       openingDirection: !workingIsVolet ? simpleConfig.openingDirection : 'standard',
       glazingOption: workingIsGlazed ? simpleSelectedGlazing : null,
@@ -2334,7 +2389,11 @@ export default function ProductSelector({
                         type="checkbox"
                         checked={simpleConfig.hasSousBassement}
                         onChange={(event) =>
-                          updateSimpleOptions({ hasSousBassement: event.target.checked })
+                          updateSimpleOptions({
+                            hasSousBassement: event.target.checked,
+                            // Exclusif avec la traverse seule (le soubassement comprend sa traverse).
+                            ...(event.target.checked ? { hasTraverse: false } : {}),
+                          })
                         }
                         className="h-4 w-4 accent-orange-500"
                       />
@@ -2342,58 +2401,37 @@ export default function ProductSelector({
                     </label>
 
                     {simpleConfig.hasSousBassement && (
-                      <div className="mt-4 space-y-3">
-                        <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                          <span>Hauteur visible</span>
-                          <span>{simpleConfig.sousBassementHeight} mm</span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
-                          <input
-                            type="range"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            value={simpleConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSimpleOptions({
-                                sousBassementHeight: Number.parseInt(
-                                  event.target.value,
-                                  10
-                                ),
-                              })
-                            }
-                            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-100 accent-orange-500"
-                          />
-                          <input
-                            type="number"
-                            min={100}
-                            max={Math.max(
-                              100,
-                              parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                            )}
-                            step={10}
-                            {...NUMERIC_INPUT_PROPS}
-                            value={simpleConfig.sousBassementHeight}
-                            onChange={(event) =>
-                              updateSimpleOptions({
-                                sousBassementHeight: Math.max(
-                                  100,
-                                  Number.parseInt(event.target.value, 10) || 100
-                                ),
-                              })
-                            }
-                            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                          />
-                        </div>
-                        {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing) && (
-                          <p className="text-xs font-semibold text-slate-500">
-                            {getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
-                          </p>
-                        )}
-                      </div>
+                      <SplitHeightField
+                        value={simpleConfig.sousBassementHeight}
+                        heightMm={simpleConfig.heightMm}
+                        onChange={(sousBassementHeight) => updateSimpleOptions({ sousBassementHeight })}
+                        details={getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
+                      />
+                    )}
+
+                    <label className="mt-4 flex items-center gap-3 text-sm font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={simpleConfig.hasTraverse}
+                        onChange={(event) =>
+                          updateSimpleOptions({
+                            hasTraverse: event.target.checked,
+                            ...(event.target.checked ? { hasSousBassement: false } : {}),
+                          })
+                        }
+                        className="h-4 w-4 accent-orange-500"
+                      />
+                      Traverse seule
+                      <span className="text-xs font-normal text-slate-400">(vitré en dessous)</span>
+                    </label>
+
+                    {simpleConfig.hasTraverse && (
+                      <SplitHeightField
+                        value={simpleConfig.traverseHeight}
+                        heightMm={simpleConfig.heightMm}
+                        onChange={(traverseHeight) => updateSimpleOptions({ traverseHeight })}
+                        details={getTraversePricingDetails(simpleFillingMeta.selectedPricing)}
+                      />
                     )}
                   </div>
                 </div>
@@ -3060,6 +3098,8 @@ export default function ProductSelector({
                 panneauDecoratif: simpleConfig.panneauDecoratif,
                 hasSousBassement: simpleConfig.hasSousBassement,
                 sousBassementHeight: simpleConfig.sousBassementHeight,
+                hasTraverse: simpleConfig.hasTraverse,
+                traverseHeight: simpleConfig.traverseHeight,
                 sashOptions: simpleConfig.sashOptions,
                 openingDirection: simpleConfig.openingDirection,
                 handleHeightMm: simpleConfig.handleHeightMm,

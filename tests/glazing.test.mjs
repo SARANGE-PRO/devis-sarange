@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   calculateGlassAreas,
+  calculateGlazingAndPanelExtras,
   calculateSw,
   calculateUw,
   getFrameSystemForProduct,
@@ -145,4 +146,35 @@ run('Fenêtre 2 vantaux PVC : ignore le battement central (comportement historiq
 run('dimensions trop petites pour un vitrage AWS 60 2 vantaux -> null', () => {
   const frameSystem = getFrameSystemForProduct('Fenêtre 2V ALU');
   assert.equal(calculateGlassAreas(200, 1000, frameSystem, 'Fenêtre 2V ALU'), null);
+});
+
+// Traverse seule : la traverse est facturée au ml comme pour un soubassement,
+// mais la surface vitrée reste entière (aucun panneau). Le soubassement a
+// priorité si les deux sont demandés.
+run('traverse seule : traverse au ml, vitrage entier, soubassement prioritaire', () => {
+  const sheet = 'Fenêtre 1V ALU';
+  const frameSystem = getFrameSystemForProduct(sheet);
+  const glassAreas = calculateGlassAreas(1000, 1200, frameSystem, sheet);
+  assert.ok(glassAreas, 'surfaces vitrées calculables');
+
+  const base = { selectedGlazing: null, glassAreas, widthMm: 1000, isAlu: true };
+  const plain = calculateGlazingAndPanelExtras(base);
+  const traverse = calculateGlazingAndPanelExtras({ ...base, hasTraverse: true });
+  const both = calculateGlazingAndPanelExtras({
+    ...base,
+    hasTraverse: true,
+    hasSousBassement: true,
+    sousBassementHeightMm: 400,
+  });
+
+  assert.equal(plain.traverseSeulePrice, 0);
+  assert.equal(traverse.traverseSeuleMl, 1);
+  assert.ok(traverse.traverseSeulePrice > 0, 'la traverse seule a un prix');
+  assert.equal(traverse.traverseSeulePrice, traverse.totalExtra - plain.totalExtra);
+  assert.equal(traverse.glazingAreaM2, plain.glazingAreaM2, 'surface vitrée inchangée');
+  assert.equal(traverse.sousBassementPanelExtra, 0, 'aucun panneau');
+
+  assert.equal(both.traverseSeulePrice, 0, 'le soubassement comprend déjà sa traverse');
+  assert.ok(both.sousBassementTraversePrice > 0);
+  assert.ok(both.sousBassementPanelExtra > 0);
 });

@@ -238,4 +238,86 @@ run('constructeur partagé : un châssis de composé ne porte jamais de coffre',
   assert.equal(config.height, 1750);
 });
 
+/* ─── Traverse seule (24/09/2026) : même découpe que le soubassement, mais la
+   partie basse reste vitrée. Espions sur les remplissages du renderer. ─── */
+
+let pvcPanelCount = 0;
+let glassCount = 0;
+const originalDrawPVCPanel = MenuiserieRenderer.prototype.drawPVCPanel;
+const originalDrawGlass = MenuiserieRenderer.prototype.drawGlass;
+MenuiserieRenderer.prototype.drawPVCPanel = function spyPanel(...args) {
+  pvcPanelCount += 1;
+  return originalDrawPVCPanel.apply(this, args);
+};
+MenuiserieRenderer.prototype.drawGlass = function spyGlass(...args) {
+  glassCount += 1;
+  return originalDrawGlass.apply(this, args);
+};
+
+const renderSimpleWindow = (extra) => {
+  pvcPanelCount = 0;
+  glassCount = 0;
+  createdCanvases.length = 0;
+  return renderMenuiserieToDataURL({
+    id: 'simple-traverse',
+    productId: 'fenetre-1v',
+    sheetName: 'Fenêtre 1V',
+    widthMm: 1200,
+    heightMm: 1250,
+    ...extra,
+  });
+};
+
+run('traverse seule : deux vitrages, aucun panneau plein', () => {
+  const rendered = renderSimpleWindow({ hasTraverse: true, traverseHeight: 400 });
+  assert.ok(rendered?.dataUrl);
+  assert.equal(pvcPanelCount, 0, 'la partie basse reste vitrée');
+  assert.ok(glassCount >= 2, `deux vitrages attendus (haut et bas), ${glassCount} dessinés`);
+});
+
+run('soubassement : un panneau plein en bas, un seul vitrage', () => {
+  renderSimpleWindow({ hasSousBassement: true, sousBassementHeight: 400 });
+  assert.equal(pvcPanelCount, 1);
+  assert.equal(glassCount, 1);
+});
+
+run('les deux cochés : le soubassement a priorité sur la traverse seule', () => {
+  renderSimpleWindow({
+    hasSousBassement: true,
+    sousBassementHeight: 400,
+    hasTraverse: true,
+    traverseHeight: 300,
+  });
+  assert.equal(pvcPanelCount, 1);
+  assert.equal(glassCount, 1);
+});
+
+run('châssis de composé : la traverse seule suit les options du module', () => {
+  const withTraverse = buildCompositeModuleConfig({
+    module: {
+      id: 'm',
+      productId: 'fenetre-fixe',
+      widthMm: 1166,
+      heightMm: 1750,
+      options: { hasTraverse: true, traverseHeight: 450 },
+    },
+    options: {},
+  });
+  assert.equal(withTraverse.traverse, 450);
+  assert.equal(withTraverse.sousBassement, 0);
+
+  const withBoth = buildCompositeModuleConfig({
+    module: {
+      id: 'm',
+      productId: 'fenetre-fixe',
+      widthMm: 1166,
+      heightMm: 1750,
+      options: { hasTraverse: true, traverseHeight: 450, hasSousBassement: true, sousBassementHeight: 400 },
+    },
+    options: {},
+  });
+  assert.equal(withBoth.traverse, 0);
+  assert.equal(withBoth.sousBassement, 400);
+});
+
 console.log('Tous les tests de rendu PDF des châssis composés ont reussi.');
