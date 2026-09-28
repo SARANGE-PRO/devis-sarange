@@ -1,6 +1,7 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import BottomNav from '@/components/BottomNav';
 import Sidebar from '@/components/Sidebar';
 import FirebaseAuthCard from '@/components/FirebaseAuthCard';
@@ -14,12 +15,27 @@ const PAGE_TITLES = {
   '/compta':    'Compta',
   '/catalogue': 'Paramètres',
   '/parametres': 'Catalogues',
+  '/commissions': 'Suivi',
 };
 
 export default function AppShell({ title, subtitle, actions = null, children }) {
   const pathname = usePathname();
+  const router = useRouter();
   const mobileTitle = PAGE_TITLES[pathname] ?? title;
-  const { user, initializing, isConfigured } = useFirebaseAuth();
+  const { user, initializing, isConfigured, access } = useFirebaseAuth();
+
+  // Accès discret à /commissions sur mobile (pas d'entrée de menu) : trois
+  // appuis rapides sur le logo de la topbar, administrateurs uniquement.
+  const logoTapsRef = useRef([]);
+  const handleLogoTap = () => {
+    if (access?.isAdmin !== true) return;
+    const now = Date.now();
+    logoTapsRef.current = [...logoTapsRef.current.filter((time) => now - time < 1500), now];
+    if (logoTapsRef.current.length >= 3) {
+      logoTapsRef.current = [];
+      router.push('/commissions');
+    }
+  };
 
   let content = children;
   if (isConfigured && !user && !initializing) {
@@ -42,7 +58,10 @@ export default function AppShell({ title, subtitle, actions = null, children }) 
       <div className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm lg:hidden">
         {/* Logo + titre de la page */}
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900">
+          <div
+            onClick={handleLogoTap}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-900"
+          >
             <span className="text-xs font-black text-white">
               S<span className="text-orange-500">.</span>
             </span>

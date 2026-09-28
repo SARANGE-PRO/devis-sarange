@@ -7,6 +7,7 @@ import {
   Calculator,
   ChevronRight,
   DoorOpen,
+  Euro,
   FilePlus,
   FolderOpen,
   LogOut,
@@ -32,7 +33,7 @@ const menuItems = [
  */
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, initializing, isConfigured, signOut } = useFirebaseAuth();
+  const { user, initializing, isConfigured, signOut, access } = useFirebaseAuth();
 
   return (
     <aside className="fixed left-0 top-0 z-50 hidden h-full w-64 flex-col border-r border-slate-200 bg-white shadow-none lg:flex">
@@ -115,6 +116,24 @@ export default function Sidebar() {
             <Calculator size={10} />
             Compta
           </Link>
+          {/* Accès discret au suivi des commissions (/commissions) :
+              administrateurs uniquement, icône seule, sans libellé. */}
+          {access?.isAdmin === true && (
+            <>
+              <span className="text-slate-200">·</span>
+              <Link
+                href="/commissions"
+                aria-label="Suivi"
+                className={`flex items-center transition-colors ${
+                  pathname === '/commissions'
+                    ? 'text-orange-500'
+                    : 'text-slate-300 hover:text-slate-500'
+                }`}
+              >
+                <Euro size={10} />
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </aside>

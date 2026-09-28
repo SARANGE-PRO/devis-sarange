@@ -8,6 +8,8 @@ import {
   hasMeaningfulClientData,
   sanitizeClientData,
 } from '@/lib/client-cloud';
+import { buildLeadDossierLabel } from '@/lib/commission-dossiers.mjs';
+import { createLeadCommissionDossier } from '@/lib/commission-service';
 
 export const runtime = 'nodejs';
 
@@ -94,6 +96,19 @@ export async function POST(request) {
       },
       { merge: true }
     );
+
+    // Chaque demande de prix du site ouvre aussi son dossier de commission
+    // (page /commissions), au statut « En attente de devis ». Idempotent
+    // (identifiant lead-{clientId}) et best-effort : un échec ici ne bloque
+    // jamais l'enregistrement du lead.
+    try {
+      await createLeadCommissionDossier({
+        clientId,
+        label: buildLeadDossierLabel({ nom: clientData.nom, prenom: clientData.prenom, ville: clientData.ville }),
+      });
+    } catch (dossierError) {
+      console.error('Dossier de commission non créé pour ce lead :', dossierError);
+    }
 
     return NextResponse.json({ success: true, clientId, created: !existing.exists });
   } catch (error) {

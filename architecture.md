@@ -571,6 +571,9 @@ Cette section documente tous les fichiers utiles du depot versionne hors `node_m
 | `app/api/quote-signatures/[token]/document/route.js` | `GET` public pour servir le PDF original ou signe. |
 | `app/api/quote-signatures/[token]/sign/route.js` | `POST` public pour signer un devis via token. |
 | `app/api/quote-signatures/[token]/refuse/route.js` | `POST` public pour refuser un devis via token. |
+| `app/commissions/page.js` | Page discrete de suivi des commissions de vente (aucune entree de menu visible : icone € du pied de sidebar ou triple appui sur le logo mobile, administrateurs uniquement, code a 4 chiffres). Tableau desktop + cartes mobiles, totaux en tete, documents joints par dossier. |
+| `app/api/commissions/route.js` | `GET`/`POST` administrateurs : liste et actions (create/update/delete/import-leads) sur la collection `commissionDossiers` (Admin SDK, regles Firestore fermees). |
+| `app/api/commissions/documents/route.js` | `GET` telechargement et `POST` ajout/suppression des documents joints d'un dossier (Storage `commission-dossiers/`, 3 Mo max par fichier). |
 
 Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/parametres/page.js` n'existe pas actuellement.
 
@@ -623,6 +626,8 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/sage-export.mjs` | Moteur PUR d'export Sage 50 (onglet Compta) : parametres, mapping TVA→article, modele d'export, validations, CSV, nommage, empreinte anti-doublon, encodage. Dependances injectees (testable Node). |
 | `lib/sage-export-service.js` | Liaison du moteur Sage avec le vrai moteur de calcul (products, quote-totals, designations, variantes) : les montants exportes sont ceux du devis/PDF. |
 | `lib/compta-local.mjs` | Persistance LOCALE de l'onglet Compta (source de verite) : parametres Sage et historique des exports en localStorage (cles versionnees par uid), export/import JSON de la configuration. Stockage injectable (testable Node). |
+| `lib/commission-dossiers.mjs` | Module PUR du suivi des commissions de vente : statuts (attente-devis, devis-envoye, vendu, perdu), parsing des montants, commission (= prix de vente - prix Sarange, uniquement si vendu), solde du (= commission - paye), totaux, libelle des leads du site. Teste dans `tests/commission-dossiers.test.mjs`. |
+| `lib/commission-service.js` | Service serveur des dossiers de commission : CRUD reserve aux administrateurs, creation idempotente depuis un lead du site (`lead-{clientId}`, appelee par `/api/leads`), import de rattrapage des leads existants, documents joints dans Storage. |
 
 ### 8.5 `lib/firebase/` - acces Firebase
 

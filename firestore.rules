@@ -95,6 +95,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- Commissions de vente (page discrète /commissions) : SERVEUR UNIQUEMENT ----
+    // Dossiers d'apport et documents joints, réservés aux administrateurs :
+    // toutes les lectures/écritures passent par app/api/commissions/* (Admin
+    // SDK, qui vérifie le rôle administrateur).
+    match /commissionDossiers/{dossierId} {
+      allow read, write: if false;
+    }
+
     // ---- sarange-suivi : collections partagées par toute l'équipe ----
     match /commandes/{commandeId} {
       allow read, write: if isSarange();
