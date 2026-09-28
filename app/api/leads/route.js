@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { toRouteErrorResponse } from '@/lib/api-route-errors';
-import { getFirebaseAdminDb } from '@/lib/firebase/admin';
+import { getFirebaseAdminDb, resolveSiteLeadsOwnerUid } from '@/lib/firebase/admin';
 import {
   buildClientRecord,
   deriveClientDocumentId,
@@ -39,10 +39,12 @@ const splitZip = (zip) => {
 export async function POST(request) {
   try {
     const secret = (process.env.SITE_LEADS_SECRET || '').trim();
-    const ownerUid = (process.env.SITE_LEADS_OWNER_UID || '').trim();
+    // Compte destinataire : SITE_LEADS_OWNER_UID, sinon le premier
+    // administrateur de DEVIS_ADMIN_EMAILS (le bureau).
+    const ownerUid = await resolveSiteLeadsOwnerUid();
     if (!secret || !ownerUid) {
       return NextResponse.json(
-        { error: 'Réception des leads non configurée (SITE_LEADS_SECRET / SITE_LEADS_OWNER_UID).' },
+        { error: 'Réception des leads non configurée (SITE_LEADS_SECRET / SITE_LEADS_OWNER_UID ou DEVIS_ADMIN_EMAILS).' },
         { status: 503 }
       );
     }
