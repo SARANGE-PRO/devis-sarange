@@ -134,7 +134,7 @@ function SortableCartItem({
 
   const sashEntries = item.sashOptions ? Object.values(item.sashOptions) : [];
   const obCount = sashEntries.filter((s) => s?.ob).length;
-  const ventCount = sashEntries.filter((s) => s?.grille).length;
+  const ventCount = sashEntries.filter((s) => s?.vent).length;
   const hasSashOptions = obCount > 0 || ventCount > 0;
 
   const containerClassName = `rounded-xl border p-4 shadow-sm transition-all hover:shadow-md ${

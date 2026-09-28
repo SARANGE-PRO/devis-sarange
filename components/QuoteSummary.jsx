@@ -8,10 +8,12 @@ import {
   getCompositeModuleCount,
   getDisplayProductLabel,
   getItemPricingSummary,
+  getItemSuggestedSashOptions,
   getPoseLabel,
   SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import { generateDesignation } from '@/lib/designation-generator';
+import { buildSuggestedOptionsLine } from '@/lib/suggested-options.mjs';
 import { formatPhoneNumber } from '@/lib/phone.mjs';
 import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
 import ClientTypeDialog from '@/components/ClientTypeDialog';
@@ -90,6 +92,19 @@ const buildDesignationWithDiscount = (baseText, item, pricing) => {
 
   const discountText = `Remise : -${item.remise}% (gain -${formatPriceLabel(pricing.discountLineHT)})`;
   return safeBaseText ? `${safeBaseText}\n\n${discountText}` : discountText;
+};
+
+// Même ligne que dans le PDF, affichée à part pour ne jamais se mêler à la
+// désignation éditable.
+const SuggestedOptionsNote = ({ item, enabled, className = '' }) => {
+  if (!enabled) return null;
+  const line = buildSuggestedOptionsLine(
+    getItemSuggestedSashOptions(item),
+    formatPriceLabel,
+    item?.quantity
+  );
+  if (!line) return null;
+  return <p className={`not-italic text-slate-400 ${className}`}>{line}</p>;
 };
 
 const PriceStack = ({
@@ -624,17 +639,24 @@ export default function QuoteSummary({
                         </div>
                       ) : (
                         <div className="flex items-start gap-2">
-                          <p
-                            className={`min-w-0 flex-1 break-words text-[10px] italic leading-relaxed text-slate-500 ${
-                              item.remise > 0 ? 'whitespace-pre-wrap' : 'line-clamp-2'
-                            }`}
-                          >
-                            {buildDesignationWithDiscount(
-                              item.customDescription || generateDesignation(item, calc, pricing) || '',
-                              item,
-                              pricing
-                            ) || '...'}
-                          </p>
+                          <div className="min-w-0 flex-1">
+                            <p
+                              className={`break-words text-[10px] italic leading-relaxed text-slate-500 ${
+                                item.remise > 0 ? 'whitespace-pre-wrap' : 'line-clamp-2'
+                              }`}
+                            >
+                              {buildDesignationWithDiscount(
+                                item.customDescription || generateDesignation(item, calc, pricing) || '',
+                                item,
+                                pricing
+                              ) || '...'}
+                            </p>
+                            <SuggestedOptionsNote
+                              item={item}
+                              enabled={quoteSettings?.showSuggestedOptions}
+                              className="mt-1 text-[10px]"
+                            />
+                          </div>
                           <button
                             onClick={() => handleStartEdit(item)}
                             className="shrink-0 p-1 text-slate-400 hover:text-orange-500 rounded"
@@ -853,6 +875,11 @@ export default function QuoteSummary({
                                             item,
                                             pricing
                                           ) || 'Désignation en cours...'}
+                                          <SuggestedOptionsNote
+                                            item={item}
+                                            enabled={quoteSettings?.showSuggestedOptions}
+                                            className="mt-1.5"
+                                          />
                                         </div>
                                         <button
                                           onClick={() => handleStartEdit(item)}

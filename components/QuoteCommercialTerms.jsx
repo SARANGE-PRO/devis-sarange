@@ -555,6 +555,27 @@ export default function QuoteCommercialTerms({
                 </div>
               </div>
 
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={settings.showSuggestedOptions}
+                  onChange={(event) =>
+                    updateSettings({ showSuggestedOptions: event.target.checked })
+                  }
+                  className="mt-1 accent-orange-500"
+                />
+                <div>
+                  <p className="text-sm font-bold text-slate-900">
+                    Suggérer l&apos;oscillo-battant et la grille de ventilation
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Sous chaque fenêtre qui ne les a pas : « En option (non inclus) :
+                    oscillo-battant +XX € HT », au prix remisé de la ligne. OB proposé
+                    jusqu&apos;à 2000 mm de haut.
+                  </p>
+                </div>
+              </label>
+
               <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start gap-3">
                   <div className="rounded-xl bg-white p-2 text-slate-500 shadow-sm">
