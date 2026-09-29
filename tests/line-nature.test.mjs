@@ -26,6 +26,7 @@ run('derive la nature des lignes depuis productId', () => {
   assert.equal(resolveLineNature({ productId: 'fenetre-1v' }), 'fourniture');
   assert.equal(resolveLineNature({ productId: 'gestion-dechets' }), 'recyclage');
   assert.equal(resolveLineNature({ productId: 'forfait-deplacement' }), 'livraison');
+  assert.equal(resolveLineNature({ productId: 'livraison' }), 'livraison');
   assert.equal(resolveLineNature({ productId: 'metrage-technique-validation' }), 'metrage');
   assert.equal(resolveLineNature({ productId: 'remise-commerciale' }), 'remise');
   assert.equal(resolveLineNature({ productId: 'text-only' }), 'autre');

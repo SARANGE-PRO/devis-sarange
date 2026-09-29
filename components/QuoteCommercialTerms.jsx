@@ -19,6 +19,7 @@ import {
   getStandardDepositOptions,
   getValidityLabel,
   getValidityMonthsOptions,
+  hasDeliveryServiceLine,
   normalizeQuoteSettings,
 } from '@/lib/quote-settings.mjs';
 import {
@@ -63,7 +64,7 @@ export default function QuoteCommercialTerms({
   const [showNatureOverrides, setShowNatureOverrides] = useState(false);
   const settings = normalizeQuoteSettings(quoteSettings);
   const effectiveTotalTTC = totals?.totalTTC ?? totalTTC;
-  const planValidation = getPaymentPlanValidation(settings, totals);
+  const planValidation = getPaymentPlanValidation(settings, totals, cartItems);
   const milestones = getPaymentMilestones(settings, effectiveTotalTTC, totals?.breakdown);
   const deliveryDelayOptions = getDeliveryDelayOptions();
   const standardDepositOptions = getStandardDepositOptions();
@@ -78,13 +79,18 @@ export default function QuoteCommercialTerms({
   const hasChantier = Boolean(totals?.breakdown?.hasChantier);
   const fabricationPoseAvailable =
     contractType === CONTRACT_TYPES.AVEC_POSE && hasChantier;
+  // Le mode « 100 % à la commande » n'est proposé que si le devis contient le
+  // service Livraison (jamais appliqué d'office : choix explicite ici).
+  const fullPrepaidAvailable = hasDeliveryServiceLine(cartItems);
 
   const paymentSummary =
     settings.paymentMode === 'schedule'
       ? `Échéancier ${settings.customSignaturePercent}% / ${settings.customOpeningPercent}% / ${settings.customBalancePercent}%`
       : settings.paymentMode === 'fabricationPose'
         ? 'Échéancier fabrication / pose'
-        : `Acompte ${settings.standardDepositPercent}% · Solde ${100 - settings.standardDepositPercent}%`;
+        : settings.paymentMode === 'fullPrepaid'
+          ? '100% à la commande'
+          : `Acompte ${settings.standardDepositPercent}% · Solde ${100 - settings.standardDepositPercent}%`;
 
   const updateSettings = (patch) => {
     if (!onChange) return;
@@ -160,7 +166,7 @@ export default function QuoteCommercialTerms({
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
             <div className="space-y-5">
               <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => updateSettings({ paymentMode: 'standard' })}
@@ -213,6 +219,32 @@ export default function QuoteCommercialTerms({
                       {fabricationPoseAvailable
                         ? '50% · solde fabrication · pose'
                         : 'Nécessite une pose au devis'}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!fullPrepaidAvailable}
+                    onClick={() => updateSettings({ paymentMode: 'fullPrepaid' })}
+                    title={
+                      fullPrepaidAvailable
+                        ? undefined
+                        : 'Disponible uniquement lorsque le devis contient le service Livraison'
+                    }
+                    className={`rounded-2xl border-2 p-4 text-left transition-all ${
+                      settings.paymentMode === 'fullPrepaid'
+                        ? 'border-orange-500 bg-white shadow-sm'
+                        : !fullPrepaidAvailable
+                          ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-slate-900">
+                      100% à la commande
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {fullPrepaidAvailable
+                        ? 'Totalité réglée à la commande'
+                        : 'Nécessite le service Livraison'}
                     </p>
                   </button>
                 </div>
@@ -393,6 +425,15 @@ export default function QuoteCommercialTerms({
                         )}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {settings.paymentMode === 'fullPrepaid' && (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500">
+                    La totalité du montant TTC est exigible à la commande (aucun
+                    approvisionnement ni lancement en fabrication avant encaissement).
+                    Ce mode n&apos;est proposé que lorsque le devis comporte le service
+                    Livraison.
                   </div>
                 )}
 

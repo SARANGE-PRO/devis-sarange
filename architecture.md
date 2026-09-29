@@ -451,7 +451,9 @@ Source : `lib/quote-settings.mjs`.
 
 Contient notamment :
 
-- mode de paiement `standard` ou `schedule`,
+- mode de paiement `standard`, `schedule`, `fabricationPose` ou `fullPrepaid`
+  (100 % a la commande : jamais applique d'office, propose uniquement quand le
+  devis contient le service catalogue « Livraison », id `livraison`),
 - acompte standard 50/40/30,
 - repartition personnalisee signature/ouverture/solde,
 - delai de livraison preset ou libre.

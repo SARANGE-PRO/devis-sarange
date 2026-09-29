@@ -292,7 +292,8 @@ run('les deux cochés : le soubassement a priorité sur la traverse seule', () =
   assert.equal(glassCount, 1);
 });
 
-run('châssis de composé : la traverse seule suit les options du module', () => {
+run('châssis de composé : les traverses seules suivent les options du module', () => {
+  // Ancien champ unique (modules enregistrés avant le 25/09/2026).
   const withTraverse = buildCompositeModuleConfig({
     module: {
       id: 'm',
@@ -303,8 +304,21 @@ run('châssis de composé : la traverse seule suit les options du module', () =>
     },
     options: {},
   });
-  assert.equal(withTraverse.traverse, 450);
+  assert.deepEqual(withTraverse.traverses, [450]);
   assert.equal(withTraverse.sousBassement, 0);
+
+  // Nouveau tableau : hauteurs triées du bas vers le haut, doublons ignorés.
+  const withSeveral = buildCompositeModuleConfig({
+    module: {
+      id: 'm',
+      productId: 'fenetre-fixe',
+      widthMm: 1166,
+      heightMm: 1750,
+      options: { hasTraverse: true, traverseHeights: [900, 450, 900] },
+    },
+    options: {},
+  });
+  assert.deepEqual(withSeveral.traverses, [450, 900]);
 
   const withBoth = buildCompositeModuleConfig({
     module: {
@@ -316,8 +330,18 @@ run('châssis de composé : la traverse seule suit les options du module', () =>
     },
     options: {},
   });
-  assert.equal(withBoth.traverse, 0);
+  assert.deepEqual(withBoth.traverses, []);
   assert.equal(withBoth.sousBassement, 400);
+});
+
+run('rendu simple : plusieurs traverses = un vitrage par étage, aucun panneau', () => {
+  const rendered = renderSimpleWindow({
+    hasTraverse: true,
+    traverseHeights: [400, 900],
+  });
+  assert.ok(rendered?.dataUrl);
+  assert.equal(pvcPanelCount, 0, 'toutes les parties restent vitrées');
+  assert.ok(glassCount >= 3, `trois vitrages attendus (haut + deux étages), ${glassCount} dessinés`);
 });
 
 console.log('Tous les tests de rendu PDF des châssis composés ont reussi.');

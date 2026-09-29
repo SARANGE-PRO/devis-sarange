@@ -8,6 +8,7 @@ import {
   getPaymentScheduleValidation,
   getValidityLabel,
   getValidityMonthsOptions,
+  hasDeliveryServiceLine,
   normalizeQuoteSettings,
 } from '../lib/quote-settings.mjs';
 
@@ -265,6 +266,52 @@ run('la phrase de reglement reprend les declencheurs choisis', () => {
     sentence,
     "Règlement selon échéancier personnalisé : 30% à la commande, 40% à l'achèvement de la fabrication et à réception de la facture correspondante, 30% à l'achèvement de la pose et à réception de la facture correspondante."
   );
+});
+
+run("detecte le service Livraison dans le panier (jamais le forfait deplacement)", () => {
+  assert.equal(hasDeliveryServiceLine([{ productId: 'livraison' }]), true);
+  assert.equal(hasDeliveryServiceLine([{ productId: 'forfait-deplacement' }]), false);
+  assert.equal(hasDeliveryServiceLine([]), false);
+  assert.equal(hasDeliveryServiceLine(null), false);
+});
+
+run("mode 100% a la commande : reconnu, jamais par defaut", () => {
+  assert.equal(normalizeQuoteSettings({ paymentMode: 'fullPrepaid' }).paymentMode, 'fullPrepaid');
+  // Jamais d'office : les defauts restent sur l'acompte standard.
+  assert.equal(normalizeQuoteSettings().paymentMode, 'standard');
+});
+
+run("mode 100% a la commande : une seule echeance de la totalite TTC", () => {
+  const milestones = getPaymentMilestones({ paymentMode: 'fullPrepaid' }, 1234.56);
+
+  assert.equal(milestones.length, 1);
+  assert.equal(milestones[0].percent, 100);
+  assert.equal(milestones[0].amountTTC, 1234.56);
+  assert.equal(milestones[0].dueLabel, 'À la commande');
+});
+
+run("mode 100% a la commande : phrase de reglement dediee", () => {
+  assert.equal(
+    buildPaymentTermsSentence({ paymentMode: 'fullPrepaid' }),
+    'Règlement de la totalité du montant TTC (100%) par virement à la commande.'
+  );
+});
+
+run("mode 100% a la commande : exige le service Livraison au devis", () => {
+  const settings = { paymentMode: 'fullPrepaid' };
+
+  const sansLivraison = getPaymentPlanValidation(settings, null, [{ productId: 'fenetre' }]);
+  assert.equal(sansLivraison.isValid, false);
+  assert.match(sansLivraison.errors[0], /service Livraison/);
+
+  const avecLivraison = getPaymentPlanValidation(settings, null, [
+    { productId: 'fenetre' },
+    { productId: 'livraison' },
+  ]);
+  assert.equal(avecLivraison.isValid, true);
+
+  // Retro-compatibilite : sans cartItems fournis (anciens appelants), pas de blocage.
+  assert.equal(getPaymentPlanValidation(settings, null).isValid, true);
 });
 
 run('les conditions de reglement du PDF ne promettent plus « garantis 10 ans »', () => {

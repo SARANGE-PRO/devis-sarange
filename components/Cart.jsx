@@ -45,6 +45,7 @@ import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/lib/quote-totals.mjs';
 import { formatCintrageShortLabel } from '@/lib/cintrage.mjs';
+import { formatTraverseBadge, getTraverseHeights } from '@/lib/traverses.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -130,6 +131,7 @@ function SortableCartItem({
   const petitsBoisConfig = getPetitsBoisConfig(item);
   const petitsBoisLabel = formatPetitsBoisLabel(petitsBoisConfig);
   const cintrageLabel = formatCintrageShortLabel(item);
+  const itemTraverseBadge = formatTraverseBadge(getTraverseHeights(item));
   const isTextOnly = item.productId === 'text-only';
 
   const sashEntries = item.sashOptions ? Object.values(item.sashOptions) : [];
@@ -264,6 +266,7 @@ function SortableCartItem({
               hasSousBassement: item.hasSousBassement,
               sousBassementHeight: item.sousBassementHeight,
               hasTraverse: item.hasTraverse,
+              traverseHeights: item.traverseHeights,
               traverseHeight: item.traverseHeight,
               sashOptions: item.sashOptions,
               productId: item.productId,
@@ -391,9 +394,9 @@ function SortableCartItem({
                     · Sous-bassement ({item.sousBassementHeight}mm)
                   </span>
                 )}
-                {!item.hasSousBassement && item.hasTraverse && (
+                {itemTraverseBadge && (
                   <span className="ml-1 font-bold text-slate-600">
-                    · Traverse ({item.traverseHeight}mm)
+                    · {itemTraverseBadge}
                   </span>
                 )}
                 {hasSashOptions && (
@@ -527,6 +530,7 @@ export default function Cart({
     'gestion-dechets',
     'metrage-technique-validation',
     'forfait-deplacement',
+    'livraison',
     'text-only',
     'remise-commerciale',
   ]);

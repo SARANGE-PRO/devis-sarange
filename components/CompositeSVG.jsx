@@ -1,5 +1,6 @@
 import { Fragment, useMemo } from 'react';
 import { buildCompositeModuleConfig } from '@/lib/menuiserie';
+import { computeTraverseLayout } from '@/lib/traverses.mjs';
 import { normalizeCompositeComposition } from '@/lib/products';
 import { computeCompositeLayout, collectLeaves, isTreeNode } from '@/lib/composite-layout';
 import { getVoletMonoblocCouleurHex } from '@/lib/volet-monobloc.mjs';
@@ -330,7 +331,7 @@ const PanelContent = ({
   frameColor,
   panelType,
   sousBassement,
-  traverse,
+  traverses,
   petitsBoisH,
   petitsBoisV,
   metrics,
@@ -460,35 +461,44 @@ const PanelContent = ({
     );
   }
 
-  // Traverse seule : même découpe que le soubassement, partie basse vitrée
-  // (sans petits bois : ils sont comptés sur la partie haute).
-  const validTraverse = clamp(traverse || 0, 0, Math.max(0, height - 40 * metrics.scaleFactor));
+  // Traverses seules : même découpe que le soubassement, mais toutes les parties
+  // restent vitrées. Seule la partie haute porte les petits bois (ils sont
+  // comptés sur elle).
+  const traverseLayout = computeTraverseLayout({
+    heights: traverses,
+    availableHeight: height,
+    thickness: Math.min(metrics.traverse, height),
+    minPaneHeight: 40 * metrics.scaleFactor,
+  });
 
-  if (validTraverse > 0) {
-    const traverseHeight = Math.min(metrics.traverse, height);
-    const topGlassHeight = Math.max(0, height - validTraverse - traverseHeight);
-    const bottomY = y + topGlassHeight + traverseHeight;
-
+  if (traverseLayout.bars.length > 0) {
     return (
       <Fragment>
-        {topGlassHeight > 0 &&
-          (isOpaquePanel ? (
-            renderPvcPanel(x, y, width, topGlassHeight)
+        {traverseLayout.panes.map((pane) =>
+          isOpaquePanel ? (
+            <Fragment key={`pane-${pane.offsetTop}`}>
+              {renderPvcPanel(x, y + pane.offsetTop, width, pane.height)}
+            </Fragment>
           ) : (
-            renderGlassPane(x, y, width, topGlassHeight)
-          ))}
-        <rect
-          x={x}
-          y={y + topGlassHeight}
-          width={width}
-          height={traverseHeight}
-          fill={frameColor}
-          stroke={COLORS.frameBorder}
-          strokeWidth={strokeWidth}
-        />
-        {isOpaquePanel
-          ? renderPvcPanel(x, bottomY, width, validTraverse)
-          : renderGlassPane(x, bottomY, width, validTraverse, { withPetitsBois: false })}
+            <Fragment key={`pane-${pane.offsetTop}`}>
+              {renderGlassPane(x, y + pane.offsetTop, width, pane.height, {
+                withPetitsBois: pane.isTop,
+              })}
+            </Fragment>
+          )
+        )}
+        {traverseLayout.bars.map((bar) => (
+          <rect
+            key={`traverse-${bar.offsetTop}`}
+            x={x}
+            y={y + bar.offsetTop}
+            width={width}
+            height={traverseLayout.thickness}
+            fill={frameColor}
+            stroke={COLORS.frameBorder}
+            strokeWidth={strokeWidth}
+          />
+        ))}
       </Fragment>
     );
   }
@@ -509,7 +519,7 @@ const CasementSash = ({
   frameColor,
   panelType,
   sousBassement,
-  traverse,
+  traverses,
   metrics,
   handleFraction = 0.5,
 }) => {
@@ -555,7 +565,7 @@ const CasementSash = ({
         frameColor={frameColor}
         panelType={panelType}
         sousBassement={sousBassement}
-        traverse={traverse}
+        traverses={traverses}
         petitsBoisH={metrics.scaleFactor ? sash.petitsBoisH : 0}
         petitsBoisV={metrics.scaleFactor ? sash.petitsBoisV : 0}
         metrics={metrics}
@@ -602,7 +612,7 @@ const SlidingSash = ({
   frameColor,
   panelType,
   sousBassement,
-  traverse,
+  traverses,
   metrics,
   index,
   totalSashes,
@@ -645,7 +655,7 @@ const SlidingSash = ({
         height={glassHeight}
         frameColor={frameColor}
         sousBassement={sousBassement}
-        traverse={traverse}
+        traverses={traverses}
         panelType={panelType}
         petitsBoisH={sash.petitsBoisH}
         petitsBoisV={sash.petitsBoisV}
@@ -865,7 +875,7 @@ export const CompositeModule = ({ module, frameColor }) => {
               frameColor={config.frameColor}
               panelType={config.panelType}
               sousBassement={config.sousBassement}
-              traverse={config.traverse}
+              traverses={config.traverses}
               metrics={metrics}
               index={segment.index}
               totalSashes={sashSegments.length}
@@ -886,7 +896,7 @@ export const CompositeModule = ({ module, frameColor }) => {
               frameColor={config.frameColor}
               panelType={config.panelType}
               sousBassement={config.sousBassement}
-              traverse={config.traverse}
+              traverses={config.traverses}
               metrics={metrics}
               handleFraction={config.handleHeightFraction}
             />

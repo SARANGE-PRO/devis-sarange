@@ -177,4 +177,12 @@ run('traverse seule : traverse au ml, vitrage entier, soubassement prioritaire',
   assert.equal(both.traverseSeulePrice, 0, 'le soubassement comprend déjà sa traverse');
   assert.ok(both.sousBassementTraversePrice > 0);
   assert.ok(both.sousBassementPanelExtra > 0);
+
+  // Plusieurs traverses : chaque barre est facturée au ml (ici 3 × 1 m), et
+  // l'absence de `traverseCount` vaut une traverse (comportement historique).
+  const triple = calculateGlazingAndPanelExtras({ ...base, hasTraverse: true, traverseCount: 3 });
+  assert.equal(triple.traverseSeuleCount, 3);
+  assert.equal(triple.traverseSeuleMl, 3);
+  assert.equal(triple.traverseSeulePrice, 3 * traverse.traverseSeulePrice);
+  assert.equal(traverse.traverseSeuleCount, 1);
 });

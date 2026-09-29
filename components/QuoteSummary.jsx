@@ -234,8 +234,8 @@ export default function QuoteSummary({
   // Validation COMPLÈTE du plan de règlement (100 %, déclencheurs précis,
   // échéance 2 fabrication/pose non négative) : bloque la génération du PDF.
   const paymentValidation = useMemo(
-    () => getPaymentPlanValidation(quoteSettings, totals),
-    [quoteSettings, totals]
+    () => getPaymentPlanValidation(quoteSettings, totals, cartItems),
+    [quoteSettings, totals, cartItems]
   );
   // Type de client : choix EXPLICITE obligatoire (jamais deduit du SIRET, du
   // nom ou de l'adresse). Tant qu'il est inconnu, generation et envoi bloques.
@@ -529,6 +529,7 @@ export default function QuoteSummary({
                             hasSousBassement: item.hasSousBassement,
                             sousBassementHeight: item.sousBassementHeight,
                             hasTraverse: item.hasTraverse,
+                            traverseHeights: item.traverseHeights,
                             traverseHeight: item.traverseHeight,
                             sashOptions: item.sashOptions,
                             productId: item.productId,
@@ -805,6 +806,7 @@ export default function QuoteSummary({
                                   hasSousBassement: item.hasSousBassement,
                                   sousBassementHeight: item.sousBassementHeight,
                                   hasTraverse: item.hasTraverse,
+                                  traverseHeights: item.traverseHeights,
                                   traverseHeight: item.traverseHeight,
                                   sashOptions: item.sashOptions,
                                   productId: item.productId,
