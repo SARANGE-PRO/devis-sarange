@@ -295,6 +295,13 @@ run("mode 100% a la commande : phrase de reglement dediee", () => {
     buildPaymentTermsSentence({ paymentMode: 'fullPrepaid' }),
     'Règlement de la totalité du montant TTC (100%) par virement à la commande.'
   );
+
+  // Le bloc PDF ne parle plus d'acompte : il n'en existe pas dans ce mode.
+  const pdfTerms = buildPaymentTermsForPdf({ paymentMode: 'fullPrepaid' }).join('\n');
+  assert.ok(pdfTerms.includes('encaissement effectif du règlement intégral prévu à la commande'));
+  assert.ok(!pdfTerms.includes("de l'acompte"));
+  const standardTerms = buildPaymentTermsForPdf({ paymentMode: 'standard' }).join('\n');
+  assert.ok(standardTerms.includes("encaissement effectif de l'acompte"));
 });
 
 run("mode 100% a la commande : exige le service Livraison au devis", () => {

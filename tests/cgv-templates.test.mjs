@@ -370,4 +370,33 @@ run('détection de la clause : anciens snapshots figés ET nouvelle rédaction (
   assert.equal(cgvSnapshotEntryHasRetentionClause(null), false);
 });
 
+run('echeancier 100% a la commande : les clauses 2.3 et 3.1 visent le reglement integral', () => {
+  const fullPrepaid = { paymentMode: 'fullPrepaid' };
+
+  MATRIX.forEach(([clientType, contractType]) => {
+    const text = flatten(build(clientType, contractType, fullPrepaid));
+    assert.ok(
+      text.includes('règlement de la totalité du montant TTC (100%) par virement à la commande'),
+      `2.2 cite l'échéancier 100% (${clientType} / ${contractType})`
+    );
+    assert.ok(
+      text.includes('encaissement effectif du règlement intégral prévu à la commande'),
+      `2.3 vise le règlement intégral (${clientType} / ${contractType})`
+    );
+    assert.ok(
+      text.includes("à compter de l'encaissement du règlement intégral et de la validation technique"),
+      `3.1 vise le règlement intégral (${clientType} / ${contractType})`
+    );
+    assert.ok(
+      !text.includes("encaissement effectif de l'acompte prévu à cet effet"),
+      `2.3 sans acompte (${clientType} / ${contractType})`
+    );
+  });
+
+  // Les autres modes gardent le texte historique, au mot pres.
+  const standard = flatten(build(CLIENT_TYPES.PARTICULIER, CONTRACT_TYPES.FOURNITURE_SEULE, {}));
+  assert.ok(standard.includes("encaissement effectif de l'acompte prévu à cet effet"));
+  assert.ok(standard.includes("à compter de l'encaissement de l'acompte et de la validation technique"));
+});
+
 console.log('Tous les tests des CGV adaptatives ont reussi.');
