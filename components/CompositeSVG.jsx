@@ -16,7 +16,6 @@ const COLORS = {
   panelBorder: '#CCCCCC',
 };
 
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const normalizeHexColor = (value = '') => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -428,72 +427,36 @@ const PanelContent = ({
     );
   }
 
-  const validSousBassement = clamp(
-    sousBassement || 0,
-    0,
-    Math.max(0, height - 40 * metrics.scaleFactor)
-  );
-
-  if (validSousBassement > 0) {
-    const traverseHeight = Math.min(metrics.traverse, height);
-    const topGlassHeight = Math.max(0, height - validSousBassement - traverseHeight);
-    const panelY = y + topGlassHeight + traverseHeight;
-
-    return (
-      <Fragment>
-        {topGlassHeight > 0 &&
-          (isOpaquePanel ? (
-            renderPvcPanel(x, y, width, topGlassHeight)
-          ) : (
-            renderGlassPane(x, y, width, topGlassHeight)
-          ))}
-        <rect
-          x={x}
-          y={y + topGlassHeight}
-          width={width}
-          height={traverseHeight}
-          fill={frameColor}
-          stroke={COLORS.frameBorder}
-          strokeWidth={strokeWidth}
-        />
-        {renderPvcPanel(x, panelY, width, validSousBassement)}
-      </Fragment>
-    );
-  }
-
-  // Traverses seules : même découpe que le soubassement, mais toutes les parties
-  // restent vitrées. Seule la partie haute porte les petits bois (ils sont
-  // comptés sur elle).
-  const traverseLayout = computeTraverseLayout({
+  // Soubassement et traverses partagent la même découpe : le soubassement est la
+  // barre la plus basse, seule sa partie basse étant un panneau opaque. Seule la
+  // partie haute porte les petits bois (ils sont comptés sur elle).
+  const splitLayout = computeTraverseLayout({
     heights: traverses,
+    sousBassementHeight: sousBassement,
     availableHeight: height,
     thickness: Math.min(metrics.traverse, height),
     minPaneHeight: 40 * metrics.scaleFactor,
   });
 
-  if (traverseLayout.bars.length > 0) {
+  if (splitLayout.bars.length > 0) {
     return (
       <Fragment>
-        {traverseLayout.panes.map((pane) =>
-          isOpaquePanel ? (
-            <Fragment key={`pane-${pane.offsetTop}`}>
-              {renderPvcPanel(x, y + pane.offsetTop, width, pane.height)}
-            </Fragment>
-          ) : (
-            <Fragment key={`pane-${pane.offsetTop}`}>
-              {renderGlassPane(x, y + pane.offsetTop, width, pane.height, {
-                withPetitsBois: pane.isTop,
-              })}
-            </Fragment>
-          )
-        )}
-        {traverseLayout.bars.map((bar) => (
+        {splitLayout.panes.map((pane) => (
+          <Fragment key={`pane-${pane.offsetTop}`}>
+            {pane.isPanel || isOpaquePanel
+              ? renderPvcPanel(x, y + pane.offsetTop, width, pane.height)
+              : renderGlassPane(x, y + pane.offsetTop, width, pane.height, {
+                  withPetitsBois: pane.isTop,
+                })}
+          </Fragment>
+        ))}
+        {splitLayout.bars.map((bar) => (
           <rect
             key={`traverse-${bar.offsetTop}`}
             x={x}
             y={y + bar.offsetTop}
             width={width}
-            height={traverseLayout.thickness}
+            height={splitLayout.thickness}
             fill={frameColor}
             stroke={COLORS.frameBorder}
             strokeWidth={strokeWidth}

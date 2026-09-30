@@ -7,6 +7,8 @@ import {
   getFrameSystemForProduct,
 } from '../lib/glazing.js';
 
+const roundToCents = (value) => Math.round(value * 100) / 100;
+
 const run = (name, fn) => {
   try {
     fn();
@@ -148,10 +150,10 @@ run('dimensions trop petites pour un vitrage AWS 60 2 vantaux -> null', () => {
   assert.equal(calculateGlassAreas(200, 1000, frameSystem, 'Fenêtre 2V ALU'), null);
 });
 
-// Traverse seule : la traverse est facturée au ml comme pour un soubassement,
-// mais la surface vitrée reste entière (aucun panneau). Le soubassement a
-// priorité si les deux sont demandés.
-run('traverse seule : traverse au ml, vitrage entier, soubassement prioritaire', () => {
+// Traverses ajoutées : chacune est facturée au ml comme celle d'un soubassement,
+// mais la surface vitrée reste entière (aucun panneau). Depuis le 30/09/2026 les
+// deux options se cumulent : la traverse du soubassement s'ajoute aux autres.
+run('traverses : facturées au ml, vitrage entier, cumulables avec le soubassement', () => {
   const sheet = 'Fenêtre 1V ALU';
   const frameSystem = getFrameSystemForProduct(sheet);
   const glassAreas = calculateGlassAreas(1000, 1200, frameSystem, sheet);
@@ -174,9 +176,22 @@ run('traverse seule : traverse au ml, vitrage entier, soubassement prioritaire',
   assert.equal(traverse.glazingAreaM2, plain.glazingAreaM2, 'surface vitrée inchangée');
   assert.equal(traverse.sousBassementPanelExtra, 0, 'aucun panneau');
 
-  assert.equal(both.traverseSeulePrice, 0, 'le soubassement comprend déjà sa traverse');
-  assert.ok(both.sousBassementTraversePrice > 0);
+  // Soubassement + traverse : les deux barres sont facturées, et le panneau du
+  // soubassement avec.
+  assert.equal(both.traverseSeulePrice, traverse.traverseSeulePrice, 'la traverse reste facturée');
+  assert.equal(both.sousBassementTraversePrice, traverse.traverseSeulePrice, 'même prix au ml');
   assert.ok(both.sousBassementPanelExtra > 0);
+  assert.equal(
+    both.totalExtra,
+    roundToCents(
+      both.sousBassementPanelExtra + both.sousBassementTraversePrice + both.traverseSeulePrice
+    ),
+    'les deux traverses et le panneau sont additionnés'
+  );
+  assert.ok(
+    both.glazingAreaM2 < plain.glazingAreaM2,
+    'le soubassement retire sa surface au vitrage, la traverse non'
+  );
 
   // Plusieurs traverses : chaque barre est facturée au ml (ici 3 × 1 m), et
   // l'absence de `traverseCount` vaut une traverse (comportement historique).

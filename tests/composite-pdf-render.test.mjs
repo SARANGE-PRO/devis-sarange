@@ -238,8 +238,9 @@ run('constructeur partagé : un châssis de composé ne porte jamais de coffre',
   assert.equal(config.height, 1750);
 });
 
-/* ─── Traverse seule (24/09/2026) : même découpe que le soubassement, mais la
-   partie basse reste vitrée. Espions sur les remplissages du renderer. ─── */
+/* ─── Traverses (24/09/2026, cumulables avec le soubassement le 30/09/2026) :
+   même découpe, mais les parties qu'elles séparent restent vitrées. Espions sur
+   les remplissages du renderer. ─── */
 
 let pvcPanelCount = 0;
 let glassCount = 0;
@@ -268,7 +269,7 @@ const renderSimpleWindow = (extra) => {
   });
 };
 
-run('traverse seule : deux vitrages, aucun panneau plein', () => {
+run('une traverse : deux vitrages, aucun panneau plein', () => {
   const rendered = renderSimpleWindow({ hasTraverse: true, traverseHeight: 400 });
   assert.ok(rendered?.dataUrl);
   assert.equal(pvcPanelCount, 0, 'la partie basse reste vitrée');
@@ -281,15 +282,28 @@ run('soubassement : un panneau plein en bas, un seul vitrage', () => {
   assert.equal(glassCount, 1);
 });
 
-run('les deux cochés : le soubassement a priorité sur la traverse seule', () => {
+run('les deux cochés : le panneau du soubassement en bas, les traverses au-dessus', () => {
   renderSimpleWindow({
     hasSousBassement: true,
     sousBassementHeight: 400,
     hasTraverse: true,
-    traverseHeight: 300,
+    traverseHeights: [900],
+  });
+  assert.equal(pvcPanelCount, 1, 'un seul panneau plein, celui du soubassement');
+  assert.equal(glassCount, 2, 'deux vitrages : entre les barres et au-dessus');
+});
+
+run('les deux cochés : une traverse sous le soubassement est remontée', () => {
+  // Saisie incohérente (traverse plus basse que le soubassement) : la découpe la
+  // remonte au lieu de dessiner deux barres au même endroit.
+  renderSimpleWindow({
+    hasSousBassement: true,
+    sousBassementHeight: 400,
+    hasTraverse: true,
+    traverseHeights: [200],
   });
   assert.equal(pvcPanelCount, 1);
-  assert.equal(glassCount, 1);
+  assert.equal(glassCount, 2);
 });
 
 run('châssis de composé : les traverses seules suivent les options du module', () => {
@@ -330,7 +344,8 @@ run('châssis de composé : les traverses seules suivent les options du module',
     },
     options: {},
   });
-  assert.deepEqual(withBoth.traverses, []);
+  // Les deux options se cumulent : le châssis porte le soubassement ET sa traverse.
+  assert.deepEqual(withBoth.traverses, [450]);
   assert.equal(withBoth.sousBassement, 400);
 });
 

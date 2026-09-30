@@ -140,6 +140,27 @@ const resolveConfigTraverseHeights = (source = {}) => {
   return heights.length ? heights : [DEFAULT_TRAVERSE_HEIGHT_MM];
 };
 
+// Hauteur minimale d'une traverse : elle se place AU-DESSUS du soubassement,
+// dont elle laisse la hauteur, plus de quoi vitrer entre les deux.
+const getTraverseFloor = ({ hasSousBassement, sousBassementHeight } = {}) =>
+  hasSousBassement
+    ? parsePositiveInt(sousBassementHeight, 0) + MIN_TRAVERSE_HEIGHT_MM
+    : MIN_TRAVERSE_HEIGHT_MM;
+
+// Remonte les traverses passées sous le soubassement (après avoir rehaussé
+// celui-ci) : sans cela le dessin les redresserait sans que le devis suive, et
+// les deux annonceraient des hauteurs différentes.
+const liftTraversesAbove = (traverseHeights, floor, maxHeight) => {
+  let lowest = floor;
+  return [...traverseHeights]
+    .sort((a, b) => a - b)
+    .map((height) => {
+      const lifted = Math.min(Math.max(height, lowest), maxHeight);
+      lowest = lifted + MIN_TRAVERSE_HEIGHT_MM;
+      return lifted;
+    });
+};
+
 const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   productVariantId: '',
   widthMm: '',
@@ -313,15 +334,26 @@ const getSoubassementPricingDetails = (pricing) => {
   return details.join(' | ');
 };
 
-const getTraversePricingDetails = (pricing) =>
-  pricing?.traverseSeulePrice > 0 ? `Traverse ${pricing.traverseSeulePrice.toFixed(2)} EUR` : '';
+const getTraversePricingDetails = (pricing) => {
+  if (!(pricing?.traverseSeulePrice > 0)) return '';
+  const label = pricing.traverseSeuleCount > 1 ? `${pricing.traverseSeuleCount} traverses` : 'Traverse';
+  return `${label} ${pricing.traverseSeulePrice.toFixed(2)} EUR`;
+};
 
 /**
- * Hauteur visible (mm, depuis le bas) d'un soubassement ou d'une traverse
- * seule : curseur + saisie, bornés par la hauteur de la menuiserie.
+ * Hauteur visible (mm, depuis le bas) d'un soubassement ou d'une traverse :
+ * curseur + saisie, bornés par `min` (le haut du soubassement pour une traverse)
+ * et par la hauteur de la menuiserie.
  */
-function SplitHeightField({ value, heightMm, onChange, details, label = 'Hauteur visible' }) {
-  const max = Math.max(100, parsePositiveInt(heightMm, 1000) - 200);
+function SplitHeightField({
+  value,
+  heightMm,
+  onChange,
+  details,
+  label = 'Hauteur visible',
+  min = 100,
+}) {
+  const max = Math.max(min, parsePositiveInt(heightMm, 1000) - 200);
   return (
     <div className="mt-4 space-y-3">
       <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400">
@@ -331,7 +363,7 @@ function SplitHeightField({ value, heightMm, onChange, details, label = 'Hauteur
       <div className="grid grid-cols-1 md:grid-cols-[1fr_140px] gap-4">
         <input
           type="range"
-          min={100}
+          min={min}
           max={max}
           step={10}
           value={value}
@@ -340,12 +372,12 @@ function SplitHeightField({ value, heightMm, onChange, details, label = 'Hauteur
         />
         <input
           type="number"
-          min={100}
+          min={min}
           max={max}
           step={10}
           {...NUMERIC_INPUT_PROPS}
           value={value}
-          onChange={(event) => onChange(Math.max(100, Number.parseInt(event.target.value, 10) || 100))}
+          onChange={(event) => onChange(Math.max(min, Number.parseInt(event.target.value, 10) || min))}
           className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
         />
       </div>
@@ -1259,6 +1291,14 @@ export default function ProductSelector({
     reader.readAsDataURL(file);
   };
 
+  // Bornes des traverses du formulaire : au-dessus du soubassement s'il y en a
+  // un, et sous le haut de la menuiserie.
+  const simpleTraverseFloor = getTraverseFloor(simpleConfig);
+  const simpleTraverseMaxHeight = Math.max(
+    simpleTraverseFloor,
+    parsePositiveInt(simpleConfig.heightMm, 1000) - 200
+  );
+
   const simpleFillingMeta = buildFillingSelectionMeta({
     product,
     glazingOptions,
@@ -1458,7 +1498,7 @@ export default function ProductSelector({
       sousBassementHeight: simpleConfig.hasSousBassement
         ? simpleConfig.sousBassementHeight
         : 0,
-      hasTraverse: !workingIsVolet && !simpleConfig.hasSousBassement && simpleConfig.hasTraverse,
+      hasTraverse: !workingIsVolet && simpleConfig.hasTraverse,
       traverseHeights: simpleConfig.hasTraverse
         ? normalizeTraverseHeights(simpleConfig.traverseHeights)
         : [],
@@ -2196,7 +2236,7 @@ export default function ProductSelector({
       sousBassementHeight: simpleConfig.hasSousBassement
         ? simpleConfig.sousBassementHeight
         : 0,
-      hasTraverse: !workingIsVolet && !simpleConfig.hasSousBassement && simpleConfig.hasTraverse,
+      hasTraverse: !workingIsVolet && simpleConfig.hasTraverse,
       traverseHeights: simpleConfig.hasTraverse
         ? normalizeTraverseHeights(simpleConfig.traverseHeights)
         : [],
@@ -2422,8 +2462,14 @@ export default function ProductSelector({
                         onChange={(event) =>
                           updateSimpleOptions({
                             hasSousBassement: event.target.checked,
-                            // Exclusif avec la traverse seule (le soubassement comprend sa traverse).
-                            ...(event.target.checked ? { hasTraverse: false } : {}),
+                            traverseHeights: liftTraversesAbove(
+                              simpleConfig.traverseHeights,
+                              getTraverseFloor({
+                                hasSousBassement: event.target.checked,
+                                sousBassementHeight: simpleConfig.sousBassementHeight,
+                              }),
+                              simpleTraverseMaxHeight
+                            ),
                           })
                         }
                         className="h-4 w-4 accent-orange-500"
@@ -2435,7 +2481,16 @@ export default function ProductSelector({
                       <SplitHeightField
                         value={simpleConfig.sousBassementHeight}
                         heightMm={simpleConfig.heightMm}
-                        onChange={(sousBassementHeight) => updateSimpleOptions({ sousBassementHeight })}
+                        onChange={(sousBassementHeight) =>
+                          updateSimpleOptions({
+                            sousBassementHeight,
+                            traverseHeights: liftTraversesAbove(
+                              simpleConfig.traverseHeights,
+                              getTraverseFloor({ hasSousBassement: true, sousBassementHeight }),
+                              simpleTraverseMaxHeight
+                            ),
+                          })
+                        }
                         details={getSoubassementPricingDetails(simpleFillingMeta.selectedPricing)}
                       />
                     )}
@@ -2445,15 +2500,16 @@ export default function ProductSelector({
                         type="checkbox"
                         checked={simpleConfig.hasTraverse}
                         onChange={(event) =>
-                          updateSimpleOptions({
-                            hasTraverse: event.target.checked,
-                            ...(event.target.checked ? { hasSousBassement: false } : {}),
-                          })
+                          updateSimpleOptions({ hasTraverse: event.target.checked })
                         }
                         className="h-4 w-4 accent-orange-500"
                       />
-                      Traverse seule
-                      <span className="text-xs font-normal text-slate-400">(vitré en dessous)</span>
+                      Traverses intermédiaires
+                      <span className="text-xs font-normal text-slate-400">
+                        {simpleConfig.hasSousBassement
+                          ? '(vitré de part et d’autre, au-dessus du sous-bassement)'
+                          : '(vitré de part et d’autre)'}
+                      </span>
                     </label>
 
                     {simpleConfig.hasTraverse && (
@@ -2471,6 +2527,7 @@ export default function ProductSelector({
                                 }
                                 value={traverseHeight}
                                 heightMm={simpleConfig.heightMm}
+                                min={simpleTraverseFloor}
                                 onChange={(nextHeight) => {
                                   const traverseHeights = [...simpleConfig.traverseHeights];
                                   traverseHeights[index] = nextHeight;
@@ -2503,15 +2560,12 @@ export default function ProductSelector({
                             disabled={simpleConfig.traverseHeights.length >= MAX_TRAVERSES}
                             onClick={() => {
                               const heights = simpleConfig.traverseHeights;
-                              const maxHeight = Math.max(
-                                100,
-                                parsePositiveInt(simpleConfig.heightMm, 1000) - 200
-                              );
                               // Nouvelle traverse proposée au-dessus de la plus
-                              // haute, sans sortir de la menuiserie.
+                              // haute (ou du soubassement), sans sortir de la
+                              // menuiserie.
                               const next = Math.min(
-                                Math.max(...heights, MIN_TRAVERSE_HEIGHT_MM) + 300,
-                                maxHeight
+                                Math.max(...heights, simpleTraverseFloor) + 300,
+                                simpleTraverseMaxHeight
                               );
                               updateSimpleOptions({ traverseHeights: [...heights, next] });
                             }}

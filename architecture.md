@@ -609,6 +609,7 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/glazing.js` | Regles de vitrage, panneaux sandwich, surfaces utiles, prix au m2, indicateurs thermiques et store des vitrages personnalises. |
 | `lib/menuiserie.js` | Construction de configurations de rendu a partir des options produit. |
 | `lib/cintrage.mjs` | Menuiseries cintrees (categorie « Formes speciales ») : geometrie de l'arc (rayon, fleche bornee a L/2, hauteur totale), regle de prix (fixe cintre en imposte ajoute au calcul standard, ou prix total manuel qui desactive le calcul automatique en cintre integre sous-traite), lignes de designation. Module pur, teste dans `tests/cintrage.test.mjs`. |
+| `lib/traverses.mjs` | Soubassement et traverses intermediaires : hauteurs visibles normalisees (`traverseHeights`, jusqu'a 4 traverses, ancien champ `traverseHeight` encore lu), libelles de designation, et decoupe verticale partagee par le SVG et le canvas (le soubassement est la barre la plus basse, seule sa partie basse etant un panneau opaque ; les traverses se placent au-dessus de lui). Module pur. |
 | `lib/MenuiserieRenderer.js` | Rendu canvas des menuiseries pour l'UI et le PDF. |
 | `lib/designation-generator.js` | Generation des designations lisibles inserees dans le PDF. |
 | `lib/pdf-generator.js` | Generation du PDF client complet et memorisation des ancres de signature. |
@@ -767,6 +768,7 @@ Si plusieurs taux coexistent, le PDF et l'UI basculent en mode multi-taux.
 Le rendu combine plusieurs couches :
 
 - `lib/menuiserie.js` transforme les options en structure graphique,
+- `lib/traverses.mjs` calcule la decoupe horizontale (soubassement + traverses), une seule fois pour les deux rendus,
 - `lib/MenuiserieRenderer.js` dessine sur canvas,
 - `components/CompositeSVG.jsx` dessine les compositions complexes.
 
