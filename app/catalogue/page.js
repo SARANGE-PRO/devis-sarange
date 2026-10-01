@@ -139,7 +139,10 @@ export default function CataloguePage() {
       })),
     []
   );
-  const { user, initializing, isConfigured } = useFirebaseAuth();
+  const { user, initializing, isConfigured, access } = useFirebaseAuth();
+  // Coefficients et tarifs du catalogue : réglages de marge, réservés aux
+  // administrateurs (les collaborateurs n'ont pas à voir ni modifier les prix).
+  const isAdmin = access?.isAdmin === true;
 
   const currentCoefficients = useSyncExternalStore(
     subscribeToCatalogueCoefficients,
@@ -439,7 +442,7 @@ export default function CataloguePage() {
       subtitle="Société, accès à l’application, bons de réception et tarifs du catalogue."
     >
       <div className="mx-auto max-w-6xl space-y-6">
-        <SettingsNav groups={PARAMETRES_GROUPS} />
+        <SettingsNav groups={isAdmin ? PARAMETRES_GROUPS : PARAMETRES_GROUPS.filter((group) => group.id !== 'tarifs')} />
 
         <SettingsGroup groups={PARAMETRES_GROUPS} id="societe">
           <InsuranceSection />
@@ -455,8 +458,10 @@ export default function CataloguePage() {
           <GenericCompletionLinkSection />
         </SettingsGroup>
 
-        {/* Tarifs du catalogue : les cartes suivent directement (pas de conteneur),
-            le bouton de remise à 1 des coefficients reste à côté de son titre. */}
+        {/* Tarifs du catalogue : coefficients et prix de vente, réservés aux
+            administrateurs (les collaborateurs n'ont pas à voir ni modifier les marges). */}
+        {isAdmin && (
+          <>
         <SettingsGroupHeading
           groups={PARAMETRES_GROUPS}
           id="tarifs"
@@ -1220,6 +1225,8 @@ export default function CataloguePage() {
             </div>
           </section>
         ))}
+          </>
+        )}
       </div>
     </AppShell>
   );
