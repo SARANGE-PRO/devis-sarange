@@ -44,19 +44,6 @@ const FirebaseContext = createContext({
   signOut: async () => {},
 });
 
-// Liste blanche historique : emails autorisés, séparés par des virgules, dans
-// NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS. Vérifiée localement (sans réseau) en plus
-// de la liste gérée dans l'app. Si elle est VIDE, elle ne restreint rien.
-const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_DEVIS_ALLOWED_EMAILS || '')
-  .split(',')
-  .map((value) => value.trim().toLowerCase())
-  .filter(Boolean);
-
-const isEmailAllowed = (email) => {
-  if (ALLOWED_EMAILS.length === 0) return true; // liste non configurée → pas de filtre local
-  return ALLOWED_EMAILS.includes((email || '').trim().toLowerCase());
-};
-
 // ---------------------------------------------------------------------------
 // Vérification serveur (liste gérée dans Paramètres > Accès à l'application).
 // Une décision positive est gardée 10 min dans la session du navigateur : au
@@ -211,12 +198,6 @@ export function FirebaseProvider({ children }) {
         setUser(null);
         setAccess(DEFAULT_ACCESS);
         setInitializing(false);
-        return;
-      }
-
-      // Filtre local (liste d'environnement) : immédiat, sans réseau.
-      if (!isEmailAllowed(nextUser.email)) {
-        reject(nextUser, 'not-listed');
         return;
       }
 
