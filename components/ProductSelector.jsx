@@ -1253,7 +1253,7 @@ export default function ProductSelector({
       (!customLabel || !Number.isFinite(Number.parseFloat(customPrice)))) ||
     (isRemiseCommerciale && !(Number.parseFloat(customPrice) > 0)) ||
     (isCatalogService && !isServicePriceValid) ||
-    (isTextOnlyProduct && !textOnlyContent.trim()) ||
+    (isTextOnlyProduct && !textOnlyContent.trim() && !customImage) ||
     (isSparePartProduct && !(selectedSparePart && parsedSparePartQuantity > 0)) ||
     (isTablierProduct && !(tablierPricing && parsedTablierQuantity > 0)) ||
     // Menuiserie cintrée : géométrie résoluble (dimensions saisies) et prix
@@ -1816,6 +1816,7 @@ export default function ProductSelector({
 
     if (editingItem.productId === 'text-only') {
       setTextOnlyContent(editingItem.textContent || '');
+      setCustomImage(editingItem.customImage || null);
       return;
     }
 
@@ -2139,13 +2140,14 @@ export default function ProductSelector({
 
     if (isTextOnlyProduct) {
       const trimmedContent = textOnlyContent.trim();
-      if (!trimmedContent) return;
+      if (!trimmedContent && !customImage) return;
 
       onAddToCart({
         id: editingItem ? editingItem.id : createCartItemId(),
         productId: 'text-only',
         productLabel: product.label,
         textContent: trimmedContent,
+        customImage: customImage || null,
         quantity: 1,
         unitPrice: 0,
         includePose: false,
@@ -3763,7 +3765,7 @@ export default function ProductSelector({
       )}
 
       {isTextOnlyProduct && (
-        <div className="p-4 md:p-6">
+        <div className="p-4 md:p-6 space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 md:p-6">
             <label className="mb-2 block text-sm font-semibold text-slate-700">
               Texte libre
@@ -3777,6 +3779,53 @@ export default function ProductSelector({
             />
             <p className="mt-3 text-xs font-medium text-slate-500">
               Ce bloc sera insere dans le devis sans prix ni quantite.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 md:p-6">
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Image (pleine largeur dans le devis)
+            </label>
+            <div className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 bg-white p-4 md:p-6 transition-all hover:bg-slate-100">
+              {customImage ? (
+                <>
+                  <div className="relative h-40 w-full">
+                    <Image
+                      src={customImage}
+                      alt="Aperçu de l'image du bloc texte"
+                      fill
+                      unoptimized
+                      sizes="(max-width: 768px) 100vw, 512px"
+                      className="rounded-xl object-contain"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setCustomImage(null)}
+                    className="absolute right-3 top-3 rounded-full bg-red-500 p-2 text-white shadow-lg transition-colors hover:bg-red-600"
+                  >
+                    <X size={16} />
+                  </button>
+                </>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-center gap-3">
+                  <div className="rounded-full bg-white p-4 text-slate-400 shadow-sm">
+                    <ImagePlus size={32} />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-bold text-slate-700">Ajouter une image</p>
+                    <p className="mt-1 text-xs text-slate-400">PNG ou JPG</p>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                </label>
+              )}
+            </div>
+            <p className="mt-3 text-xs font-medium text-slate-500">
+              Affichée en pleine largeur du devis, au-dessus du texte.
             </p>
           </div>
         </div>
