@@ -947,6 +947,10 @@ export default function ProductSelector({
     : null;
   const isSparePartProduct = product?.pricingMode === 'spare-part';
   const isTablierProduct = product?.pricingMode === 'spare-part-tablier';
+  // Lignes à prix saisi ou fixe : la remise y est psychologique (prix barré
+  // gonflé, net inchangé, cf. calculateItemPrice).
+  const hasPsychologicalDiscount =
+    isCustomProduct || isServicePaid || isSparePartProduct || isTablierProduct;
   const sparePartOptions = isSparePartProduct
     ? getSparePartsByCategory(product.sparePartCategoryId)
     : [];
@@ -1351,6 +1355,7 @@ export default function ProductSelector({
         includePose: customIncludePose && Number.isFinite(parsedPose),
         customPoseHt: Number.isFinite(parsedPose) ? parsedPose : 0,
         quantity,
+        remise,
       };
     }
 
@@ -1371,6 +1376,7 @@ export default function ProductSelector({
     if (isCatalogService) {
       return createCatalogServiceCartItem(product?.id, {
         priceHt: effectiveServicePriceHt,
+        remise,
       });
     }
 
@@ -1387,6 +1393,7 @@ export default function ProductSelector({
         heightMm: 0,
         quantity: parsedSparePartQuantity,
         unitPrice,
+        remise,
       };
     }
 
@@ -1402,6 +1409,7 @@ export default function ProductSelector({
         heightMm: parsePositiveInt(tablierHeightMm),
         quantity: parsedTablierQuantity,
         unitPrice: tablierPricing.unitPrice,
+        remise,
       };
     }
 
@@ -1978,6 +1986,7 @@ export default function ProductSelector({
       const serviceItem = createCatalogServiceCartItem(product.id, {
         id: editingItem ? editingItem.id : createCartItemId(),
         priceHt: effectiveServicePriceHt,
+        remise,
       });
       if (!serviceItem) return;
 
@@ -2004,7 +2013,7 @@ export default function ProductSelector({
         quantity: parsedSparePartQuantity,
         unitPrice,
         includePose: false,
-        remise: 0,
+        remise,
         netMarginWanted: 0,
         netDiscountWanted: 0,
         customDescription: buildSparePartDescription(selectedSparePart, parsedSparePartQuantity),
@@ -2039,7 +2048,7 @@ export default function ProductSelector({
         quantity: parsedTablierQuantity,
         unitPrice: tablierPricing.unitPrice,
         includePose: false,
-        remise: 0,
+        remise,
         netMarginWanted: 0,
         netDiscountWanted: 0,
         customDescription: buildTablierDescription(selectedTablierLame, parsedWidthMm, parsedHeightMm),
@@ -2099,7 +2108,7 @@ export default function ProductSelector({
               thermalSw: veluxThermal?.sw ?? null,
             }
           : {}),
-        remise: 0,
+        remise,
         netMarginWanted: 0,
         netDiscountWanted: 0,
       });
@@ -4153,6 +4162,32 @@ export default function ProductSelector({
               Vous pouvez ajouter une marge nette souhaitée par-dessus ce tarif.
             </p>
           )}
+        </div>
+      )}
+
+      {hasPsychologicalDiscount && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 md:p-6 shadow-sm">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="block text-sm font-semibold text-slate-700">Remise</label>
+            <span className="rounded-md bg-orange-100 px-2 py-0.5 text-sm font-black text-orange-600">
+              -{remise}%
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={20}
+            step={1}
+            value={remise}
+            onChange={(event) =>
+              setRemise(Number.parseInt(event.target.value, 10) || 0)
+            }
+            className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-slate-200 accent-orange-500"
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            Le prix saisi reste le prix net facturé : seul le prix barré affiché
+            sur le devis est majoré pour faire apparaître la remise.
+          </p>
         </div>
       )}
 

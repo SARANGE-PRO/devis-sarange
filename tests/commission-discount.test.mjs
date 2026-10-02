@@ -134,4 +134,25 @@ run('exemple constaté : net 2 269,73 € à -20 % doit afficher un barré de 2 
   assert.equal(pricing.discountLineHT, 567.43);
 });
 
+run('remise psychologique : produit hors catalogue / service / pièce, net inchangé et barré majoré', () => {
+  const lines = [
+    { productId: 'custom-product', customPrice: 80, quantity: 2, remise: 20 },
+    { productId: 'livraison', unitPrice: 80, quantity: 1, remise: 20 },
+    { productId: 'piece-mecanique', unitPrice: 33.33, quantity: 3, remise: 20 },
+  ];
+  lines.forEach((line) => {
+    const { calc, pricing } = lineFigures(line);
+    const net = line.customPrice ?? line.unitPrice;
+    assert.equal(calc.unitPriceAfterDiscount, net, `${line.productId} : PU net inchangé`);
+    assert.equal(calc.totalLine, Math.round(net * line.quantity * 100) / 100);
+    near(pricing.discountLineHT / pricing.originalLineHT, 0.2, 0.0005, `${line.productId} : -20 %`);
+    near(pricing.originalLineHT - pricing.discountLineHT, calc.totalLine, 0.011, 'barré - remise = net');
+  });
+  const [custom] = lines;
+  assert.equal(lineFigures(custom).pricing.originalUnitHT, 100);
+
+  const { pricing } = lineFigures({ ...custom, remise: 0 });
+  assert.equal(pricing.hasDiscount, false);
+});
+
 console.log('Tous les tests commission + remise ont reussi.');
