@@ -160,6 +160,7 @@ export default function CompositeFrameSVG({
                       colorOptionId: placement.options?.colorOptionId,
                       colorState: placement.options?.rawColorState,
                     })}
+                    scaleFactor={scale}
                   />
                 </g>
               )}

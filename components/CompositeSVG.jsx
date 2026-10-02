@@ -43,8 +43,17 @@ const isLightColor = (value) => {
 const resolvePetitBoisColor = (frameColor) =>
   isLightColor(frameColor) ? '#CBD5E1' : frameColor || COLORS.frameBorder;
 
-const getMetrics = (width, height) => {
-  const scaleFactor = Math.max(width, height, 1) / 500;
+// `overrideScale` : échelle mm->unité déjà calculée pour l'ENSEMBLE d'un
+// châssis composé (voir CompositeSVG/CompositeFrameSVG). Sans elle, un module
+// recalculerait sa propre échelle à partir de sa seule taille, et les
+// dormants/ouvrants de deux ouvertures de tailles différentes d'un même
+// châssis n'auraient pas la même épaisseur (irréaliste : un profilé a une
+// épaisseur physique fixe, peu importe la taille de l'ouverture).
+const getMetrics = (width, height, overrideScale) => {
+  const scaleFactor =
+    Number.isFinite(overrideScale) && overrideScale > 0
+      ? overrideScale
+      : Math.max(width, height, 1) / 500;
 
   return {
     scaleFactor,
@@ -738,7 +747,7 @@ const StandaloneShutter = ({ width, height, frameColor, solarPanel, metrics }) =
   );
 };
 
-export const CompositeModule = ({ module, frameColor }) => {
+export const CompositeModule = ({ module, frameColor, scaleFactor }) => {
   const config = buildCompositeModuleConfig({
     module,
     options: { svgColor: frameColor },
@@ -746,7 +755,7 @@ export const CompositeModule = ({ module, frameColor }) => {
 
   if (!config) return null;
 
-  const metrics = getMetrics(config.width, config.height);
+  const metrics = getMetrics(config.width, config.height, scaleFactor);
 
   if (config.type === 'volet') {
     return (
@@ -998,6 +1007,7 @@ export default function CompositeSVG({
               <CompositeModule
                 module={leaf.module}
                 frameColor={leaf.module?.svgColor || frameColor}
+                scaleFactor={monoMetrics.scaleFactor}
               />
               {selectedLeafId === leaf.id && (
                 <rect
