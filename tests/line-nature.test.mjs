@@ -4,7 +4,9 @@ import {
   computeContractBreakdown,
   detectContractType,
   isChantierNature,
+  isPoseLine,
   normalizeNatureOverride,
+  POSE_SERVICE_PRODUCT_ID,
   quoteIncludesPose,
   resolveContractType,
   resolveLineNature,
@@ -76,6 +78,17 @@ run('detecte AVEC_POSE uniquement via includePose (ou nature pose forcee)', () =
   );
   assert.equal(
     detectContractType([{ productId: 'custom-product', natureOverride: 'pose' }]),
+    CONTRACT_TYPES.AVEC_POSE
+  );
+});
+
+run('le service « Pose » vendu a part rend le devis AVEC_POSE', () => {
+  const pose = { productId: POSE_SERVICE_PRODUCT_ID, unitPrice: 450 };
+  assert.equal(resolveLineNature(pose), 'pose');
+  assert.equal(isPoseLine(pose), true);
+  assert.equal(isPoseLine({ productId: 'livraison' }), false);
+  assert.equal(
+    detectContractType([{ productId: 'fenetre-1v', includePose: false }, pose]),
     CONTRACT_TYPES.AVEC_POSE
   );
 });

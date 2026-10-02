@@ -531,6 +531,7 @@ export default function Cart({
     'metrage-technique-validation',
     'forfait-deplacement',
     'livraison',
+    'pose-menuiseries',
     'text-only',
     'remise-commerciale',
   ]);

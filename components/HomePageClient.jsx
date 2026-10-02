@@ -29,7 +29,7 @@ import {
 import { generateDesignation } from '@/lib/designation-generator';
 import { getDefaultQuoteSettings, normalizeQuoteSettings } from '@/lib/quote-settings.mjs';
 import { buildCgvSnapshot } from '@/lib/cgv-templates.mjs';
-import { resolveContractType } from '@/lib/line-nature.mjs';
+import { isPoseLine, resolveContractType } from '@/lib/line-nature.mjs';
 import { resolveTaxRegime } from '@/lib/tax-regime.mjs';
 import { loadCompanyInsurance } from '@/lib/insurance-settings';
 import { buildPanelSelections } from '@/lib/panel-selections.mjs';
@@ -396,7 +396,7 @@ export default function HomePageClient() {
   }, [variantsMode, variants, activeVariantId, cartItems, tvaRate, quoteSettings]);
 
   const poseSafety = useMemo(() => {
-    const hasPose = cartItems.some((item) => Boolean(item.includePose));
+    const hasPose = cartItems.some(isPoseLine);
     const hasWasteManagement = cartItems.some(
       (item) => item.productId === WASTE_MANAGEMENT_PRODUCT_ID
     );
@@ -422,7 +422,7 @@ export default function HomePageClient() {
     const signature = hasPose
       ? [
           cartItems
-            .filter((item) => Boolean(item.includePose))
+            .filter(isPoseLine)
             .map((item) => `${item.id}:${item.productId}:${item.quantity || 1}`)
             .join('|'),
           `metrage:${hasTechnicalMeasurement ? 'yes' : 'no'}`,
@@ -1254,7 +1254,7 @@ export default function HomePageClient() {
             quoteSettings: source.quoteSettings,
             hasMeasurementVisit:
               Array.isArray(source.cartItems) &&
-              source.cartItems.some((item) => item?.includePose === true),
+              source.cartItems.some(isPoseLine),
             // Portes à panneau décoratif PROPRES à cette variante (couleurs spécifiques).
             panelSelections: buildPanelSelections(source.cartItems),
             filename: variant.filename,
