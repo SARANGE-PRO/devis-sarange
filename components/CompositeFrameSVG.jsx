@@ -13,6 +13,7 @@ import {
 import { CompositeModule } from '@/components/CompositeSVG';
 import { getProductById, resolveSvgColor } from '@/lib/products';
 import { getVoletMonoblocCouleurHex } from '@/lib/volet-monobloc.mjs';
+import { getCompositeModuleScale } from '@/lib/menuiserie';
 
 const COLORS = {
   frame: '#0f172a',
@@ -78,6 +79,12 @@ export default function CompositeFrameSVG({
     geometry.solved.rows.forEach((v) => acc.push(acc[acc.length - 1] + v));
     return acc;
   })();
+
+  const chassisScale = getCompositeModuleScale(
+    geometry.openings
+      .filter((opening) => frame.placements?.[opening.id])
+      .map((opening) => ({ widthMm: opening.wMm, heightMm: opening.hMm }))
+  );
 
   const fmt = (mm) => `${Math.round(mm)}`;
   // En mode Châssis / aperçu : on n'affiche QUE les châssis (pas d'ossature ni de cadre noir).
@@ -160,7 +167,7 @@ export default function CompositeFrameSVG({
                       colorOptionId: placement.options?.colorOptionId,
                       colorState: placement.options?.rawColorState,
                     })}
-                    scaleFactor={scale}
+                    scaleFactor={chassisScale}
                   />
                 </g>
               )}

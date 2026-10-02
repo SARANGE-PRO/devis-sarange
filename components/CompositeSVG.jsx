@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from 'react';
-import { buildCompositeModuleConfig } from '@/lib/menuiserie';
+import { buildCompositeModuleConfig, getCompositeModuleScale } from '@/lib/menuiserie';
 import { computeTraverseLayout } from '@/lib/traverses.mjs';
 import { normalizeCompositeComposition } from '@/lib/products';
 import { computeCompositeLayout, collectLeaves, isTreeNode } from '@/lib/composite-layout';
@@ -43,8 +43,8 @@ const isLightColor = (value) => {
 const resolvePetitBoisColor = (frameColor) =>
   isLightColor(frameColor) ? '#CBD5E1' : frameColor || COLORS.frameBorder;
 
-// `overrideScale` : échelle mm->unité déjà calculée pour l'ENSEMBLE d'un
-// châssis composé (voir CompositeSVG/CompositeFrameSVG). Sans elle, un module
+// `overrideScale` : échelle commune à tous les châssis d'un composé
+// (getCompositeModuleScale). Sans elle, un module
 // recalculerait sa propre échelle à partir de sa seule taille, et les
 // dormants/ouvrants de deux ouvertures de tailles différentes d'un même
 // châssis n'auraient pas la même épaisseur (irréaliste : un profilé a une
@@ -927,6 +927,7 @@ export default function CompositeSVG({
   // On réserve une bande en haut, on décale le châssis vers le bas, et on
   // affiche les premières lames du tablier sur le haut de l'ensemble.
   const monoMetrics = getMetrics(layout.totalWidth, layout.totalHeight);
+  const moduleScale = getCompositeModuleScale(layout.leaves);
   // Coffre et tablier : coloris propre du volet, sinon celui de la menuiserie.
   const voletColor = getVoletMonoblocCouleurHex(voletMonoblocCouleur) || frameColor;
   const coffreHeight = voletMonobloc ? monoMetrics.shutterBoxHeight : 0;
@@ -1007,7 +1008,7 @@ export default function CompositeSVG({
               <CompositeModule
                 module={leaf.module}
                 frameColor={leaf.module?.svgColor || frameColor}
-                scaleFactor={monoMetrics.scaleFactor}
+                scaleFactor={moduleScale}
               />
               {selectedLeafId === leaf.id && (
                 <rect
