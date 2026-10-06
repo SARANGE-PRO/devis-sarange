@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import ComptaClientRecap from '@/components/ComptaClientRecap';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   buildComptaConfigJson,
@@ -1103,6 +1104,9 @@ export default function ComptaPage() {
                         ))}
                       </div>
                     )}
+
+                    {/* Fiche client à recopier dans Sage */}
+                    <ComptaClientRecap clientData={selectedQuote.payload?.clientData} />
 
                     {/* Récapitulatif avant génération */}
                     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
