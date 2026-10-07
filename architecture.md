@@ -340,6 +340,7 @@ Source principale : `lib/client-cloud.js`.
 ```js
 {
   savedClientId: '',
+  civilite: '', // '' | 'M' | 'MME' | 'MME_M' (couple) : formule des e-mails seulement (lib/civilite.mjs)
   nom: '',
   prenom: '',
   referenceDevis: '',

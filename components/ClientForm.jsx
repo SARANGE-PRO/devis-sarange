@@ -19,8 +19,10 @@ import {
   buildClientSearchText,
   getClientDisplayName,
   getClientFullLocation,
+  getClientGreetingName,
   sanitizeClientData,
 } from '@/lib/client-cloud';
+import { CIVILITES, CIVILITE_OPTIONS } from '@/lib/civilite.mjs';
 import { formatPhoneNumber, formatPhoneWhileTyping, matchesSearchTerm } from '@/lib/phone.mjs';
 import {
   CLIENT_TYPES,
@@ -340,12 +342,21 @@ export default function ClientForm({
       clientType,
       // Retour en PARTICULIER : le SIRET n'a plus de sens sur la fiche.
       ...(clientType === CLIENT_TYPES.PARTICULIER ? { siret: '' } : {}),
+      // Un couple n'est pas un interlocuteur d'entreprise.
+      ...(clientType === CLIENT_TYPES.PROFESSIONNEL && prev.civilite === CIVILITES.MME_M
+        ? { civilite: '' }
+        : {}),
     }));
     if (clientType === CLIENT_TYPES.PARTICULIER) {
       setCompanyQuery('');
       setCompanySuggestions([]);
       setShowCompanySuggestions(false);
     }
+  };
+
+  // Civilité : un second clic sur le bouton actif la retire.
+  const handleSelectCivilite = (civilite) => {
+    setFormData((prev) => ({ ...prev, civilite: prev.civilite === civilite ? '' : civilite }));
   };
 
   const handleSelectSuggestion = (suggestion) => {
@@ -683,6 +694,39 @@ export default function ClientForm({
               )}
             </div>
           )}
+
+          {/* Civilité : ne pilote que la formule d'adresse des e-mails
+              (« Bonjour M. DUPONT Jean, », « Bonjour Mme & M. DUPONT, »). Sans
+              civilité, les e-mails disent « Madame, Monsieur ». Jamais bloquant. */}
+          <div>
+            <p className={labelClasses}>{isProfessional ? 'Civilité du contact' : 'Civilité'}</p>
+            <div className="flex flex-wrap gap-2">
+              {CIVILITE_OPTIONS.filter(
+                (option) => !isProfessional || option.value !== CIVILITES.MME_M
+              ).map((option) => {
+                const active = formData.civilite === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    title={option.title}
+                    aria-pressed={active}
+                    onClick={() => handleSelectCivilite(option.value)}
+                    className={`rounded-xl border-2 px-4 py-2.5 text-sm font-bold transition-all ${
+                      active
+                        ? 'border-orange-500 bg-orange-50 text-orange-600 shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Dans les e-mails : « Bonjour {getClientGreetingName(formData)}, »
+            </p>
+          </div>
 
           <div className="grid gap-5 md:grid-cols-2">
             <div>

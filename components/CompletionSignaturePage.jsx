@@ -127,7 +127,7 @@ export function PageShell({ headerLeft, headerRight, stepBar, children }) {
       <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-8 sm:px-6">{children}</div>
 
       <footer className="border-t border-slate-200 bg-white py-5 text-center text-xs text-slate-400">
-        SARANGE Menuiseries — Une question ? {SUPPORT_PHONE}
+        SARANGE · Une question ? {SUPPORT_PHONE}
       </footer>
     </main>
   );
