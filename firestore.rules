@@ -103,6 +103,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---- Demandes de devis reçues par e-mail (page admin /demande) : SERVEUR UNIQUEMENT ----
+    // Fils Gmail poussés par le scan Apps Script (/api/demandes/intake, secret
+    // partagé) et consultés par les administrateurs via app/api/demandes/*
+    // (Admin SDK). Pièces jointes dans Storage sous demandes/{threadId}/.
+    match /demandes/{demandeId} {
+      allow read, write: if false;
+    }
+
     // ---- sarange-suivi : collections partagées par toute l'équipe ----
     match /commandes/{commandeId} {
       allow read, write: if isSarange();

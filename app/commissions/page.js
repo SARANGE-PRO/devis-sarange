@@ -10,6 +10,7 @@ import {
   Handshake,
   Loader2,
   Lock,
+  Mail,
   Paperclip,
   Plus,
   RefreshCw,
@@ -356,6 +357,12 @@ function DossierCard({ dossier, pending, saveField, onDelete, expanded, onToggle
               <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-600">
                 <Globe size={10} />
                 Site
+              </span>
+            )}
+            {dossier.source === COMMISSION_SOURCES.EMAIL && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-600">
+                <Mail size={10} />
+                E-mail
               </span>
             )}
           </div>
@@ -729,6 +736,15 @@ export default function CommissionsPage() {
                                 >
                                   <Globe size={10} />
                                   Site
+                                </span>
+                              )}
+                              {dossier.source === COMMISSION_SOURCES.EMAIL && (
+                                <span
+                                  title="Demande de devis reçue par e-mail (page Demandes)"
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-600"
+                                >
+                                  <Mail size={10} />
+                                  E-mail
                                 </span>
                               )}
                             </div>

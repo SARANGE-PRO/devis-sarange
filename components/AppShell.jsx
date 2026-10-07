@@ -1,7 +1,9 @@
 'use client';
 
 import { useRef } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { Inbox } from 'lucide-react';
 import BottomNav from '@/components/BottomNav';
 import Sidebar from '@/components/Sidebar';
 import FirebaseAuthCard from '@/components/FirebaseAuthCard';
@@ -16,6 +18,7 @@ const PAGE_TITLES = {
   '/catalogue': 'Paramètres',
   '/parametres': 'Catalogues',
   '/commissions': 'Suivi',
+  '/demande':   'Demandes',
 };
 
 export default function AppShell({ title, subtitle, actions = null, children }) {
@@ -69,8 +72,22 @@ export default function AppShell({ title, subtitle, actions = null, children }) 
           <span className="truncate text-sm font-bold text-slate-900">{mobileTitle}</span>
         </div>
 
-        {/* Actions contextuelles (ex: bouton Retour sur la page devis) */}
-        {actions && <div className="shrink-0 ml-2">{actions}</div>}
+        <div className="flex shrink-0 items-center gap-2 ml-2">
+          {/* Demandes de devis reçues par e-mail (/demande) : administrateurs
+              uniquement, icône seule. Aucune entrée dans la BottomNav pour ne
+              pas encombrer les autres comptes. */}
+          {access?.isAdmin === true && pathname !== '/demande' && (
+            <Link
+              href="/demande"
+              aria-label="Demandes de devis reçues par e-mail"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <Inbox size={18} />
+            </Link>
+          )}
+          {/* Actions contextuelles (ex: bouton Retour sur la page devis) */}
+          {actions}
+        </div>
       </div>
 
       {/* ── Sidebar desktop ─────────────────────────────────────────────── */}

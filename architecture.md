@@ -1058,3 +1058,62 @@ Pour reprendre le projet efficacement, les points d'entree les plus importants s
 3. `lib/pdf-generator.js` pour le document final,
 4. `lib/quote-signature-service.js` pour l'envoi et la signature,
 5. `lib/firebase/quotes.js` et `lib/firebase/clients.js` pour la persistence.
+
+## 12. Demandes de devis recues par e-mail (page admin `/demande`)
+
+Ajout du 07/10/2026. Les demandes qui arrivent directement par e-mail sur
+contact@sarange.fr (pros, particuliers, cotes envoyees apres un appel) sont
+detectees automatiquement et rangees dans une liste reservee aux
+administrateurs. Les leads du formulaire du site gardent leur chemin
+(`/api/leads`).
+
+### 12.1 Chaine
+
+1. `sarange-inbox-scan.gs` (depot site-sarange, projet Apps Script autonome,
+   declencheur toutes les 15 min) lit la boite de reception et le courrier
+   indesirable, ecarte le bruit evident et pousse chaque fil plausible a
+   `POST /api/demandes/intake` (secret `INBOX_SCAN_SECRET`, a defaut
+   `SITE_LEADS_SECRET`, en-tete `x-inbox-secret`).
+2. `lib/demandes.mjs` (module pur, teste) calcule le score 0..12, la
+   confiance (`haute` >= 7, `moyenne` >= 4, `basse`), decide de stocker
+   (>= 3) et de libeller (>= 7). La reponse `{ stored, label }` pilote le
+   libelle Gmail « DEVIS A FAIRE » pose par le script.
+3. `lib/demandes-service.js` ecrit `demandes/{threadId}` (Firestore, serveur
+   uniquement) et les pieces jointes PDF/images dans Storage
+   `demandes/{threadId}/`. Un fil deja connu est mis a jour (nouveaux
+   messages) sans toucher au statut, aux notes ni a l'analyse.
+4. `components/DemandesPage.jsx` : liste par statut (`nouvelle`,
+   `a-chiffrer`, `devis-envoye`, `sans-suite`), recherche, panneau de detail
+   avec lien vers le fil Gmail, bouton « Analyser avec Claude », bouton
+   « Creer la fiche client », notes internes.
+5. `lib/demande-analysis.js` : une requete Claude (`claude-opus-5-5` par
+   defaut, `DEMANDES_ANALYSIS_MODEL` pour changer) en sortie structuree
+   (`ANALYSIS_JSON_SCHEMA`) : resume, demandeur, chantier, lignes a chiffrer
+   normalisees (mm, L x H), exigences (Uw/Sw, delai), pieces jointes lues,
+   infos manquantes, message de relance a copier, priorite. Repli serveur
+   active (`fallbacks: "default"`). Jamais d'envoi automatique au client.
+6. « Creer la fiche client » : fiche `users/{SITE_LEADS_OWNER_UID}/clients`
+   (`leadSource: 'email'`) + dossier de commission `lead-{clientId}` avec la
+   source `email`, comme pour le site.
+
+### 12.2 Routes
+
+| Route | Auth | Role |
+| --- | --- | --- |
+| `POST /api/demandes/intake` | secret partage | ingestion d'un fil, reponse `{ stored, created, score, confidence, label }` |
+| `GET /api/demandes` | admin | liste allegee + `analysisConfigured` |
+| `GET /api/demandes?id=` | admin | une demande complete |
+| `POST /api/demandes` | admin | `{ action: 'update', id, data: { status?, notes? } }` ou `{ action: 'create-client', id }` |
+| `POST /api/demandes/analyze` | admin | `{ id }`, `maxDuration` 60 s |
+
+### 12.3 Variables d'environnement
+
+- `INBOX_SCAN_SECRET` : secret du scan (sinon `SITE_LEADS_SECRET`).
+- `ANTHROPIC_API_KEY` : analyse Claude ; sans elle, la liste fonctionne et le
+  bouton reste desactive (bandeau explicite).
+- `DEMANDES_ANALYSIS_MODEL` : facultatif.
+
+Acces : icone « boite de reception » du pied de sidebar (desktop) et de la
+topbar (mobile), administrateurs uniquement ; URL `/demande`. Regles
+Firestore : `demandes/*` ferme au client (a deployer avec
+`firebase deploy --only firestore:rules`).

@@ -10,6 +10,7 @@ import {
   Euro,
   FilePlus,
   FolderOpen,
+  Inbox,
   LogOut,
   Settings,
   Users,
@@ -116,10 +117,24 @@ export default function Sidebar() {
             <Calculator size={10} />
             Compta
           </Link>
-          {/* Accès discret au suivi des commissions (/commissions) :
-              administrateurs uniquement, icône seule, sans libellé. */}
+          {/* Accès discrets réservés aux administrateurs, icône seule, sans
+              libellé : demandes de devis reçues par e-mail (/demande) et suivi
+              des commissions (/commissions). Invisibles pour les autres comptes. */}
           {access?.isAdmin === true && (
             <>
+              <span className="text-slate-200">·</span>
+              <Link
+                href="/demande"
+                aria-label="Demandes de devis reçues par e-mail"
+                title="Demandes de devis reçues par e-mail"
+                className={`flex items-center transition-colors ${
+                  pathname === '/demande'
+                    ? 'text-orange-500'
+                    : 'text-slate-300 hover:text-slate-500'
+                }`}
+              >
+                <Inbox size={10} />
+              </Link>
               <span className="text-slate-200">·</span>
               <Link
                 href="/commissions"
