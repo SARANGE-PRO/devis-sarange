@@ -1086,12 +1086,14 @@ administrateurs. Les leads du formulaire du site gardent leur chemin
    `a-chiffrer`, `devis-envoye`, `sans-suite`), recherche, panneau de detail
    avec lien vers le fil Gmail, bouton « Analyser avec Claude », bouton
    « Creer la fiche client », notes internes.
-5. `lib/demande-analysis.js` : une requete Claude (`claude-opus-5-5` par
-   defaut, `DEMANDES_ANALYSIS_MODEL` pour changer) en sortie structuree
-   (`ANALYSIS_JSON_SCHEMA`) : resume, demandeur, chantier, lignes a chiffrer
-   normalisees (mm, L x H), exigences (Uw/Sw, delai), pieces jointes lues,
-   infos manquantes, message de relance a copier, priorite. Repli serveur
-   active (`fallbacks: "default"`). Jamais d'envoi automatique au client.
+5. `lib/demande-analysis.js` : une requete a un modele de langage en sortie
+   structuree (`ANALYSIS_JSON_SCHEMA`) : resume, demandeur, chantier, lignes
+   a chiffrer normalisees (mm, L x H), exigences (Uw/Sw, delai), pieces
+   jointes lues, infos manquantes, message de relance a copier, priorite.
+   Deux fournisseurs : Gemini (Google AI Studio, palier gratuit, prioritaire,
+   modele Flash stable decouvert via l'API ou `GEMINI_MODEL`) et Claude
+   (API Anthropic, `claude-opus-5-5` par defaut, repli serveur
+   `fallbacks: "default"`). Jamais d'envoi automatique au client.
 6. « Creer la fiche client » : fiche `users/{SITE_LEADS_OWNER_UID}/clients`
    (`leadSource: 'email'`) + dossier de commission `lead-{clientId}` avec la
    source `email`, comme pour le site.
@@ -1109,9 +1111,16 @@ administrateurs. Les leads du formulaire du site gardent leur chemin
 ### 12.3 Variables d'environnement
 
 - `INBOX_SCAN_SECRET` : secret du scan (sinon `SITE_LEADS_SECRET`).
-- `ANTHROPIC_API_KEY` : analyse Claude ; sans elle, la liste fonctionne et le
-  bouton reste desactive (bandeau explicite).
-- `DEMANDES_ANALYSIS_MODEL` : facultatif.
+- `GEMINI_API_KEY` : analyse IA gratuite (cle Google AI Studio sans
+  facturation liee ; pour un compte de l'EEE, Google applique les conditions
+  du palier payant : pas d'entrainement sur les donnees). `GEMINI_MODEL`
+  facultatif.
+- `ANTHROPIC_API_KEY` : analyse par Claude, payante a l'usage.
+  `DEMANDES_ANALYSIS_MODEL` facultatif.
+- `DEMANDES_ANALYSIS_PROVIDER` = `gemini` | `anthropic` : force le choix si
+  les deux cles existent (sinon Gemini d'abord).
+- Sans aucune cle, la liste fonctionne et le bouton reste desactive (bandeau
+  explicite).
 
 Acces : icone « boite de reception » du pied de sidebar (desktop) et de la
 topbar (mobile), administrateurs uniquement ; URL `/demande`. Regles

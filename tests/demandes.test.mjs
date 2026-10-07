@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   ANALYSIS_JSON_SCHEMA,
   DEMANDE_STATUSES,
+  LINE_CATEGORIES,
   MAX_ATTACHMENT_BYTES,
   MAX_MESSAGE_BODY_LENGTH,
   MIN_SCORE_FOR_LABEL,
@@ -20,6 +21,7 @@ import {
   scoreDemande,
   stripQuotedReply,
   toDemandeListItem,
+  toGeminiResponseSchema,
 } from '../lib/demandes.mjs';
 
 const run = (name, fn) => {
@@ -230,6 +232,24 @@ run('schéma d’analyse : objets fermés et toutes propriétés requises (exige
     assert.equal('minimum' in schema || 'maxLength' in schema, false, `${path}: contrainte non supportée`);
   };
   visit(ANALYSIS_JSON_SCHEMA, 'analysis');
+});
+
+run('schéma d’analyse : variante Gemini sans additionalProperties, ordre des propriétés conservé', () => {
+  const gemini = toGeminiResponseSchema(ANALYSIS_JSON_SCHEMA);
+  const visit = (schema, path) => {
+    assert.equal('additionalProperties' in schema, false, `${path}: additionalProperties restant`);
+    if (schema.type === 'object') {
+      assert.deepEqual(schema.propertyOrdering, Object.keys(schema.properties), `${path}: ordre`);
+      assert.deepEqual(schema.required, Object.keys(schema.properties), `${path}: required`);
+      for (const [key, child] of Object.entries(schema.properties)) visit(child, `${path}.${key}`);
+    } else if (schema.type === 'array') {
+      visit(schema.items, `${path}[]`);
+    }
+  };
+  visit(gemini, 'gemini');
+  assert.deepEqual(gemini.properties.lignes.items.properties.categorie.enum, [...LINE_CATEGORIES]);
+  // Le schéma d'origine n'est pas modifié.
+  assert.equal(ANALYSIS_JSON_SCHEMA.additionalProperties, false);
 });
 
 run('analyse : normalisation tolérante et fiche client dérivée', () => {

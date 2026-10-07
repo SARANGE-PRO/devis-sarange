@@ -8,14 +8,14 @@ import {
   listDemandes,
   updateDemande,
 } from '@/lib/demandes-service';
-import { isAnalysisConfigured } from '@/lib/demande-analysis';
+import { getAnalysisProvider } from '@/lib/demande-analysis';
 
 export const runtime = 'nodejs';
 
 /**
  * Demandes de devis reçues par e-mail (page /demande). Administrateurs
  * uniquement (vérifié dans le service).
- *  - GET            → liste allégée + indicateur « analyse configurée » ;
+ *  - GET            → liste allégée + fournisseur d'analyse IA configuré ;
  *  - GET ?id=…      → une demande complète (messages, analyse).
  */
 export async function GET(request) {
@@ -25,9 +25,11 @@ export async function GET(request) {
     if (id) {
       return NextResponse.json({ demande: await getDemande(user, id) });
     }
+    const analysisProvider = getAnalysisProvider();
     return NextResponse.json({
       demandes: await listDemandes(user),
-      analysisConfigured: isAnalysisConfigured(),
+      analysisConfigured: Boolean(analysisProvider.provider),
+      analysisProvider: analysisProvider.label,
     });
   } catch (error) {
     return toRouteErrorResponse(error, 'Impossible de charger les demandes.');

@@ -40,9 +40,10 @@ import {
  * Apps Script de la boîte contact@sarange.fr et rangées par le serveur.
  * Réservée aux administrateurs (rôle vérifié par les routes /api/demandes/*).
  *
- * Trois actions par demande : ouvrir le fil dans Gmail, lancer l'analyse
- * Claude (normalisation, infos manquantes, message de relance), créer la fiche
- * client. Jamais d'envoi automatique au demandeur.
+ * Trois actions par demande : ouvrir le fil dans Gmail, lancer l'analyse IA
+ * (Gemini gratuit ou Claude selon la clé configurée : normalisation, infos
+ * manquantes, message de relance), créer la fiche client. Jamais d'envoi
+ * automatique au demandeur.
  *
  * Mobile d'abord : cartes, panneau de détail en feuille basse ; sur desktop le
  * panneau glisse depuis la droite.
@@ -191,7 +192,7 @@ function AnalysisPanel({ analysis, meta, onCopy, copied }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="inline-flex items-center gap-2 text-sm font-bold text-violet-800">
           <Sparkles size={16} />
-          Analyse Claude
+          Analyse IA
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Badge className={PRIORITY_STYLES[analysis.priorite] || PRIORITY_STYLES.normale}>
@@ -396,6 +397,7 @@ function DetailDrawer({
   pending,
   error,
   analysisConfigured,
+  analysisProvider,
   notesDraft,
   onNotesChange,
   onSaveNotes,
@@ -522,8 +524,8 @@ function DetailDrawer({
                   disabled={Boolean(pending) || !analysisConfigured}
                   title={
                     analysisConfigured
-                      ? 'Normalise la demande : lignes à chiffrer, infos manquantes, relance'
-                      : 'Analyse non configurée : renseignez ANTHROPIC_API_KEY sur Vercel'
+                      ? `Normalise la demande (lignes à chiffrer, infos manquantes, relance) avec ${analysisProvider || 'l’IA'}`
+                      : 'Analyse non configurée : renseignez GEMINI_API_KEY (gratuit) ou ANTHROPIC_API_KEY sur Vercel'
                   }
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -532,7 +534,7 @@ function DetailDrawer({
                     ? 'Analyse en cours…'
                     : demande.analysis
                       ? 'Relancer l’analyse'
-                      : 'Analyser avec Claude'}
+                      : 'Analyser avec l’IA'}
                 </button>
                 {demande.clientId ? (
                   <Link
@@ -648,6 +650,7 @@ export default function DemandesPage() {
 
   const [items, setItems] = useState([]);
   const [analysisConfigured, setAnalysisConfigured] = useState(true);
+  const [analysisProvider, setAnalysisProvider] = useState('');
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState('');
   const [filter, setFilter] = useState('nouvelle');
@@ -689,6 +692,7 @@ export default function DemandesPage() {
       const payload = await readJson(await authFetch('/api/demandes'), 'Impossible de charger les demandes.');
       setItems(Array.isArray(payload.demandes) ? payload.demandes : []);
       setAnalysisConfigured(payload.analysisConfigured !== false);
+      setAnalysisProvider(typeof payload.analysisProvider === 'string' ? payload.analysisProvider : '');
     } catch (error) {
       setListError(error.message);
     } finally {
@@ -804,8 +808,9 @@ export default function DemandesPage() {
           <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <p>
-              L’analyse Claude n’est pas configurée (variable ANTHROPIC_API_KEY absente sur Vercel). La détection
-              et la liste fonctionnent, le bouton d’analyse reste désactivé.
+              L’analyse IA n’est pas configurée : ajoutez GEMINI_API_KEY (palier gratuit Google) ou
+              ANTHROPIC_API_KEY sur Vercel. La détection et la liste fonctionnent, le bouton d’analyse reste
+              désactivé.
             </p>
           </div>
         )}
@@ -948,6 +953,7 @@ export default function DemandesPage() {
         pending={pending}
         error={detailError}
         analysisConfigured={analysisConfigured}
+        analysisProvider={analysisProvider}
         notesDraft={notesDraft}
         onNotesChange={setNotesDraft}
         onSaveNotes={() => {
