@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle,
+  Ban,
   Check,
   ChevronDown,
   ChevronUp,
@@ -15,6 +16,7 @@ import {
   Mail,
   Paperclip,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   Sparkles,
@@ -26,12 +28,14 @@ import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   DEMANDE_STATUSES,
+  EXCLUDED_STATUS,
   HOUSING_AGE_LABELS,
   LINE_CATEGORY_LABELS,
   PRESTATION_LABELS,
   REQUESTER_TYPE_LABELS,
   confidenceLabel,
   demandeStatusLabel,
+  isPublicMailboxDomain,
   toDemandeListItem,
 } from '@/lib/demandes.mjs';
 
@@ -54,7 +58,11 @@ const STATUS_STYLES = {
   'a-chiffrer': 'bg-orange-50 text-orange-700 border-orange-200',
   'devis-envoye': 'bg-sky-50 text-sky-700 border-sky-200',
   'sans-suite': 'bg-slate-100 text-slate-500 border-slate-200',
+  exclue: 'bg-rose-50 text-rose-600 border-rose-200',
 };
+
+// Statuts proposés dans le sélecteur du panneau : l'exclusion a son bouton.
+const SELECTABLE_STATUSES = DEMANDE_STATUSES.filter((status) => status.value !== EXCLUDED_STATUS);
 
 const CONFIDENCE_STYLES = {
   haute: 'bg-emerald-50 text-emerald-700',
@@ -74,6 +82,7 @@ const FILTERS = [
   { value: 'devis-envoye', label: 'Devis envoyés' },
   { value: 'sans-suite', label: 'Sans suite' },
   { value: 'toutes', label: 'Toutes' },
+  { value: EXCLUDED_STATUS, label: 'Exclues' },
 ];
 
 const formatDate = (iso) => {
@@ -389,6 +398,58 @@ function AnalysisPanel({ analysis, meta, onCopy, copied }) {
   );
 }
 
+/* ─── « Pas une demande » : fil seul, expéditeur, domaine ─────────────────── */
+function ExcludeChooser({ demande, pending, onExclude, onCancel }) {
+  const email = demande.from.email;
+  const domain = demande.from.domain || email.split('@')[1] || '';
+  const domainAllowed = Boolean(domain) && !isPublicMailboxDomain(domain);
+  const optionClass =
+    'flex w-full items-start gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-left text-sm text-slate-700 transition-colors hover:bg-rose-50 disabled:opacity-50';
+  return (
+    <div className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50/60 p-3">
+      <p className="text-sm font-semibold text-rose-800">
+        Exclure cette fausse demande. Elle ne réapparaîtra pas, même si le fil reçoit un nouveau message.
+      </p>
+      <button type="button" disabled={Boolean(pending)} onClick={() => onExclude({})} className={optionClass}>
+        <Ban size={16} className="mt-0.5 shrink-0 text-rose-500" />
+        <span>
+          <span className="font-semibold">Ce fil seulement</span>
+          <span className="block text-xs text-slate-500">Les prochains e-mails de cet expéditeur seront encore examinés.</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        disabled={Boolean(pending)}
+        onClick={() => onExclude({ blockSender: true })}
+        className={optionClass}
+      >
+        <Ban size={16} className="mt-0.5 shrink-0 text-rose-500" />
+        <span>
+          <span className="font-semibold">Et tout ce qui vient de {email}</span>
+          <span className="block text-xs text-slate-500">Plus jamais proposé pour cette adresse (liste des expéditeurs exclus, modifiable).</span>
+        </span>
+      </button>
+      {domainAllowed && (
+        <button
+          type="button"
+          disabled={Boolean(pending)}
+          onClick={() => onExclude({ blockSender: true, blockDomain: true })}
+          className={optionClass}
+        >
+          <Ban size={16} className="mt-0.5 shrink-0 text-rose-500" />
+          <span>
+            <span className="font-semibold">Et tout le domaine @{domain}</span>
+            <span className="block text-xs text-slate-500">Pour un fournisseur ou une société qui n’est jamais cliente.</span>
+          </span>
+        </button>
+      )}
+      <button type="button" onClick={onCancel} className="text-xs font-semibold text-slate-500 hover:text-slate-700">
+        Annuler
+      </button>
+    </div>
+  );
+}
+
 /* ─── Panneau de détail ──────────────────────────────────────────────────── */
 function DetailDrawer({
   isOpen,
@@ -404,10 +465,12 @@ function DetailDrawer({
   onStatusChange,
   onAnalyze,
   onCreateClient,
+  onExclude,
   onClose,
 }) {
   const [copied, setCopied] = useState(false);
   const [showHints, setShowHints] = useState(false);
+  const [excluding, setExcluding] = useState(false);
   // Changement de demande : repli des états locaux, ajustés pendant le rendu
   // (pas d'effet) comme le recommande React.
   const [trackedId, setTrackedId] = useState(demande?.id || '');
@@ -415,7 +478,9 @@ function DetailDrawer({
     setTrackedId(demande?.id || '');
     setCopied(false);
     setShowHints(false);
+    setExcluding(false);
   }
+  const isExcluded = demande?.status === EXCLUDED_STATUS;
 
   const copyText = async (text) => {
     try {
@@ -507,6 +572,37 @@ function DetailDrawer({
                 </div>
               )}
 
+              {isExcluded && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+                  <p className="inline-flex items-center gap-2">
+                    <Ban size={16} className="shrink-0" />
+                    Exclue le {formatDate(demande.excludedAt) || '?'}
+                    {demande.excludedBy ? ` par ${demande.excludedBy}` : ''}. Le scan ne la remettra pas dans la liste.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onStatusChange('nouvelle')}
+                    disabled={Boolean(pending)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:opacity-50"
+                  >
+                    <RotateCcw size={13} />
+                    Rétablir
+                  </button>
+                </div>
+              )}
+
+              {excluding && !isExcluded && (
+                <ExcludeChooser
+                  demande={demande}
+                  pending={pending}
+                  onExclude={(options) => {
+                    setExcluding(false);
+                    onExclude(options);
+                  }}
+                  onCancel={() => setExcluding(false)}
+                />
+              )}
+
               <div className="grid gap-2 sm:grid-cols-3">
                 <a
                   href={demande.permalink}
@@ -558,9 +654,23 @@ function DetailDrawer({
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-3">
-                <SectionTitle>Statut</SectionTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <SectionTitle>Statut</SectionTitle>
+                  {!isExcluded && !excluding && (
+                    <button
+                      type="button"
+                      onClick={() => setExcluding(true)}
+                      disabled={Boolean(pending)}
+                      title="Fausse demande : fournisseur, démarchage, facture…"
+                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-500 transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 disabled:opacity-50"
+                    >
+                      <Ban size={13} />
+                      Pas une demande
+                    </button>
+                  )}
+                </div>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {DEMANDE_STATUSES.map((status) => {
+                  {SELECTABLE_STATUSES.map((status) => {
                     const active = demande.status === status.value;
                     return (
                       <button
@@ -649,6 +759,7 @@ export default function DemandesPage() {
   const isAdmin = Boolean(user) && access?.isAdmin === true;
 
   const [items, setItems] = useState([]);
+  const [blocklist, setBlocklist] = useState({ emails: [], domains: [] });
   const [analysisConfigured, setAnalysisConfigured] = useState(true);
   const [analysisProvider, setAnalysisProvider] = useState('');
   const [loading, setLoading] = useState(false);
@@ -691,6 +802,7 @@ export default function DemandesPage() {
     try {
       const payload = await readJson(await authFetch('/api/demandes'), 'Impossible de charger les demandes.');
       setItems(Array.isArray(payload.demandes) ? payload.demandes : []);
+      if (payload.blocklist) setBlocklist(payload.blocklist);
       setAnalysisConfigured(payload.analysisConfigured !== false);
       setAnalysisProvider(typeof payload.analysisProvider === 'string' ? payload.analysisProvider : '');
     } catch (error) {
@@ -760,6 +872,7 @@ export default function DemandesPage() {
         setNotesDraft((current) => (name === 'ack' ? current : payload.demande.notes ?? current));
         replaceInList(payload.demande);
       }
+      if (payload.blocklist) setBlocklist(payload.blocklist);
       return payload;
     } catch (error) {
       if (!silent) setDetailError(error.message);
@@ -770,15 +883,27 @@ export default function DemandesPage() {
   };
 
   const counts = useMemo(() => {
-    const result = { toutes: items.length };
-    for (const item of items) result[item.status] = (result[item.status] || 0) + 1;
+    const result = { toutes: 0 };
+    for (const item of items) {
+      result[item.status] = (result[item.status] || 0) + 1;
+      if (item.status !== EXCLUDED_STATUS) result.toutes += 1;
+    }
     return result;
   }, [items]);
+
+  const blockedEntries = useMemo(
+    () => [
+      ...blocklist.domains.map((domain) => ({ key: `d-${domain}`, label: `@${domain}`, data: { domain } })),
+      ...blocklist.emails.map((email) => ({ key: `e-${email}`, label: email, data: { email } })),
+    ],
+    [blocklist]
+  );
 
   const visible = useMemo(() => {
     const term = normalizeSearch(search.trim());
     return items.filter((item) => {
-      if (filter !== 'toutes' && item.status !== filter) return false;
+      // « Toutes » ne montre pas les exclues : elles ont leur onglet.
+      if (filter === 'toutes' ? item.status === EXCLUDED_STATUS : item.status !== filter) return false;
       if (!term) return true;
       const haystack = normalizeSearch(
         [item.displayName, item.from.email, item.subject, item.summary, item.city, item.notes].join(' ')
@@ -864,6 +989,39 @@ export default function DemandesPage() {
           <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <p>{listError}</p>
+          </div>
+        )}
+
+        {filter === EXCLUDED_STATUS && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <SectionTitle>Expéditeurs exclus ({blockedEntries.length})</SectionTitle>
+            <p className="mt-1 text-xs text-slate-500">
+              Leurs e-mails ne sont plus jamais proposés. Retirer une entrée suffit pour les examiner à nouveau.
+            </p>
+            {blockedEntries.length > 0 ? (
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {blockedEntries.map((entry) => (
+                  <li
+                    key={entry.key}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 py-1 pl-3 pr-1 text-xs font-semibold text-rose-700"
+                  >
+                    {entry.label}
+                    <button
+                      type="button"
+                      aria-label={`Retirer ${entry.label}`}
+                      title="Retirer de la liste des exclus"
+                      disabled={Boolean(pending)}
+                      onClick={() => void runAction('blocklist-remove', { action: 'blocklist-remove', data: entry.data })}
+                      className="flex h-5 w-5 items-center justify-center rounded-full text-rose-400 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50"
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">Aucun expéditeur exclu pour l’instant.</p>
+            )}
           </div>
         )}
 
@@ -968,6 +1126,7 @@ export default function DemandesPage() {
         }}
         onAnalyze={() => selected && void runAction('analyze', { id: selected.id })}
         onCreateClient={() => selected && void runAction('create-client', { action: 'create-client', id: selected.id })}
+        onExclude={(options) => selected && void runAction('exclude', { action: 'exclude', id: selected.id, data: options })}
         onClose={closeDrawer}
       />
     </AppShell>

@@ -4,8 +4,11 @@ import { toRouteErrorResponse } from '@/lib/api-route-errors';
 import { verifyFirebaseUserFromRequest } from '@/lib/firebase/admin';
 import {
   createClientFromDemande,
+  excludeDemande,
+  getBlocklist,
   getDemande,
   listDemandes,
+  removeFromBlocklist,
   updateDemande,
 } from '@/lib/demandes-service';
 import { getAnalysisProvider } from '@/lib/demande-analysis';
@@ -15,7 +18,7 @@ export const runtime = 'nodejs';
 /**
  * Demandes de devis reçues par e-mail (page /demande). Administrateurs
  * uniquement (vérifié dans le service).
- *  - GET            → liste allégée + fournisseur d'analyse IA configuré ;
+ *  - GET            → liste allégée, expéditeurs exclus, fournisseur d'analyse IA ;
  *  - GET ?id=…      → une demande complète (messages, analyse).
  */
 export async function GET(request) {
@@ -28,6 +31,7 @@ export async function GET(request) {
     const analysisProvider = getAnalysisProvider();
     return NextResponse.json({
       demandes: await listDemandes(user),
+      blocklist: await getBlocklist(user),
       analysisConfigured: Boolean(analysisProvider.provider),
       analysisProvider: analysisProvider.label,
     });
@@ -36,7 +40,13 @@ export async function GET(request) {
   }
 }
 
-/** Action : { action: 'update' | 'create-client', id, data? }. Renvoie la demande à jour. */
+/**
+ * Actions : { action, id?, data? }
+ *  - update           : data { status?, notes? }                → { demande }
+ *  - create-client    :                                        → { clientId, created, demande }
+ *  - exclude          : data { blockSender?, blockDomain? }     → { demande, blocklist }
+ *  - blocklist-remove : data { email? | domain? }               → { blocklist }
+ */
 export async function POST(request) {
   try {
     const user = await verifyFirebaseUserFromRequest(request);
@@ -47,8 +57,13 @@ export async function POST(request) {
       return NextResponse.json({ demande: await updateDemande(user, body?.id, body?.data) });
     }
     if (action === 'create-client') {
-      const result = await createClientFromDemande(user, body?.id);
-      return NextResponse.json(result);
+      return NextResponse.json(await createClientFromDemande(user, body?.id));
+    }
+    if (action === 'exclude') {
+      return NextResponse.json(await excludeDemande(user, body?.id, body?.data || {}));
+    }
+    if (action === 'blocklist-remove') {
+      return NextResponse.json({ blocklist: await removeFromBlocklist(user, body?.data || {}) });
     }
     return NextResponse.json({ error: 'Action inconnue.' }, { status: 400 });
   } catch (error) {

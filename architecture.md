@@ -1083,9 +1083,16 @@ administrateurs. Les leads du formulaire du site gardent leur chemin
    `demandes/{threadId}/`. Un fil deja connu est mis a jour (nouveaux
    messages) sans toucher au statut, aux notes ni a l'analyse.
 4. `components/DemandesPage.jsx` : liste par statut (`nouvelle`,
-   `a-chiffrer`, `devis-envoye`, `sans-suite`), recherche, panneau de detail
-   avec lien vers le fil Gmail, bouton « Analyser avec Claude », bouton
-   « Creer la fiche client », notes internes.
+   `a-chiffrer`, `devis-envoye`, `sans-suite`, `exclue`), recherche, panneau
+   de detail avec lien vers le fil Gmail, bouton « Analyser avec l'IA »,
+   bouton « Creer la fiche client », notes internes, bouton « Pas une
+   demande » (fil seul, ou aussi l'adresse de l'expediteur, ou tout son
+   domaine sauf messagerie grand public). Une demande exclue reste stockee
+   au statut `exclue` : l'ingestion ne la ressuscite jamais ; les expediteurs
+   exclus (`demandesSettings/blocklist`) ne sont plus stockes du tout ; le
+   scan Gmail retire le libelle des fils exclus (`GET /api/demandes/intake
+   ?exclusions=1&since=`). Onglet « Exclues » pour retablir ou retirer un
+   expediteur de la liste.
 5. `lib/demande-analysis.js` : une requete a un modele de langage en sortie
    structuree (`ANALYSIS_JSON_SCHEMA`) : resume, demandeur, chantier, lignes
    a chiffrer normalisees (mm, L x H), exigences (Uw/Sw, delai), pieces
@@ -1103,9 +1110,10 @@ administrateurs. Les leads du formulaire du site gardent leur chemin
 | Route | Auth | Role |
 | --- | --- | --- |
 | `POST /api/demandes/intake` | secret partage | ingestion d'un fil, reponse `{ stored, created, score, confidence, label }` |
+| `GET /api/demandes/intake?exclusions=1&since=` | secret partage | fils exclus depuis une date (retrait du libelle Gmail) |
 | `GET /api/demandes` | admin | liste allegee + `analysisConfigured` |
 | `GET /api/demandes?id=` | admin | une demande complete |
-| `POST /api/demandes` | admin | `{ action: 'update', id, data: { status?, notes? } }` ou `{ action: 'create-client', id }` |
+| `POST /api/demandes` | admin | `update` (statut, notes), `create-client`, `exclude` (`blockSender`, `blockDomain`), `blocklist-remove` |
 | `POST /api/demandes/analyze` | admin | `{ id }`, `maxDuration` 60 s |
 
 ### 12.3 Variables d'environnement

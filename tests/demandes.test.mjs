@@ -14,7 +14,10 @@ import {
   extractDimensions,
   extractPhones,
   extractPostalCity,
+  isPublicMailboxDomain,
+  isSenderBlocked,
   normalizeAnalysis,
+  normalizeBlocklist,
   normalizeDemande,
   normalizeDemandeStatus,
   sanitizeIntakePayload,
@@ -81,13 +84,29 @@ ral 7016
 Merci`,
 };
 
-run('statuts : les 4 attendus, défaut « nouvelle »', () => {
+run('statuts : les 5 attendus, défaut « nouvelle »', () => {
   assert.deepEqual(
     DEMANDE_STATUSES.map((status) => status.value),
-    ['nouvelle', 'a-chiffrer', 'devis-envoye', 'sans-suite']
+    ['nouvelle', 'a-chiffrer', 'devis-envoye', 'sans-suite', 'exclue']
   );
   assert.equal(normalizeDemandeStatus('A-CHIFFRER'), 'a-chiffrer');
   assert.equal(normalizeDemandeStatus('inconnu'), 'nouvelle');
+});
+
+run('expéditeurs exclus : adresse, domaine, domaine parent ; messageries publiques', () => {
+  const blocklist = normalizeBlocklist({
+    emails: [' Stan@Exemple.com ', 'stan@exemple.com', 'pas-une-adresse'],
+    domains: ['@Schueco.com', 'schueco.com', 'sansPoint'],
+  });
+  assert.deepEqual(blocklist, { emails: ['stan@exemple.com'], domains: ['schueco.com'] });
+  assert.equal(isSenderBlocked('STAN@exemple.com', blocklist), true);
+  assert.equal(isSenderBlocked('autre@exemple.com', blocklist), false);
+  assert.equal(isSenderBlocked('c.lancelin@schueco.com', blocklist), true);
+  assert.equal(isSenderBlocked('x@mail.schueco.com', blocklist), true, 'sous-domaine');
+  assert.equal(isSenderBlocked('x@notschueco.com', blocklist), false);
+  assert.equal(isSenderBlocked('', blocklist), false);
+  assert.equal(isPublicMailboxDomain('Gmail.com'), true);
+  assert.equal(isPublicMailboxDomain('idfmenuiserie.com'), false);
 });
 
 run('confiance : seuils cohérents avec le stockage et le libellé', () => {
