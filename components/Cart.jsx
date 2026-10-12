@@ -334,6 +334,23 @@ function SortableCartItem({
             </div>
           </div>
 
+          {/* Ligne importée depuis une demande du site : la phrase du client et
+              les notes pour le bureau (cotes à relever, panneau choisi…).
+              Affichage interne, jamais repris sur le PDF. */}
+          {Array.isArray(item.leadNotes) && (item.leadTitle || item.leadNotes.length > 0) && (
+            <div className="ml-[22px] mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
+              <span className="font-bold">Demande du site</span>
+              {item.leadTitle && <span className="italic"> : « {item.leadTitle} »</span>}
+              {item.leadNotes.length > 0 && (
+                <ul className="mt-0.5 list-disc pl-4">
+                  {item.leadNotes.map((note, index) => (
+                    <li key={index}>{note}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
           <p className="ml-[22px] mt-0.5 text-xs text-slate-400">
             {item.productId === 'gestion-dechets' ? (
               <>

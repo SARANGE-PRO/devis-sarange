@@ -634,6 +634,9 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/compta-local.mjs` | Persistance LOCALE de l'onglet Compta (source de verite) : parametres Sage et historique des exports en localStorage (cles versionnees par uid), export/import JSON de la configuration. Stockage injectable (testable Node). |
 | `lib/commission-dossiers.mjs` | Module PUR du suivi des commissions de vente : statuts (attente-devis, devis-envoye, vendu, perdu), parsing des montants, commission (= prix de vente - prix Sarange, uniquement si vendu), solde du (= commission - paye), totaux, libelle des leads du site, regles des dossiers lies a un devis « Vente Ange » (identifiant `quote-{quoteId}`, statut qui ne fait que progresser, dossier vierge supprimable au decochage). Teste dans `tests/commission-dossiers.test.mjs`. |
 | `lib/commission-service.js` | Service serveur des dossiers de commission : CRUD reserve aux administrateurs, creation idempotente depuis un lead du site (`lead-{clientId}`, appelee par `/api/leads`), import de rattrapage des leads existants, synchronisation des devis « Vente Ange » (`syncQuoteCommissionDossier`, passage en vendu a la signature via `markQuoteCommissionDossierSold` appele par le service de signature), documents joints dans Storage. |
+| `lib/lead-quote-import.mjs` | Module PUR de l'import des demandes du configurateur du site (`project_json` relaye par le script Google a `/api/leads`) : une ligne de panier par menuiserie, fabriquee comme `handleAddToCart` (prix de grille ou tarif de repli, vitrage Riou, coloration et etat de couleur, OB / grille sur le vantail principal, petits bois, volet monobloc, box domotique unique choisie selon la motorisation, Velux en ligne libre pre-remplie, garage / veranda / reparation / pieces en lignes libres a 0). La phrase du client (`leadTitle`) et les notes du site (`leadNotes`) voyagent sur la ligne, affichees dans le panier (bloc ambre), jamais sur le PDF. Teste dans `tests/lead-quote-import.test.mjs` (chargeur d'alias). |
+| `lib/lead-quote-service.js` | Service serveur (Admin SDK) qui ecrit le devis BROUILLON d'une demande du site dans `users/{uid}/quotes` a la forme de `saveQuoteDraft` (sans numero de devis : attribue a la premiere sauvegarde du bureau), titre « Site · Nom », `currentStep` 2. Idempotent sur `leadImport.leadId` : une nouvelle tentative met le brouillon a jour tant que son `payload` a l'empreinte laissee par l'import (`leadImport.payloadHash`) ; un devis touche au bureau n'est plus ecrase (`skipped`). |
+| `lib/marketing-details.mjs` | Lignes marketing (profils, poignee, finition) et couleur du schema d'une ligne de devis, partagees par le formulaire et l'import des demandes du site. |
 
 ### 8.5 `lib/firebase/` - acces Firebase
 
@@ -1137,3 +1140,50 @@ Acces : icone « boite de reception » du pied de sidebar (desktop) et de la
 topbar (mobile), administrateurs uniquement ; URL `/demande`. Regles
 Firestore : `demandes/*` ferme au client (a deployer avec
 `firebase deploy --only firestore:rules`).
+
+## 16. Demandes du configurateur du site : le brouillon de devis
+
+Ajout du 12/10/2026. Le configurateur public du site (`/configurateur`,
+branche `feat/configurateur` de site-sarange) envoie au script Google la
+demande structuree `project_json` (une entree par menuiserie : phrase du
+client, reference de CE catalogue, vitrage Riou, coloris, cotes en mm,
+options, volet lie, Velux, panneau, notes) et un `lead_id` par projet. Le
+script la relaie telle quelle a `POST /api/leads` (`project`, `leadId`).
+
+La route cree alors, en plus de la fiche client et du dossier de commission,
+un devis BROUILLON dans `users/{SITE_LEADS_OWNER_UID}/quotes` :
+
+1. `lib/lead-quote-import.mjs` (pur) traduit chaque ligne en ligne de panier
+   a la forme exacte de `handleAddToCart` : produit et feuille, prix de grille
+   (`getPriceForMm`) ou tarif de repli hors grille, `glazingOption` resolu par
+   `getSelectedGlazing`, `colorOption` + `rawColorState` deduits du libelle du
+   site, OB / grille sur le vantail principal, petits bois 26x8, volet monobloc
+   (manoeuvre), pose selon « Fourniture + Pose », Uw/Sw calcules. Box
+   domotique : une seule ligne a prix fixe, GAPOSA pour des solaires,
+   CHERUBINI pour du radio. Velux : ligne libre pre-remplie comme
+   `handleVeluxValidate` (reference, description, image, gamme, thermique),
+   prix a saisir. Garage, veranda, reparation, pieces detachees, porte de
+   service, bois, references inconnues : lignes libres a 0 avec leur
+   designation. Panneau de porte, tierce, imposte, cintrage : notes.
+2. `lib/lead-quote-service.js` (serveur) ecrit le document via
+   `buildQuoteDraftRecord` (titre « Site · Nom », `currentStep` 2, TVA par
+   defaut, sans numero de devis) et un bloc `leadImport` : `leadId`,
+   `payloadHash` (empreinte stable du `payload` ecrit), `photoCount`,
+   `importedAt`, `updateCount`. Idempotence : un envoi avec le meme `leadId`
+   met le brouillon a jour tant que `hash(payload)` vaut encore
+   `leadImport.payloadHash` et que le statut est `draft` ; sinon `skipped`.
+
+Dans le panier, chaque ligne importee affiche un bloc ambre « Demande du
+site » : la phrase du client (`leadTitle`) et les notes pour le bureau
+(`leadNotes` : cotes a relever, prix a chiffrer, panneau choisi…). Ces deux
+champs ne sont jamais repris sur le PDF ni dans l'export comptable.
+
+Reponse de la route : `{ success, clientId, created, quote: { action, quoteId,
+lineCount } }` avec `action` = `created` | `updated` | `skipped` | `none` |
+`error`. Comme le reste de la route, l'import est best-effort : un echec ne
+bloque ni la fiche client ni l'email au bureau.
+
+Reste a faire : les photos du configurateur (compressees dans le telephone)
+ne sont pas encore recues ; `leadImport.photoCount` dit seulement combien il
+y en a. Une route publique de depot sur le modele de `stageCompletionPhoto`
+est prevue (voir `docs/configurateur-reste-a-faire.md` cote site).

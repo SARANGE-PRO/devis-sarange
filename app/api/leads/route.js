@@ -10,6 +10,7 @@ import {
 } from '@/lib/client-cloud';
 import { buildLeadDossierLabel } from '@/lib/commission-dossiers.mjs';
 import { createLeadCommissionDossier } from '@/lib/commission-service';
+import { importLeadQuote } from '@/lib/lead-quote-service';
 
 export const runtime = 'nodejs';
 
@@ -24,16 +25,23 @@ export const runtime = 'nodejs';
  * bundle client. Best-effort côté appelant — un échec ici ne bloque jamais
  * l'email au bureau, qui reste le canal garanti.
  *
- * N'écrit QUE l'identité du prospect (nom, téléphone, email, adresse) plus
- * le récapitulatif de sa demande en champs additionnels (leadJourney,
- * leadProjectSummary, leadMessage) : aucune ligne de devis n'est créée ici,
- * le rapprochement entre un item configuré sur le site et une référence du
- * catalogue devis-sarange reste un jugement humain.
+ * Écrit l'identité du prospect (nom, téléphone, email, adresse) plus le
+ * récapitulatif de sa demande en champs additionnels (leadJourney,
+ * leadProjectSummary, leadMessage). Quand la demande vient du configurateur
+ * (`project` + `leadId`, Apps Script v2.8), un devis BROUILLON est créé en
+ * plus dans users/{uid}/quotes avec une ligne par menuiserie
+ * (lib/lead-quote-service.js) : le bureau ouvre, vérifie et envoie.
  */
 
-const splitZip = (zip) => {
-  const match = String(zip || '').trim().match(/^(\d{4,5})\s+(.+)$/);
-  return match ? { codePostal: match[1], ville: match[2] } : { codePostal: '', ville: String(zip || '').trim() };
+// Code postal et ville : le configurateur envoie `zip` (5 chiffres) et `city`
+// séparés ; les anciens formulaires un seul champ « 77550 Moissy-Cramayel ».
+const resolveLocation = (body) => {
+  const zip = String(body?.zip || '').trim();
+  const city = String(body?.city || '').trim();
+  if (/^\d{4,5}$/.test(zip)) return { codePostal: zip, ville: city };
+  const match = zip.match(/^(\d{4,5})\s+(.+)$/);
+  if (match) return { codePostal: match[1], ville: city || match[2] };
+  return { codePostal: '', ville: city || zip };
 };
 
 export async function POST(request) {
@@ -55,7 +63,7 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { codePostal, ville } = splitZip(body?.zip);
+    const { codePostal, ville } = resolveLocation(body);
 
     const clientData = sanitizeClientData({
       nom: body?.name || '',
@@ -112,7 +120,25 @@ export async function POST(request) {
       console.error('Dossier de commission non créé pour ce lead :', dossierError);
     }
 
-    return NextResponse.json({ success: true, clientId, created: !existing.exists });
+    // Demande du configurateur : le brouillon de devis avec ses lignes.
+    // Best-effort aussi : la fiche client et l'email au bureau sont déjà là.
+    let quote = null;
+    if (Array.isArray(body?.project?.items) && body.project.items.length > 0) {
+      try {
+        quote = await importLeadQuote({
+          ownerUid,
+          clientId,
+          clientData,
+          project: body.project,
+          leadId: body?.leadId || body?.project?.leadId || '',
+        });
+      } catch (quoteError) {
+        console.error('Brouillon de devis non créé pour ce lead :', quoteError);
+        quote = { action: 'error' };
+      }
+    }
+
+    return NextResponse.json({ success: true, clientId, created: !existing.exists, quote });
   } catch (error) {
     console.error('Erreur API /leads:', error);
     return toRouteErrorResponse(error, "Impossible d'enregistrer ce lead.");
