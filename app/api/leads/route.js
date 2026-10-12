@@ -59,6 +59,8 @@ export async function POST(request) {
 
     const provided = request.headers.get('x-leads-secret') || '';
     if (provided !== secret) {
+      // Trace sans la valeur : un refus se lit dans les journaux Vercel.
+      console.warn(`[leads] refus 401 : secret ${provided ? 'différent' : 'absent'} (en-tête x-leads-secret)`);
       return NextResponse.json({ error: 'Non autorisé.' }, { status: 401 });
     }
 
@@ -137,6 +139,14 @@ export async function POST(request) {
         quote = { action: 'error' };
       }
     }
+
+    // Une ligne par lead dans les journaux Vercel : de quoi vérifier qu'une
+    // demande du site est bien arrivée, et ce qu'elle a produit.
+    console.log(
+      `[leads] ${body?.journey || body?.formMode || 'lead'} · client ${clientId} (${existing.exists ? 'mis à jour' : 'créé'})` +
+        ` · lead ${String(body?.leadId || '').slice(0, 8) || '-'} · ${Array.isArray(body?.project?.items) ? body.project.items.length : 0} ligne(s)` +
+        ` · devis ${quote ? `${quote.action}${quote.quoteId ? ` ${quote.quoteId}` : ''}${quote.reason ? ` (${quote.reason})` : ''}` : 'sans projet'}`
+    );
 
     return NextResponse.json({ success: true, clientId, created: !existing.exists, quote });
   } catch (error) {

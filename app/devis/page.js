@@ -310,6 +310,18 @@ function FiltersSheet({
           </label>
 
           <label className="block">
+            <span className="mb-1.5 block text-sm font-semibold text-slate-700">Source</span>
+            <div className="relative">
+              <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className={selectClass}>
+                <option value="all">Toutes</option>
+                <option value="site">Demandes du site</option>
+                <option value="bureau">Saisis au bureau</option>
+              </select>
+              <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            </div>
+          </label>
+
+          <label className="block">
             <span className="mb-1.5 block text-sm font-semibold text-slate-700">Client</span>
             <div className="relative">
               <select value={clientFilter} onChange={(e) => setClientFilter(e.target.value)} className={selectClass}>
@@ -445,6 +457,14 @@ function QuoteCard({
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${statusMeta.className}`}>
                 {statusMeta.label}
               </span>
+              {quote.leadImport && (
+                <span
+                  className="shrink-0 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-bold text-sky-700"
+                  title={`Brouillon créé depuis le configurateur du site${quote.leadImport.photoCount ? ` · ${quote.leadImport.photoCount} photo(s) à récupérer` : ''}`}
+                >
+                  Demande du site
+                </span>
+              )}
               {Number(quote.variantCount) > 1 && (
                 <span className="shrink-0 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-700">
                   {quote.variantCount} variantes
@@ -827,6 +847,9 @@ export default function SavedQuotesPage() {
   const [statusFilter, setStatusFilter]   = useState('all');
   const [clientFilter, setClientFilter]   = useState('all');
   const [periodFilter, setPeriodFilter]   = useState('all');
+  // Source : 'site' = brouillons créés depuis une demande du configurateur
+  // du site (quote.leadImport, cf. lib/lead-quote-service.js).
+  const [sourceFilter, setSourceFilter]   = useState('all');
   const [sortBy, setSortBy]           = useState('updated-desc');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -1262,13 +1285,14 @@ export default function SavedQuotesPage() {
   const normalizedSearch = normalizeSearchValue(deferredSearch);
   const hasActiveFilters =
     normalizedSearch || statusFilter !== 'all' || clientFilter !== 'all' ||
-    periodFilter !== 'all' || sortBy !== 'updated-desc';
+    periodFilter !== 'all' || sourceFilter !== 'all' || sortBy !== 'updated-desc';
 
   const activeFilterCount = [
     normalizedSearch ? 1 : 0,
     statusFilter !== 'all' ? 1 : 0,
     clientFilter !== 'all' ? 1 : 0,
     periodFilter !== 'all' ? 1 : 0,
+    sourceFilter !== 'all' ? 1 : 0,
     sortBy !== 'updated-desc' ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
@@ -1283,6 +1307,8 @@ export default function SavedQuotesPage() {
       }
       if (statusFilter !== 'all' && getQuoteDisplayStatus(q) !== statusFilter) return false;
       if (clientFilter !== 'all' && getQuoteClientId(q) !== clientFilter) return false;
+      if (sourceFilter === 'site' && !q.leadImport) return false;
+      if (sourceFilter === 'bureau' && q.leadImport) return false;
       return matchesPeriodFilter(q, periodFilter);
     }),
     sortBy
@@ -1296,6 +1322,7 @@ export default function SavedQuotesPage() {
     setStatusFilter('all');
     setClientFilter('all');
     setPeriodFilter('all');
+    setSourceFilter('all');
     setSortBy('updated-desc');
   };
 
@@ -1497,7 +1524,7 @@ export default function SavedQuotesPage() {
             </div>
 
             {/* Filtres desktop inline */}
-            <div className="hidden lg:grid gap-3 grid-cols-4 border-t border-slate-100 px-5 py-4">
+            <div className="hidden lg:grid gap-3 grid-cols-5 border-t border-slate-100 px-5 py-4">
               {[
                 {
                   label: 'Statut', value: statusFilter, onChange: setStatusFilter,
@@ -1505,6 +1532,10 @@ export default function SavedQuotesPage() {
                     ['all', 'Tous'], ['draft', 'Brouillons'], ['sent', 'Envoyés'],
                     ['signed', 'Signés'], ['archived', 'Archivés'],
                   ],
+                },
+                {
+                  label: 'Source', value: sourceFilter, onChange: setSourceFilter,
+                  options: [['all', 'Toutes'], ['site', 'Demandes du site'], ['bureau', 'Saisis au bureau']],
                 },
                 {
                   label: 'Client', value: clientFilter, onChange: setClientFilter,
