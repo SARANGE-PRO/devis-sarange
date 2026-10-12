@@ -145,7 +145,7 @@ export async function POST(request) {
     console.log(
       `[leads] ${body?.journey || body?.formMode || 'lead'} · client ${clientId} (${existing.exists ? 'mis à jour' : 'créé'})` +
         ` · lead ${String(body?.leadId || '').slice(0, 8) || '-'} · ${Array.isArray(body?.project?.items) ? body.project.items.length : 0} ligne(s)` +
-        ` · devis ${quote ? `${quote.action}${quote.quoteId ? ` ${quote.quoteId}` : ''}${quote.reason ? ` (${quote.reason})` : ''}` : 'sans projet'}`
+        ` · devis ${quote ? `${quote.action}${quote.quoteId ? ` ${quote.quoteId}` : ''}${quote.photoCount ? ` · ${quote.photoCount} photo(s)` : ''}${quote.reason ? ` (${quote.reason})` : ''}` : 'sans projet'}`
     );
 
     return NextResponse.json({ success: true, clientId, created: !existing.exists, quote });
