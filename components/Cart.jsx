@@ -46,6 +46,7 @@ import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/lib/quote-totals.mjs';
 import { formatCintrageShortLabel } from '@/lib/cintrage.mjs';
 import { formatTraverseBadge, getTraverseHeights } from '@/lib/traverses.mjs';
+import { formatPetitsBoisTypeLabel } from '@/lib/petits-bois.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -55,14 +56,16 @@ const getPetitsBoisConfig = (item = {}) => {
     Number.parseInt(item.petitsBoisV ?? (item.petitsBoisH == null ? legacyValue : 0), 10) || 0
   );
 
-  return { petitsBoisH, petitsBoisV };
+  return { petitsBoisH, petitsBoisV, petitsBoisType: item.petitsBoisType };
 };
 
-const formatPetitsBoisLabel = ({ petitsBoisH, petitsBoisV }) => {
+const formatPetitsBoisLabel = ({ petitsBoisH, petitsBoisV, petitsBoisType }) => {
   if (!petitsBoisH && !petitsBoisV) return '';
-  if (petitsBoisH && petitsBoisV) return `${petitsBoisH}H / ${petitsBoisV}V petits bois`;
-  if (petitsBoisH) return `${petitsBoisH} barre(s) horizontale(s)`;
-  return `${petitsBoisV} barre(s) verticale(s)`;
+  const typeLabel = formatPetitsBoisTypeLabel(petitsBoisType);
+  const suffix = typeLabel ? ` ${typeLabel}` : '';
+  if (petitsBoisH && petitsBoisV) return `${petitsBoisH}H / ${petitsBoisV}V petits bois${suffix}`;
+  if (petitsBoisH) return `${petitsBoisH} barre(s) horizontale(s)${suffix}`;
+  return `${petitsBoisV} barre(s) verticale(s)${suffix}`;
 };
 
 const formatPriceLabel = (value) => `${Number(value || 0).toFixed(2)} €`;

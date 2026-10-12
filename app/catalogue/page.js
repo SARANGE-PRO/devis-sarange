@@ -28,6 +28,8 @@ import {
   getProductById,
 } from '@/lib/products';
 import {
+  GLAZING_TARIFF_DATE,
+  PANEL_SANDWICH_ALU_GLAZING_ID,
   PANEL_SANDWICH_GLAZING_ID,
   createCustomGlazingId,
   getCustomGlazingOptionsSnapshot,
@@ -36,6 +38,11 @@ import {
   setCustomGlazingOptions,
   subscribeToGlazingOptions,
 } from '@/lib/glazing';
+import {
+  PETITS_BOIS_TYPES,
+  getPetitsBoisPricePerMl,
+  getPetitsBoisSupplementPerVolume,
+} from '@/lib/petits-bois.mjs';
 import {
   formatCoefficientDelta,
   getCatalogueCoefficientsServerSnapshot,
@@ -165,15 +172,34 @@ export default function CataloguePage() {
     getGlazingOptionsServerSnapshot
   );
 
-  const glazingEntries = useMemo(
-    () =>
-      availableGlazingOptions.filter(
-        (glazing) =>
-          glazing.id !== PANEL_SANDWICH_GLAZING_ID &&
-          !customGlazingOptions.some((custom) => custom.id === glazing.id)
-      ),
-    [availableGlazingOptions, customGlazingOptions]
-  );
+  // Tarifs vitrages : vitrages Riou du matériau (PVC puis aluminium), anciens
+  // vitrages à part (devis antérieurs), panneaux sandwich hors liste.
+  const glazingGroups = useMemo(() => {
+    const builtIn = availableGlazingOptions.filter(
+      (glazing) =>
+        glazing.id !== PANEL_SANDWICH_GLAZING_ID &&
+        glazing.id !== PANEL_SANDWICH_ALU_GLAZING_ID &&
+        !customGlazingOptions.some((custom) => custom.id === glazing.id)
+    );
+    return [
+      {
+        key: 'pvc',
+        label: 'PVC 28 mm',
+        entries: builtIn.filter((glazing) => !glazing.legacy && glazing.material === 'pvc'),
+      },
+      {
+        key: 'alu',
+        label: 'Aluminium 24 mm',
+        entries: builtIn.filter((glazing) => !glazing.legacy && glazing.material === 'alu'),
+      },
+      {
+        key: 'legacy',
+        label: 'Anciens vitrages (devis anterieurs)',
+        entries: builtIn.filter((glazing) => glazing.legacy),
+        collapsed: true,
+      },
+    ];
+  }, [availableGlazingOptions, customGlazingOptions]);
 
   const [draftInputs, setDraftInputs] = useState({});
   const [saveMessage, setSaveMessage] = useState('');
@@ -693,12 +719,6 @@ export default function CataloguePage() {
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
                   {
-                    key: 'pricing:baseGlassPricePerM2',
-                    label: 'Vitrage standard (EUR/m2)',
-                    value: currentPricing.baseGlassPricePerM2,
-                    onSave: (value) => setCataloguePricingValue('baseGlassPricePerM2', value),
-                  },
-                  {
                     key: 'pricing:panelSandwichPricePerM2',
                     label: 'Panneau sandwich PVC (EUR/m2)',
                     value: currentPricing.panelSandwichPricePerM2,
@@ -754,10 +774,11 @@ export default function CataloguePage() {
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
                   {
-                    key: 'pricing:petitsBoisPricePerMl',
-                    label: 'Petits bois (EUR/ml)',
-                    value: currentPricing.petitsBoisPricePerMl,
-                    onSave: (value) => setCataloguePricingValue('petitsBoisPricePerMl', value),
+                    key: 'pricing:petitsBoisMarkupCoefficient',
+                    label: 'Coefficient petits bois (x achat Riou)',
+                    value: currentPricing.petitsBoisMarkupCoefficient,
+                    onSave: (value) =>
+                      setCataloguePricingValue('petitsBoisMarkupCoefficient', value),
                   },
                   {
                     key: 'pricing:obPrice',
@@ -829,16 +850,69 @@ export default function CataloguePage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
-              <h4 className="text-sm font-bold text-slate-900">Vitrages standards (prix au m2)</h4>
+              <h4 className="text-sm font-bold text-slate-900">Petits bois integres (prix au ml)</h4>
               <p className="mt-1 text-xs text-slate-500">
+                Prix d&apos;achat Riou par profil et teinte ; prix de vente = achat x coefficient
+                petits bois (reglage ci-dessus).
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="text-slate-400">
+                      <th className="py-1 pr-3 font-semibold uppercase tracking-widest">Profil</th>
+                      <th className="py-1 pr-3 text-right font-semibold uppercase tracking-widest">
+                        Achat EUR/ml
+                      </th>
+                      <th className="py-1 text-right font-semibold uppercase tracking-widest">
+                        Vente EUR/ml
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {PETITS_BOIS_TYPES.map((type) => (
+                      <tr key={type.id} className="border-t border-slate-200">
+                        <td className="py-1.5 pr-3 font-semibold text-slate-700">
+                          {type.label}
+                          {type.supplementPerVolume
+                            ? ` (+ ${getPetitsBoisSupplementPerVolume(type.id, currentPricing).toFixed(2)} EUR par volume)`
+                            : ''}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right text-slate-500">
+                          {type.purchasePricePerMl.toFixed(2)}
+                        </td>
+                        <td className="py-1.5 text-right font-semibold text-slate-900">
+                          {getPetitsBoisPricePerMl(type.id, currentPricing).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:col-span-2">
+              <h4 className="text-sm font-bold text-slate-900">Vitrages (prix d&apos;achat au m2)</h4>
+              <p className="mt-1 text-xs text-slate-500">
+                Tarif Riou Glass du {GLAZING_TARIFF_DATE.split('-').reverse().join('/')}, warm-edge
+                et argon compris. Le vitrage clair FE de chaque materiau est inclus dans le prix des
+                menuiseries : les surcouts des autres vitrages se calculent par rapport a son prix.
                 Les vitrages personnalises se gerent dans la section dediee plus bas.
               </p>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {glazingEntries.map((glazing) => {
+              {glazingGroups.map((group) => {
+                const list = (
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {group.entries.map((glazing) => {
                   const currentValue =
                     currentPricing.glazingPrices?.[glazing.id] ?? glazing.purchasePricePerM2;
                   const key = `glazing:${glazing.id}`;
                   const inputValue = pricingDrafts[key] ?? formatPriceInput(currentValue);
+                  const meta = [
+                    glazing.riouRef ? `Ref. Riou ${glazing.riouRef}` : '',
+                    glazing.ug !== null && glazing.ug !== undefined ? `Ug ${glazing.ug}` : '',
+                    glazing.rw ? `Rw ${glazing.rw} dB` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ');
 
                   return (
                     <div
@@ -848,6 +922,7 @@ export default function CataloguePage() {
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-slate-900">{glazing.shortLabel}</p>
                         <p className="mt-1 text-xs text-slate-500">{glazing.label}</p>
+                        {meta && <p className="mt-1 text-xs text-slate-400">{meta}</p>}
                       </div>
                       <label className="block">
                         <span className="mb-1 block text-xs font-semibold uppercase tracking-widest text-slate-400">
@@ -875,6 +950,30 @@ export default function CataloguePage() {
                   );
                 })}
               </div>
+                );
+                return group.collapsed ? (
+                  <details
+                    key={group.key}
+                    className="mt-4 rounded-2xl border border-dashed border-slate-300 p-3"
+                  >
+                    <summary className="cursor-pointer text-xs font-bold uppercase tracking-widest text-slate-500">
+                      {group.label} ({group.entries.length})
+                    </summary>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Tarif precedent, conserve pour les devis qui les utilisent encore ; plus
+                      proposes sur un nouvel article.
+                    </p>
+                    {list}
+                  </details>
+                ) : (
+                  <div key={group.key} className="mt-4">
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                      {group.label}
+                    </p>
+                    {list}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>

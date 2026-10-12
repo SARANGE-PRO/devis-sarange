@@ -64,7 +64,14 @@ import {
   getDefaultGlazingId,
   PANEL_SANDWICH_GLAZING_ID,
   PANEL_SANDWICH_ALU_GLAZING_ID,
+  filterGlazingOptionsForMaterial,
+  getGlazingGroupLabel,
 } from '@/lib/glazing';
+import {
+  DEFAULT_PETITS_BOIS_TYPE_ID,
+  PETITS_BOIS_TYPES,
+  normalizePetitsBoisTypeId,
+} from '@/lib/petits-bois.mjs';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import CompositeFrameEditor from '@/components/CompositeFrameEditor';
 import VeluxConfigurator from '@/components/VeluxConfigurator';
@@ -128,6 +135,7 @@ const buildPetitsBoisState = (source = {}) => ({
   petitsBoisV: normalizePetitsBoisValue(
     source.petitsBoisV ?? (source.petitsBoisH == null ? source.petitsBois : 0)
   ),
+  petitsBoisType: normalizePetitsBoisTypeId(source.petitsBoisType),
 });
 
 // Hauteurs de traverses seules du formulaire : nouveau tableau, sinon l'ancien
@@ -169,6 +177,7 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   rawColorState: createDefaultColorState(),
   petitsBoisH: 0,
   petitsBoisV: 0,
+  petitsBoisType: DEFAULT_PETITS_BOIS_TYPE_ID,
   panneauDecoratif: false,
   manualUd: '',
   hasSousBassement: false,
@@ -261,12 +270,18 @@ const buildFillingSelectionMeta = ({
           traverseCount,
           colorOptionId,
           isAlu,
+          sheetName: product.sheet,
         })
       : EMPTY_FILLING_PRICING;
 
   const selectedGlazing = getSelectedGlazing(glazingId);
   const selectedPricing = buildPricing(selectedGlazing);
-  const options = glazingOptions
+  // Vitrages du matériau (tarif courant) ; le vitrage déjà retenu par un
+  // article d'un devis antérieur reste visible et sélectionné.
+  const options = filterGlazingOptionsForMaterial(glazingOptions, {
+    material: isAlu ? 'alu' : 'pvc',
+    selectedId: selectedGlazing?.id,
+  })
     .filter((glazing) => {
       if (glazing.id === PANEL_SANDWICH_GLAZING_ID) return !isAlu;
       if (glazing.id === PANEL_SANDWICH_ALU_GLAZING_ID) return isAlu;
@@ -290,6 +305,22 @@ const buildFillingSelectionMeta = ({
   };
 };
 
+// Options regroupées par famille (standard, sécurité, acoustique…), dans
+// l'ordre du tarif, pour les <optgroup> du sélecteur.
+const groupFillingOptions = (entries) => {
+  const groups = [];
+  entries.forEach((entry) => {
+    const label = getGlazingGroupLabel(entry.glazing);
+    let group = groups.find((candidate) => candidate.label === label);
+    if (!group) {
+      group = { label, entries: [] };
+      groups.push(group);
+    }
+    group.entries.push(entry);
+  });
+  return groups;
+};
+
 const formatFillingOptionLabel = (glazing, pricing) =>
   pricing?.totalExtra > 0
     ? `${glazing.shortLabel} (+${pricing.totalExtra.toFixed(2)} EUR)`
@@ -307,6 +338,9 @@ const getFillingOptionDetails = (glazing, pricing) => {
     glazing?.g !== undefined
   ) {
     details.push(`Ug=${glazing.ug} | g=${glazing.g}`);
+  }
+  if (glazing?.rwDb) {
+    details.push(`Rw ${glazing.rw || glazing.rwDb} dB`);
   }
 
   if (glazing?.thicknessMm) {
@@ -2326,10 +2360,14 @@ export default function ProductSelector({
                   onChange={(event) => updateSimpleOptions({ glazingId: event.target.value })}
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                 >
-                  {simpleFillingMeta.options.map(({ glazing, pricing }) => (
-                    <option key={glazing.id} value={glazing.id}>
-                      {formatFillingOptionLabel(glazing, pricing)}
-                    </option>
+                  {groupFillingOptions(simpleFillingMeta.options).map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.entries.map(({ glazing, pricing }) => (
+                        <option key={glazing.id} value={glazing.id}>
+                          {formatFillingOptionLabel(glazing, pricing)}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 {simpleSelectedGlazing && (
@@ -2409,6 +2447,26 @@ export default function ProductSelector({
                           className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
                         />
                       </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Profil et teinte
+                      </label>
+                      <select
+                        value={simpleConfig.petitsBoisType}
+                        onChange={(event) =>
+                          updateSimpleOptions({
+                            petitsBoisType: normalizePetitsBoisTypeId(event.target.value),
+                          })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      >
+                        {PETITS_BOIS_TYPES.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {type.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 

@@ -607,7 +607,9 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | Chemin | Role |
 | --- | --- |
 | `lib/products.js` | Coeur du moteur de catalogue, categories, options, composites, pricing unitaire et lineaire, dechets, thermiques. |
-| `lib/glazing.js` | Regles de vitrage, panneaux sandwich, surfaces utiles, prix au m2, indicateurs thermiques et store des vitrages personnalises. |
+| `lib/glazing.js` | Regles de vitrage, panneaux sandwich, surfaces utiles, surcouts au m2 (base = vitrage clair FE inclus du materiau, minimum 0,45 m2 par volume), indicateurs thermiques et store des vitrages personnalises. |
+| `lib/glazing-tariff.mjs` | Tarif d'achat vitrages Riou Glass du 24/07/2026 : 21 compositions declinees PVC 28 / alu 24 (warm-edge et argon inclus, Ug, Rw), anciens vitrages conserves en `legacy` pour les devis anterieurs. Module pur. |
+| `lib/petits-bois.mjs` | Petits bois integres : profils et teintes Riou, prix d'achat au ml, vente = achat x coefficient catalogue (`petitsBoisMarkupCoefficient`), forfait teinte hors standard. Module pur. |
 | `lib/menuiserie.js` | Construction de configurations de rendu a partir des options produit. |
 | `lib/cintrage.mjs` | Menuiseries cintrees (categorie « Formes speciales ») : geometrie de l'arc (rayon, fleche bornee a L/2, hauteur totale), regle de prix (fixe cintre en imposte ajoute au calcul standard, ou prix total manuel qui desactive le calcul automatique en cintre integre sous-traite), lignes de designation. Module pur, teste dans `tests/cintrage.test.mjs`. |
 | `lib/traverses.mjs` | Soubassement et traverses intermediaires : hauteurs visibles normalisees (`traverseHeights`, jusqu'a 4 traverses, ancien champ `traverseHeight` encore lu), libelles de designation, et decoupe verticale partagee par le SVG et le canvas (le soubassement est la barre la plus basse, seule sa partie basse etant un panneau opaque ; les traverses se placent au-dessus de lui). Module pur. |
