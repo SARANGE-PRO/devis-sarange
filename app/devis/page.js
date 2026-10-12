@@ -231,6 +231,7 @@ const canQuoteReceiveReminder = (quote) => {
 function FiltersSheet({
   isOpen, onClose,
   statusFilter, setStatusFilter,
+  sourceFilter, setSourceFilter,
   clientFilter, setClientFilter,
   periodFilter, setPeriodFilter,
   sortBy, setSortBy,
@@ -1726,6 +1727,7 @@ export default function SavedQuotesPage() {
         isOpen={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+        sourceFilter={sourceFilter} setSourceFilter={setSourceFilter}
         clientFilter={clientFilter} setClientFilter={setClientFilter}
         periodFilter={periodFilter} setPeriodFilter={setPeriodFilter}
         sortBy={sortBy} setSortBy={setSortBy}
