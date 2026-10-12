@@ -47,6 +47,7 @@ import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/
 import { formatCintrageShortLabel } from '@/lib/cintrage.mjs';
 import { formatTraverseBadge, getTraverseHeights } from '@/lib/traverses.mjs';
 import { formatPetitsBoisTypeLabel } from '@/lib/petits-bois.mjs';
+import LeadPhotoStrip from '@/components/LeadPhotoStrip';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -347,6 +348,9 @@ function SortableCartItem({
                     <li key={index}>{note}</li>
                   ))}
                 </ul>
+              )}
+              {item.leadId && (item.leadShowAllPhotos || (Array.isArray(item.leadPhotos) && item.leadPhotos.length > 0)) && (
+                <LeadPhotoStrip leadId={item.leadId} uploadIds={item.leadShowAllPhotos ? null : item.leadPhotos} />
               )}
             </div>
           )}

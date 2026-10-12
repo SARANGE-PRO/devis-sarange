@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 
 const {
+  attachLeadPhotos,
   buildLeadCartItems,
   buildLeadQuoteTitle,
   colorStateFromLead,
@@ -219,6 +220,42 @@ run('la demande complete fait un devis brouillon valide pour l app, avec son tit
   assert.deepEqual(record.payload.cartItems[0].leadNotes, []);
   assert.equal(record.payload.cartItems[0].leadTitle, 'Fenêtre, 2 vantaux, pvc, blanc, 120 × 125 cm');
   assert.equal(leadPhotoCount(project([fenetre({ photoCount: 2 }), fenetre({ photoCount: 1 })])), 3);
+});
+
+run('photos : identifiant du projet sur chaque ligne, rattachement par ligne ou toutes sur la premiere', () => {
+  const lp = (n) => `lp_${String(n).repeat(32)}`;
+  const items = buildLeadCartItems(
+    project([
+      fenetre({ photoCount: 2, photos: [{ uploadId: lp('a'), name: 'salon.jpg' }, { uploadId: 'pas-un-id' }] }),
+      fenetre({ photoCount: 0 }),
+      { familleId: 'volet-roulant', quantity: 1, title: 'Volet', productId: 'volet-radio', colorOptionId: 'blanc', widthMm: 1000, heightMm: 1400, notes: [], extraLines: ['volet-box-domotique'] },
+    ]),
+    { leadId: 'f60ad61c-1154-47a5-a887-fb4397f14ea4' }
+  );
+  assert.ok(items.every((item) => item.leadId === 'f60ad61c-1154-47a5-a887-fb4397f14ea4'));
+  assert.deepEqual(items[0].leadPhotos, [lp('a')]);
+  assert.ok(items[0].leadNotes.some((n) => /1 photo\(s\) non transmise/.test(n)));
+  assert.deepEqual(items[1].leadPhotos, []);
+  assert.deepEqual(items[3].leadPhotos, [], 'la box aussi porte le leadId et une liste vide');
+  // Storage connait a, b et c : a reste sur sa ligne, b et c (orphelines) s'affichent sur la premiere ligne.
+  const stored = [{ uploadId: lp('a') }, { uploadId: lp('b') }, { uploadId: lp('c') }];
+  assert.deepEqual(attachLeadPhotos(items, stored), { known: 1, orphans: 2 });
+  assert.equal(items[0].leadShowAllPhotos, true);
+  assert.equal(items[1].leadShowAllPhotos, undefined);
+  // Une photo annoncee par le site mais absente de Storage disparait de la ligne.
+  const absent = buildLeadCartItems(project([fenetre({ photoCount: 1, photos: [{ uploadId: lp('d') }] })]), { leadId: 'abc12345' });
+  assert.deepEqual(attachLeadPhotos(absent, []), { known: 0, orphans: 0 });
+  assert.deepEqual(absent[0].leadPhotos, []);
+  assert.equal(absent[0].leadShowAllPhotos, undefined);
+  // Sans correspondance du tout, la premiere ligne montre tout et le dit.
+  const none = buildLeadCartItems(project([fenetre({ photoCount: 2 })]), { leadId: 'abc12345' });
+  attachLeadPhotos(none, stored);
+  assert.equal(none[0].leadShowAllPhotos, true);
+  assert.ok(none[0].leadNotes.some((n) => /3 photo\(s\) de la demande/.test(n)));
+  // La ligne survit a la normalisation du devis avec ses champs photo.
+  const record = buildQuoteDraftRecord({ title: 'x', clientData: { nom: 'a' }, cartItems: items, tvaRate: 10, currentStep: 2 });
+  assert.equal(record.payload.cartItems[0].leadId, 'f60ad61c-1154-47a5-a887-fb4397f14ea4');
+  assert.deepEqual(record.payload.cartItems[0].leadPhotos, [lp('a')]);
 });
 
 run('vantail principal, etat de couleur et empreinte stable', () => {

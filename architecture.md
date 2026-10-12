@@ -1183,7 +1183,18 @@ lineCount } }` avec `action` = `created` | `updated` | `skipped` | `none` |
 `error`. Comme le reste de la route, l'import est best-effort : un echec ne
 bloque ni la fiche client ni l'email au bureau.
 
-Reste a faire : les photos du configurateur (compressees dans le telephone)
-ne sont pas encore recues ; `leadImport.photoCount` dit seulement combien il
-y en a. Une route publique de depot sur le modele de `stageCompletionPhoto`
-est prevue (voir `docs/configurateur-reste-a-faire.md` cote site).
+Photos : le site envoie chaque photo DES LA PRISE, depuis le navigateur du
+visiteur, a `POST /api/leads/photos` (route publique, une photo par requete
+en multipart, CORS limite aux origines du site : www.sarange.fr, previews
+`site-sarange-*.vercel.app`, localhost). `lib/lead-photo-service.js` verifie
+le `leadId`, la taille (2,5 Mo), la signature binaire (JPEG, PNG, WebP) et le
+nombre par projet (30), puis ecrit dans Storage sous
+`configurateur-photos/{leadId}/{uploadId}.jpg` avec le nom, les dimensions et
+l'identifiant local de la photo en metadonnees. A l'import du brouillon,
+`listLeadPhotos(leadId)` retrouve toutes les photos du projet :
+`attachLeadPhotos` les rattache a leur ligne (`item.leadPhotos`, d'apres
+`line.photos` relaye par le script v2.10) ou, sans correspondance, les montre
+toutes sur la premiere ligne (`leadShowAllPhotos`). `leadImport.photos` garde
+la liste. Dans le panier, `components/LeadPhotoStrip.jsx` lit
+`GET /api/leads/photos?leadId=` (jeton Firebase, URL signees v4 d'une heure)
+une fois par projet et affiche les vignettes sous la ligne.
