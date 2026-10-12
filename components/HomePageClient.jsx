@@ -334,8 +334,12 @@ function PoseSafetyAlert({ missingItems, onAddMissing, onDismiss }) {
 export default function HomePageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, initializing: authInitializing, isConfigured: firebaseConfigured } =
-    useFirebaseAuth();
+  const {
+    user,
+    initializing: authInitializing,
+    isConfigured: firebaseConfigured,
+    access,
+  } = useFirebaseAuth();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [clientData, setClientData] = useState(null);
@@ -352,6 +356,10 @@ export default function HomePageClient() {
   const [variantNotice, setVariantNotice] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
+  // Suivi « Vente Ange » (administrateurs) : vrai quand le devis courant a déjà
+  // un dossier /commissions synchronisé (ou a été chargé avec la case cochée),
+  // pour resynchroniser aussi après un décochage.
+  const venteAngeSyncedRef = useRef(false);
   const [isSavingQuote, setIsSavingQuote] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -590,6 +598,7 @@ export default function HomePageClient() {
     setVariantNotice('');
     setEditingItem(null);
     setActiveQuoteId(null);
+    venteAngeSyncedRef.current = false;
     setSaveMessage('');
     setSaveError('');
     setQuoteLoadError('');
@@ -679,6 +688,12 @@ export default function HomePageClient() {
       : 2;
     setCurrentStep(Math.min(3, Math.max(1, nextStep)));
     setEditingItem(null);
+    // Devis chargé avec la case « Vente Ange » : un dossier /commissions existe
+    // (ou devrait), on resynchronisera même si la case est décochée ensuite.
+    venteAngeSyncedRef.current =
+      payload.quoteSettings?.venteAnge === true ||
+      (Array.isArray(payload.variants) &&
+        payload.variants.some((variant) => variant?.quoteSettings?.venteAnge === true));
     setActiveQuoteId(quote.id);
     setSaveMessage('');
     setSaveError('');
@@ -1014,6 +1029,42 @@ export default function HomePageClient() {
       ? { ...(clientData || {}), clientType: clientTypeOverride }
       : clientData;
 
+  // Dossier /commissions d'un devis « Vente Ange » : création, mise à jour ou
+  // suppression (case décochée et dossier encore vierge) via l'API, réservée aux
+  // administrateurs. Jamais bloquant : un échec laisse un message discret.
+  const syncVenteAngeDossier = async (savedQuote, { enabled, stage }) => {
+    try {
+      const idToken = await user.getIdToken();
+      const response = await fetch('/api/commissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({
+          action: 'sync-quote',
+          data: {
+            quoteId: savedQuote.id,
+            quoteNumber: savedQuote.quoteNumber || '',
+            clientName: savedQuote.clientName || '',
+            city: savedQuote.payload?.clientData?.ville || '',
+            // Prix de vente = total HT du devis (variante active en multi-options).
+            salePrice: Number.isFinite(Number(savedQuote.totalHT)) ? Number(savedQuote.totalHT) : null,
+            stage,
+            enabled,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error || 'Suivi des ventes indisponible.');
+      }
+      venteAngeSyncedRef.current = enabled;
+    } catch (error) {
+      console.error('Suivi « Vente Ange » non mis à jour :', error);
+      setSaveError(
+        "Devis enregistré, mais le suivi « Vente Ange » n'a pas pu être mis à jour. Enregistrez à nouveau pour réessayer."
+      );
+    }
+  };
+
   const persistQuoteToCloud = async ({ origin = 'manual', clientTypeOverride = '' } = {}) => {
     if (!firebaseConfigured) {
       if (origin === 'manual') {
@@ -1112,6 +1163,18 @@ export default function HomePageClient() {
       // Le devis est désormais persisté en base : le brouillon local n'a plus lieu d'être.
       clearLocalDraft();
       setDraftRestored(false);
+
+      // Suivi « Vente Ange » (administrateurs) : ligne /commissions synchronisée
+      // après chaque enregistrement ; aussi quand la case vient d'être décochée.
+      const venteAngeChecked =
+        quoteSettings?.venteAnge === true ||
+        materializedVariants.some((variant) => variant?.quoteSettings?.venteAnge === true);
+      if (access?.isAdmin === true && (venteAngeChecked || venteAngeSyncedRef.current)) {
+        await syncVenteAngeDossier(savedQuote, {
+          enabled: venteAngeChecked,
+          stage: ['pdf', 'delivery'].includes(origin) ? 'sent' : 'draft',
+        });
+      }
 
       if (origin === 'pdf') {
         setSaveMessage(

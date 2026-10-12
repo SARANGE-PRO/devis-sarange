@@ -7,6 +7,7 @@ import {
   deleteCommissionDossier,
   importLeadCommissionDossiers,
   listCommissionDossiers,
+  syncQuoteCommissionDossier,
   updateCommissionDossier,
 } from '@/lib/commission-service';
 
@@ -23,14 +24,20 @@ export async function GET(request) {
 }
 
 /**
- * Action : { action: 'create' | 'update' | 'delete' | 'import-leads', id?, data? }.
- * Renvoie la liste à jour après chaque action (volume faible, client simple).
+ * Action : { action: 'create' | 'update' | 'delete' | 'import-leads' | 'sync-quote', id?, data? }.
+ * Renvoie la liste à jour après chaque action (volume faible, client simple),
+ * sauf `sync-quote` (appelée par l'app devis à chaque enregistrement d'un devis
+ * « Vente Ange ») qui ne renvoie que le résultat de la synchronisation.
  */
 export async function POST(request) {
   try {
     const user = await verifyFirebaseUserFromRequest(request);
     const body = await request.json();
     const action = body?.action;
+
+    if (action === 'sync-quote') {
+      return NextResponse.json({ sync: await syncQuoteCommissionDossier(user, body?.data) });
+    }
 
     let imported = null;
     if (action === 'create') {

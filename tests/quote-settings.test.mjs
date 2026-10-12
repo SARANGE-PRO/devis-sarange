@@ -329,4 +329,16 @@ run('les conditions de reglement du PDF ne promettent plus « garantis 10 ans »
   assert.ok(!terms.toLowerCase().includes('arrhes'));
 });
 
+run('vente Ange : marqueur interne, décoché par défaut et sur les anciens devis', () => {
+  assert.equal(normalizeQuoteSettings().venteAnge, false);
+  assert.equal(normalizeQuoteSettings({}).venteAnge, false);
+  assert.equal(normalizeQuoteSettings({ venteAnge: true }).venteAnge, true);
+  assert.equal(normalizeQuoteSettings({ venteAnge: 'oui' }).venteAnge, false);
+  assert.equal(normalizeQuoteSettings({ venteAnge: 1 }).venteAnge, false);
+  // Aucun effet sur les textes du devis.
+  const avec = buildPaymentTermsForPdf({ paymentMode: 'standard', venteAnge: true }).join('\n');
+  const sans = buildPaymentTermsForPdf({ paymentMode: 'standard', venteAnge: false }).join('\n');
+  assert.equal(avec, sans);
+});
+
 console.log('Tous les tests de reglages de devis ont reussi.');

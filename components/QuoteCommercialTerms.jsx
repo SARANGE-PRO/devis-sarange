@@ -9,6 +9,7 @@ import {
   Handshake,
   Hourglass,
 } from 'lucide-react';
+import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   buildPaymentTermsSentence,
   getDeliveryDelayLabel,
@@ -62,6 +63,9 @@ export default function QuoteCommercialTerms({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showNatureOverrides, setShowNatureOverrides] = useState(false);
+  // « Vente Ange » : case réservée aux administrateurs (suivi /commissions).
+  const { access } = useFirebaseAuth();
+  const isAdmin = access?.isAdmin === true;
   const settings = normalizeQuoteSettings(quoteSettings);
   const effectiveTotalTTC = totals?.totalTTC ?? totalTTC;
   const planValidation = getPaymentPlanValidation(settings, totals, cartItems);
@@ -148,6 +152,11 @@ export default function QuoteCommercialTerms({
               {settings.commissionMode !== 'amount' && settings.commissionPercent > 0 && (
                 <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 font-semibold text-orange-700">
                   Commission {settings.commissionPercent}%
+                </span>
+              )}
+              {isAdmin && settings.venteAnge && (
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
+                  Vente Ange
                 </span>
               )}
             </div>
@@ -725,6 +734,36 @@ export default function QuoteCommercialTerms({
                   </p>
                 )}
               </div>
+
+              {/* Suivi interne des ventes Ange (administrateurs) : une ligne dans la
+                  page /commissions, synchronisée à chaque enregistrement du devis.
+                  Aucun effet sur le devis, le PDF ou les e-mails. */}
+              {isAdmin && (
+                <label
+                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${
+                    settings.venteAnge
+                      ? 'border-emerald-200 bg-emerald-50'
+                      : 'border-slate-200 bg-slate-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.venteAnge}
+                    onChange={(event) => updateSettings({ venteAnge: event.target.checked })}
+                    className="mt-1 accent-emerald-600"
+                  />
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">Vente Ange</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      À l&apos;enregistrement du devis, une ligne est ajoutée au suivi des
+                      commissions (icône €) avec le nom du client, le statut et le prix de
+                      vente HT. Le prix SARANGE se renseigne là-bas. Le statut passe en
+                      « Devis envoyé » au PDF ou à l&apos;envoi, puis en « Vendu » à la
+                      signature.
+                    </p>
+                  </div>
+                </label>
+              )}
             </div>
 
             <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">

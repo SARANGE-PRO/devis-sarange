@@ -1,11 +1,13 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   AlertTriangle,
   Banknote,
   Download,
   Euro,
+  FileText,
   Globe,
   Handshake,
   Loader2,
@@ -329,6 +331,35 @@ function MoneyField({ label, value, onSave, tone = 'text-slate-800' }) {
   );
 }
 
+/** Badge « Vente Ange » d'un dossier issu d'un devis coché : ouvre le devis d'origine. */
+function QuoteSourceBadge({ dossier }) {
+  if (dossier.source !== COMMISSION_SOURCES.QUOTE) return null;
+  const className =
+    'inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600';
+  const content = (
+    <>
+      <FileText size={10} />
+      Vente Ange{dossier.quoteNumber ? ` · ${dossier.quoteNumber}` : ''}
+    </>
+  );
+  if (!dossier.quoteId) {
+    return (
+      <span className={className} title="Devis coché « Vente Ange »">
+        {content}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={`/?quote=${encodeURIComponent(dossier.quoteId)}`}
+      title="Ouvrir le devis d'origine"
+      className={`${className} transition-colors hover:bg-emerald-100`}
+    >
+      {content}
+    </Link>
+  );
+}
+
 /** Carte mobile d'un dossier : tout se fait au pouce, sans défilement latéral. */
 function DossierCard({ dossier, pending, saveField, onDelete, expanded, onToggleExpand, documentsPanel }) {
   const commission = computeCommission(dossier);
@@ -365,6 +396,7 @@ function DossierCard({ dossier, pending, saveField, onDelete, expanded, onToggle
                 E-mail
               </span>
             )}
+            <QuoteSourceBadge dossier={dossier} />
           </div>
         </div>
         <button
@@ -664,7 +696,7 @@ export default function CommissionsPage() {
           </div>
         ) : list.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
-            Aucun dossier pour l&apos;instant. Les demandes de prix reçues du site internet arrivent ici
+            Aucun dossier pour l&apos;instant. Les devis cochés « Vente Ange » et les demandes de prix reçues du site internet arrivent ici
             automatiquement, au statut « En attente de devis ».
           </div>
         ) : (
@@ -747,6 +779,7 @@ export default function CommissionsPage() {
                                   E-mail
                                 </span>
                               )}
+                              <QuoteSourceBadge dossier={dossier} />
                             </div>
                             {dossier.createdAt && (
                               <p className="px-2 text-[11px] text-slate-300">{formatDate(dossier.createdAt)}</p>
@@ -854,8 +887,11 @@ export default function CommissionsPage() {
 
         <p className="text-xs text-slate-400">
           Chaque demande de prix reçue depuis le site internet crée automatiquement son dossier ici, au statut
-          « En attente de devis ». La commission = prix de vente - prix Sarange, uniquement quand le dossier est
-          vendu. Saisissez les paiements reçus dans « Payé par Sarange » : le total dû se met à jour aussitôt.
+          « En attente de devis ». Les devis cochés « Vente Ange » (conditions commerciales) arrivent aussi ici
+          avec le nom du client et le prix de vente HT ; ils passent en « Devis envoyé » au PDF ou à l&apos;envoi,
+          puis en « Vendu » à la signature électronique. La commission = prix de vente - prix Sarange, uniquement
+          quand le dossier est vendu. Saisissez les paiements reçus dans « Payé par Sarange » : le total dû se met
+          à jour aussitôt.
         </p>
       </div>
     );

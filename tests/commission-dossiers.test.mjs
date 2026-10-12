@@ -4,14 +4,19 @@ import {
   COMMISSION_STATUSES,
   DEFAULT_COMMISSION_STATUS,
   buildLeadDossierLabel,
+  buildQuoteDossierId,
+  buildQuoteDossierLabel,
   commissionStatusLabel,
   computeBalance,
   computeCommission,
   computeCommissionTotals,
+  isUntouchedQuoteDossier,
   normalizeCommissionDossier,
   normalizeCommissionStatus,
   parseMoneyInput,
+  resolveQuoteDossierStatus,
   sanitizeCommissionDossierInput,
+  sanitizeQuoteSyncInput,
 } from '../lib/commission-dossiers.mjs';
 
 const run = (name, fn) => {
@@ -140,4 +145,75 @@ run('libellé d’un lead du site : nom, ville, replis', () => {
   assert.equal(buildLeadDossierLabel({ ville: 'Nantes' }), 'Nantes');
   assert.equal(buildLeadDossierLabel({}), 'Demande du site');
   assert.equal(buildLeadDossierLabel(), 'Demande du site');
+});
+
+run('vente Ange : identifiant et libellé du dossier d’un devis', () => {
+  assert.equal(buildQuoteDossierId('abc123'), 'quote-abc123');
+  assert.equal(buildQuoteDossierId('  abc123  '), 'quote-abc123');
+  assert.equal(buildQuoteDossierId(''), '');
+  assert.equal(buildQuoteDossierId(null), '');
+  assert.equal(buildQuoteDossierLabel({ clientName: 'Marie Dupont', city: 'Nantes' }), 'Marie Dupont (Nantes)');
+  assert.equal(buildQuoteDossierLabel({ clientName: 'Marie Dupont' }), 'Marie Dupont');
+  assert.equal(buildQuoteDossierLabel({ quoteNumber: 'D-2026-001' }), 'Devis D-2026-001');
+  assert.equal(buildQuoteDossierLabel({}), 'Devis');
+  assert.equal(COMMISSION_SOURCES.QUOTE, 'vente-ange');
+  assert.equal(normalizeCommissionDossier({ source: 'vente-ange', quoteId: 'q1', quoteNumber: 'N1' }).source, 'vente-ange');
+  assert.equal(normalizeCommissionDossier({ quoteId: ' q1 ' }).quoteId, 'q1');
+  assert.equal(normalizeCommissionDossier({}).quoteNumber, '');
+});
+
+run('vente Ange : le statut ne fait que progresser', () => {
+  // Création.
+  assert.equal(resolveQuoteDossierStatus(null, 'draft'), 'attente-devis');
+  assert.equal(resolveQuoteDossierStatus(null, 'sent'), 'devis-envoye');
+  assert.equal(resolveQuoteDossierStatus(null, 'signed'), 'vendu');
+  // Mise à jour : brouillon → inchangé, envoi → devis envoyé seulement depuis l’attente.
+  assert.equal(resolveQuoteDossierStatus('attente-devis', 'draft'), 'attente-devis');
+  assert.equal(resolveQuoteDossierStatus('devis-envoye', 'draft'), 'devis-envoye');
+  assert.equal(resolveQuoteDossierStatus('attente-devis', 'sent'), 'devis-envoye');
+  assert.equal(resolveQuoteDossierStatus('vendu', 'sent'), 'vendu');
+  assert.equal(resolveQuoteDossierStatus('perdu', 'sent'), 'perdu');
+  assert.equal(resolveQuoteDossierStatus('perdu', 'draft'), 'perdu');
+  // Signature : vendu, quoi qu’il arrive.
+  assert.equal(resolveQuoteDossierStatus('perdu', 'signed'), 'vendu');
+  // Étape inconnue = brouillon.
+  assert.equal(resolveQuoteDossierStatus('attente-devis', 'nimporte'), 'attente-devis');
+});
+
+run('vente Ange : un dossier vierge peut être supprimé au décochage, pas un dossier travaillé', () => {
+  assert.equal(isUntouchedQuoteDossier({ status: 'attente-devis', salePrice: 1200 }), true);
+  assert.equal(isUntouchedQuoteDossier({ status: 'devis-envoye', salePrice: 1200, paidAmount: 0, documents: [] }), true);
+  assert.equal(isUntouchedQuoteDossier({ status: 'attente-devis', purchasePrice: 900 }), false);
+  assert.equal(isUntouchedQuoteDossier({ status: 'attente-devis', paidAmount: 50 }), false);
+  assert.equal(isUntouchedQuoteDossier({ status: 'attente-devis', documents: [{ id: 'doc_1' }] }), false);
+  assert.equal(isUntouchedQuoteDossier({ status: 'vendu' }), false);
+  assert.equal(isUntouchedQuoteDossier({ status: 'perdu' }), false);
+});
+
+run('vente Ange : payload de synchronisation nettoyé', () => {
+  const input = sanitizeQuoteSyncInput({
+    quoteId: ' q42 ',
+    quoteNumber: 'D-2026-042',
+    clientName: 'Marie Dupont',
+    city: 'Nantes',
+    salePrice: 12345.678,
+    stage: 'sent',
+    enabled: true,
+  });
+  assert.deepEqual(input, {
+    quoteId: 'q42',
+    quoteNumber: 'D-2026-042',
+    label: 'Marie Dupont (Nantes)',
+    salePrice: 12345.68,
+    stage: 'sent',
+    enabled: true,
+  });
+  const vide = sanitizeQuoteSyncInput(null);
+  assert.equal(vide.quoteId, '');
+  assert.equal(vide.label, 'Devis');
+  assert.equal(vide.salePrice, null);
+  assert.equal(vide.stage, 'draft');
+  assert.equal(vide.enabled, false);
+  assert.equal(sanitizeQuoteSyncInput({ enabled: 'true' }).enabled, false);
+  assert.equal(sanitizeQuoteSyncInput({ salePrice: -5 }).salePrice, null);
 });
