@@ -48,6 +48,8 @@ import { quoteIncludesPose } from '@/lib/line-nature.mjs';
 import EmailConfirmationModal, { useEmailConfirmation } from '@/components/EmailConfirmationModal';
 import CompletionSendModal from '@/components/CompletionSendModal';
 import LiftSendModal from '@/components/LiftSendModal';
+import QuoteFollowUp from '@/components/QuoteFollowUp';
+import { countQuotesToFollowUp } from '@/lib/quote-follow-up.mjs';
 import {
   BellRing,
   Check,
@@ -853,6 +855,8 @@ export default function SavedQuotesPage() {
   const [sourceFilter, setSourceFilter]   = useState('all');
   const [sortBy, setSortBy]           = useState('updated-desc');
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Vue : liste complète, ou suivi des devis envoyés (relances dues, renvois).
+  const [viewMode, setViewMode] = useState('list');
 
   const deferredSearch = useDeferredValue(searchTerm);
 
@@ -1317,6 +1321,8 @@ export default function SavedQuotesPage() {
 
   const visibleTotalTTC = filteredQuotes.reduce((s, q) => s + (q.totalTTC || 0), 0);
   const totalQuotesHT   = quotes.reduce((s, q) => s + (q.totalHT || 0), 0);
+  // Devis envoyés qui demandent une action aujourd'hui : relance due ou renvoi.
+  const followUpCount = countQuotesToFollowUp(quotes);
 
   const resetFilters = () => {
     setSearchTerm('');
@@ -1398,15 +1404,28 @@ export default function SavedQuotesPage() {
                 { label: 'Devis',         value: quotes.length,                              big: true },
                 { label: 'Clients',        value: clients.length,                             big: true },
                 { label: 'Portefeuille HT', value: currencyFormatter.format(totalQuotesHT),  big: false },
-                { label: 'Dernière activité', value: quotes[0]?.updatedAt
-                    ? formatQuoteUpdatedAt(quotes[0].updatedAt)
-                    : '—',                                                                    big: false },
-              ].map(({ label, value, big }) => (
-                <div key={label} className="bg-white p-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
-                  <p className={`mt-1 font-black text-slate-900 ${big ? 'text-2xl' : 'text-sm'}`}>{value}</p>
-                </div>
-              ))}
+                { label: 'À relancer',      value: followUpCount,                              big: true,
+                  accent: followUpCount > 0,
+                  onClick: () => { setShowTrash(false); setViewMode('suivi'); } },
+              ].map(({ label, value, big, accent, onClick }) =>
+                onClick ? (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={onClick}
+                    className="bg-white p-4 text-left transition-colors hover:bg-orange-50"
+                    title="Ouvrir le suivi des devis envoyés"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className={`mt-1 font-black ${accent ? 'text-orange-600' : 'text-slate-900'} ${big ? 'text-2xl' : 'text-sm'}`}>{value}</p>
+                  </button>
+                ) : (
+                  <div key={label} className="bg-white p-4">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className={`mt-1 font-black text-slate-900 ${big ? 'text-2xl' : 'text-sm'}`}>{value}</p>
+                  </div>
+                )
+              )}
             </div>
           </div>
 
@@ -1468,6 +1487,48 @@ export default function SavedQuotesPage() {
           )}
 
           {!showTrash && (
+            <>
+          {/* ── Vue : tous les devis / suivi des envois ───────────────── */}
+          <div className="flex gap-1 rounded-2xl border border-slate-200 bg-white p-1 shadow-sm">
+            {[
+              ['list', 'Tous les devis', 0],
+              ['suivi', 'Suivi des envois', followUpCount],
+            ].map(([mode, label, badge]) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setViewMode(mode)}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-bold transition-colors ${
+                  viewMode === mode ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                {label}
+                {badge > 0 && (
+                  <span
+                    className={`flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-black ${
+                      viewMode === mode ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700'
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {viewMode === 'suivi' && (
+            <QuoteFollowUp
+              quotes={quotes}
+              loading={loadingQuotes}
+              actionId={actionId}
+              actionKind={actionKind}
+              onSendReminder={handleSendReminder}
+              onSendForSignature={handleSendForSignature}
+              onCopySignatureLink={handleCopySignatureLink}
+            />
+          )}
+
+          {viewMode === 'list' && (
             <>
           {/* ── Barre de recherche + filtres ───────────────────────────── */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1694,6 +1755,8 @@ export default function SavedQuotesPage() {
                 />
               ))}
             </div>
+          )}
+            </>
           )}
             </>
           )}
