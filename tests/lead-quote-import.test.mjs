@@ -22,6 +22,9 @@ const {
 const { calculateItemPrice } = await import('../lib/products.js');
 const { computeQuoteTotals } = await import('../lib/quote-totals.mjs');
 const { buildQuoteDraftRecord } = await import('../lib/quote-cloud.js');
+const { buildPanelSelections } = await import('../lib/panel-selections.mjs');
+const { generateDesignation } = await import('../lib/designation-generator.js');
+const { panelPlusValueHT } = await import('../lib/door-panel-pricing.mjs');
 
 const run = (name, fn) => {
   try {
@@ -125,7 +128,7 @@ run('sans cotes, la ligne existe a 0 avec une note ; hors grille, le tarif de re
   assert.ok(hors.leadNotes.some((n) => /hors grille/.test(n)));
 });
 
-run('porte d entree : grille reno, panneau et parties fixes en notes, jamais devines', () => {
+run('porte d entree : grille reno, panneau du site repris, parties fixes en notes', () => {
   const [item] = buildLeadCartItems(
     project([
       {
@@ -139,11 +142,66 @@ run('porte d entree : grille reno, panneau et parties fixes en notes, jamais dev
   );
   assert.equal(item.productId, 'porte-reno');
   assert.equal(item.unitPrice, 1027);
-  assert.equal(item.panneauDecoratif, false);
-  assert.ok(item.glazingOption, 'une porte sans panneau décoratif est vitrée pour le formulaire');
+  // Demande antérieure (libellé seul) : le panneau est quand même repris.
+  assert.equal(item.panneauDecoratif, true);
+  assert.equal(item.glazingOption, null, 'une porte à panneau décoratif n a pas de vitrage de formulaire');
+  assert.equal(item.panelChoice.panelName, 'REVA 62');
+  assert.equal(item.panelChoice.couleur, 'Gris Anthracite (RAL 7016) - 2 faces');
+  // REVA 62 est premium : la plus-value du sélecteur est reprise pour la signature.
+  assert.equal(item.panelChoice.plusValueTotaleHT, panelPlusValueHT('REVA 62'));
+  assert.ok(item.panelChoice.plusValueTotaleHT > 0);
+  assert.equal('plusValueInconnue' in item.panelChoice, false);
   assert.ok(item.leadNotes.some((n) => /Panneau choisi sur le site : REVA 62/.test(n)));
   assert.ok(item.leadNotes.some((n) => /tierce de 400 mm/.test(n)));
   assert.equal(calculateItemPrice(item).posePrice, 400);
+});
+
+run('porte d entree : le choix complet du sélecteur arrive pré-sélectionné à la signature', () => {
+  const [item] = buildLeadCartItems(
+    project([
+      {
+        familleId: 'porte-entree', quantity: 1, title: "Porte d'entrée, panneau ELA 01, 90 × 215 cm",
+        productId: 'porte-reno', glazingId: null, colorOptionId: 'coloration-2f', couleur: 'Gris Anthracite (RAL 7016) - 2 faces',
+        widthMm: 900, heightMm: 2150, horsCatalogue: false, panneau: 'ELA 01, Gris Anthracite (RAL 7016) - 2 faces',
+        panneauChoix: { gamme: 'ELA', panelName: 'ELA 01', panelRef: 'ela01', image: 'ELA_01.jpg', croisillonChoisi: '', couleurChoisie: 'Gris Anthracite (RAL 7016) - 2 faces', legendeVitrage: 'Vitrage sablé', plusValueTotaleHT: 120 },
+        options: { tierce: false, tierceWidthMm: 0, imposte: false, imposteHeightMm: 0 },
+        notes: [],
+      },
+    ])
+  );
+  assert.equal(item.panneauDecoratif, true);
+  assert.deepEqual(item.panelChoice, {
+    gamme: 'ELA', panelName: 'ELA 01', panelRef: 'ela01', image: 'ELA_01.jpg', croisillon: '',
+    couleur: 'Gris Anthracite (RAL 7016) - 2 faces', legendeVitrage: 'Vitrage sablé',
+    // ELA 01 est le modèle inclus : aucune plus-value, quel que soit le montant reçu.
+    plusValueTotaleHT: 0,
+  });
+  // La page de signature le reçoit en `preset` : le client n'a rien à rechoisir.
+  const [selection] = buildPanelSelections([item]);
+  assert.equal(selection.lineId, item.id);
+  assert.equal(selection.preset.panelName, 'ELA 01');
+  assert.equal(selection.preset.image, 'ELA_01.jpg');
+  // Et la désignation nomme le panneau au lieu de « Modèle de panneau au choix ».
+  const designation = generateDesignation(item);
+  assert.ok(/Panneau ELA 01/.test(designation), designation);
+  assert.ok(!/au choix/.test(designation));
+});
+
+run('porte d entree sans panneau choisi : vitrée, rien de pré-sélectionné', () => {
+  const [item] = buildLeadCartItems(
+    project([
+      {
+        familleId: 'porte-entree', quantity: 1, title: "Porte d'entrée, pvc, blanc, 90 × 215 cm",
+        productId: 'porte-reno', glazingId: null, colorOptionId: 'blanc', couleur: 'blanc',
+        widthMm: 900, heightMm: 2150, horsCatalogue: false,
+        options: { tierce: false, tierceWidthMm: 0, imposte: false, imposteHeightMm: 0 }, notes: [],
+      },
+    ])
+  );
+  assert.equal(item.panneauDecoratif, false);
+  assert.equal(item.panelChoice, undefined);
+  assert.ok(item.glazingOption);
+  assert.deepEqual(buildPanelSelections([item]), []);
 });
 
 run('volet seul : grille Volet Filaire, couleur volet, et la box domotique GAPOSA pour un solaire, une seule fois', () => {

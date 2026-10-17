@@ -1372,6 +1372,31 @@ export default function QuoteSignaturePage({ token }) {
   const panelChoiceMissing =
     canAct && panelSelections.some((selection) => !panelChoices[selection.lineId]);
 
+  // Panneau déjà choisi par le client sur le configurateur du site : il est
+  // présenté sélectionné (carte de succès, « Modifier » possible) au lieu de
+  // redemander le choix. Ne remplace jamais un choix fait ici.
+  // La variante fait partie de la clé : changer de variante vide les choix
+  // (effet plus haut), le panneau pré-choisi doit alors revenir.
+  const panelPresetKey = `${selectedVariantId || ''}#${panelSelections
+    .map((selection) => `${selection.lineId}:${selection.preset?.panelName || ''}`)
+    .join('|')}`;
+  useEffect(() => {
+    const presets = panelSelections.filter((selection) => selection.preset);
+    if (presets.length === 0) return;
+    setPanelChoices((previous) => {
+      let changed = false;
+      const next = { ...previous };
+      presets.forEach((selection) => {
+        if (next[selection.lineId]) return;
+        next[selection.lineId] = { ...selection.preset };
+        changed = true;
+      });
+      return changed ? next : previous;
+    });
+    // panelPresetKey résume panelSelections (nouvelle référence à chaque rendu).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelPresetKey]);
+
   // Lève le blocage dès que la condition manquante est satisfaite.
   useEffect(() => {
     if (signBlockedReason === 'panel' && !panelChoiceMissing) setSignBlockedReason(null);

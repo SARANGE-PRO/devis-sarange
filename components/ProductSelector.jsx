@@ -2192,6 +2192,10 @@ export default function ProductSelector({
       netMarginWanted,
       netDiscountWanted,
       panneauDecoratif: workingIsPorte ? simpleConfig.panneauDecoratif : false,
+      // Panneau choisi par le client sur le site : conservé tant que la porte
+      // reste à panneau décoratif.
+      panelChoice:
+        workingIsPorte && simpleConfig.panneauDecoratif ? editingItem?.panelChoice || null : null,
       manualUd:
         workingIsPorte && Number.isFinite(Number.parseFloat(simpleConfig.manualUd))
           ? Number.parseFloat(simpleConfig.manualUd)
