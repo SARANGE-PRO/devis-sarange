@@ -10,6 +10,7 @@ import {
 } from '@/lib/client-cloud';
 import { buildLeadDossierLabel } from '@/lib/commission-dossiers.mjs';
 import { createLeadCommissionDossier } from '@/lib/commission-service';
+import { cleanLeadField, splitLeadAddress } from '@/lib/lead-address.mjs';
 import { importLeadQuote } from '@/lib/lead-quote-service';
 
 export const runtime = 'nodejs';
@@ -33,17 +34,6 @@ export const runtime = 'nodejs';
  * (lib/lead-quote-service.js) : le bureau ouvre, vérifie et envoie.
  */
 
-// Code postal et ville : le configurateur envoie `zip` (5 chiffres) et `city`
-// séparés ; les anciens formulaires un seul champ « 77550 Moissy-Cramayel ».
-const resolveLocation = (body) => {
-  const zip = String(body?.zip || '').trim();
-  const city = String(body?.city || '').trim();
-  if (/^\d{4,5}$/.test(zip)) return { codePostal: zip, ville: city };
-  const match = zip.match(/^(\d{4,5})\s+(.+)$/);
-  if (match) return { codePostal: match[1], ville: city || match[2] };
-  return { codePostal: '', ville: city || zip };
-};
-
 export async function POST(request) {
   try {
     const secret = (process.env.SITE_LEADS_SECRET || '').trim();
@@ -65,13 +55,23 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-    const { codePostal, ville } = resolveLocation(body);
+
+    // L'adresse arrive entière (libellé de l'autocomplétion du site, ou texte
+    // tapé) et l'Apps Script ne relaie pas la ville : elle est reprise du
+    // projet du configurateur, puis l'adresse est découpée en voie, code
+    // postal et ville comme la fiche client le fait au bureau. Les
+    // « Non renseigné » de l'Apps Script redeviennent des champs vides.
+    const { adresse, codePostal, ville } = splitLeadAddress({
+      address: body?.address,
+      zip: body?.zip,
+      city: body?.city || body?.project?.contact?.city,
+    });
 
     const clientData = sanitizeClientData({
-      nom: body?.name || '',
-      telephone: body?.phone || '',
-      email: body?.email || '',
-      adresse: body?.address || '',
+      nom: cleanLeadField(body?.name),
+      telephone: cleanLeadField(body?.phone),
+      email: cleanLeadField(body?.email),
+      adresse,
       codePostal,
       ville,
     });
