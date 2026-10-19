@@ -6,14 +6,22 @@
 // niveau (J+3, J+10, J+30) ; prochaines relances ; devis modifiés à renvoyer ;
 // envois par e-mail simple (suivi manuel) ; sans réponse après trois relances.
 // Rien ne part sans un clic : l'envoi passe par l'aperçu de vérification
-// habituel (lib/quote-follow-up.mjs pour la logique, testée).
+// habituel (lib/quote-follow-up.mjs pour la logique, testée). Chaque devis
+// peut être retiré du suivi (perdu, suivi en direct, ne plus relancer) et y
+// être remis ; un nouvel envoi l'y remet de lui-même.
 
 import Link from 'next/link';
-import { useMemo } from 'react';
-import { BellRing, Link2, Loader2, Pencil, PenSquare, Send } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { BellRing, ChevronDown, Link2, Loader2, Pencil, PenSquare, RotateCcw, Send, X } from 'lucide-react';
 import { getClientDisplayName } from '@/lib/client-cloud';
 import { getQuoteNumberDisplay, getQuoteSignatureWorkflow } from '@/lib/quote-signature';
-import { QUOTE_REMINDER_STEPS, getQuoteReminderStep, groupQuotesForFollowUp } from '@/lib/quote-follow-up.mjs';
+import {
+  FOLLOW_UP_EXCLUSION_REASONS,
+  QUOTE_REMINDER_STEPS,
+  getFollowUpExclusionReason,
+  getQuoteReminderStep,
+  groupQuotesForFollowUp,
+} from '@/lib/quote-follow-up.mjs';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const dateFormatter = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'short' });
@@ -56,7 +64,7 @@ function Steps({ state }) {
   );
 }
 
-function QuoteLine({ item, children }) {
+function QuoteLine({ item, children, footer = null }) {
   const { quote, state } = item;
   const lastStep = getQuoteReminderStep(state.lastReminderLevel);
   const details = [
@@ -70,7 +78,7 @@ function QuoteLine({ item, children }) {
     .join(' · ');
 
   return (
-    <div className="border-t border-slate-100 px-4 py-3 first:border-t-0 sm:flex sm:items-center sm:gap-4">
+    <div className="border-t border-slate-100 px-4 py-3 first:border-t-0 sm:flex sm:flex-wrap sm:items-center sm:gap-4">
       <div className="flex items-start justify-between gap-3 sm:flex-1 sm:items-center">
         <div className="min-w-0 sm:flex-1">
           <p className="truncate text-sm font-bold text-slate-900">{getQuoteClient(quote)}</p>
@@ -89,6 +97,37 @@ function QuoteLine({ item, children }) {
         <Steps state={state} />
         <div className="flex flex-wrap gap-1.5">{children}</div>
       </div>
+      {footer}
+    </div>
+  );
+}
+
+/** Choix de la raison, sous la ligne, avant de retirer le devis du suivi. */
+function RemovePanel({ busy, onPick, onCancel }) {
+  return (
+    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:basis-full">
+      <p className="mb-2 text-xs font-semibold text-slate-700">Retirer ce devis du suivi des relances :</p>
+      <div className="flex flex-wrap gap-1.5">
+        {FOLLOW_UP_EXCLUSION_REASONS.map((reason) => (
+          <button
+            key={reason.id}
+            type="button"
+            disabled={busy}
+            onClick={() => onPick(reason.id)}
+            title={reason.hint}
+            className="inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+          >
+            {busy ? <Loader2 size={12} className="animate-spin" /> : null}
+            {reason.label}
+          </button>
+        ))}
+        <button type="button" disabled={busy} onClick={onCancel} className={SMALL_BUTTON}>
+          Annuler
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-slate-500">
+        Le devis reste dans « Mes devis ». Il revient ici de lui-même s&apos;il est renvoyé.
+      </p>
     </div>
   );
 }
@@ -115,6 +154,8 @@ function Section({ title, hint, items, children }) {
  * @param {(quote: object, level: number) => void} props.onSendReminder
  * @param {(quote: object) => void} props.onSendForSignature
  * @param {(quote: object) => void} props.onCopySignatureLink
+ * @param {(quote: object, reason: string|null) => Promise<void>} props.onSetExclusion
+ *   retire le devis du suivi avec cette raison, ou l'y remet (null)
  */
 export default function QuoteFollowUp({
   quotes,
@@ -124,9 +165,45 @@ export default function QuoteFollowUp({
   onSendReminder,
   onSendForSignature,
   onCopySignatureLink,
+  onSetExclusion,
 }) {
   const groups = useMemo(() => groupQuotesForFollowUp(quotes), [quotes]);
   const isWorking = (quote, kind) => actionId === quote.id && (!kind || actionKind === kind);
+  // Devis dont on choisit la raison du retrait, devis en cours d'écriture,
+  // section des retirés dépliée.
+  const [removingId, setRemovingId] = useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const [showRemoved, setShowRemoved] = useState(false);
+
+  const setExclusion = async (quote, reason) => {
+    setSavingId(quote.id);
+    try {
+      await onSetExclusion(quote, reason);
+      setRemovingId(null);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const removeButton = (quote) => (
+    <button
+      type="button"
+      onClick={() => setRemovingId((current) => (current === quote.id ? null : quote.id))}
+      className={SMALL_BUTTON}
+      title="Retirer du suivi des relances"
+      aria-expanded={removingId === quote.id}
+    >
+      <X size={12} /> Retirer
+    </button>
+  );
+  const removePanel = (quote) =>
+    removingId === quote.id ? (
+      <RemovePanel
+        busy={savingId === quote.id}
+        onPick={(reason) => setExclusion(quote, reason)}
+        onCancel={() => setRemovingId(null)}
+      />
+    ) : null;
 
   const openLink = (quote) => (
     <Link href={`/?quote=${quote.id}`} className={SMALL_BUTTON}>
@@ -168,7 +245,7 @@ export default function QuoteFollowUp({
     </button>
   );
 
-  if (!loading && !groups.count) {
+  if (!loading && !groups.count && !groups.removed.length) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
@@ -190,22 +267,24 @@ export default function QuoteFollowUp({
         items={groups.due}
       >
         {groups.due.map((item) => (
-          <QuoteLine key={item.quote.id} item={item}>
+          <QuoteLine key={item.quote.id} item={item} footer={removePanel(item.quote)}>
             {reminderButton(item.quote, item.state.nextLevel, item.state.nextLabel)}
             {copyButton(item.quote)}
             {openLink(item.quote)}
+            {removeButton(item.quote)}
           </QuoteLine>
         ))}
       </Section>
 
       <Section title="Prochaines relances" items={groups.upcoming}>
         {groups.upcoming.map((item) => (
-          <QuoteLine key={item.quote.id} item={item}>
+          <QuoteLine key={item.quote.id} item={item} footer={removePanel(item.quote)}>
             <span className="text-xs text-slate-500">
               {item.state.nextLabel} le <strong>{formatDay(item.state.nextDateMs)}</strong>
             </span>
             {copyButton(item.quote)}
             {openLink(item.quote)}
+            {removeButton(item.quote)}
           </QuoteLine>
         ))}
       </Section>
@@ -216,9 +295,10 @@ export default function QuoteFollowUp({
         items={groups.resend}
       >
         {groups.resend.map((item) => (
-          <QuoteLine key={item.quote.id} item={item}>
+          <QuoteLine key={item.quote.id} item={item} footer={removePanel(item.quote)}>
             {resendButton(item.quote, 'Renvoyer pour signature')}
             {openLink(item.quote)}
+            {removeButton(item.quote)}
           </QuoteLine>
         ))}
       </Section>
@@ -229,9 +309,10 @@ export default function QuoteFollowUp({
         items={groups.emailOnly}
       >
         {groups.emailOnly.map((item) => (
-          <QuoteLine key={item.quote.id} item={item}>
+          <QuoteLine key={item.quote.id} item={item} footer={removePanel(item.quote)}>
             {resendButton(item.quote, 'Envoyer pour signature')}
             {openLink(item.quote)}
+            {removeButton(item.quote)}
           </QuoteLine>
         ))}
       </Section>
@@ -242,13 +323,60 @@ export default function QuoteFollowUp({
         items={groups.unanswered}
       >
         {groups.unanswered.map((item) => (
-          <QuoteLine key={item.quote.id} item={item}>
+          <QuoteLine key={item.quote.id} item={item} footer={removePanel(item.quote)}>
             {reminderButton(item.quote, 3, 'Relancer encore', false)}
             {copyButton(item.quote)}
             {openLink(item.quote)}
+            {removeButton(item.quote)}
           </QuoteLine>
         ))}
       </Section>
+
+      {!groups.count && (
+        <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+          Aucun devis à relancer.
+        </p>
+      )}
+
+      {groups.removed.length > 0 && (
+        <section>
+          <button
+            type="button"
+            onClick={() => setShowRemoved((open) => !open)}
+            aria-expanded={showRemoved}
+            className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-slate-400 transition-colors hover:text-slate-600"
+          >
+            Retirés du suivi ({groups.removed.length})
+            <ChevronDown size={14} className={`transition-transform ${showRemoved ? 'rotate-180' : ''}`} />
+          </button>
+          {showRemoved && (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white opacity-90 shadow-sm">
+              {groups.removed.map((item) => {
+                const reason = getFollowUpExclusionReason(item.state.exclusion.reason);
+                return (
+                  <QuoteLine key={item.quote.id} item={item}>
+                    <span className="text-xs text-slate-500">
+                      {reason ? reason.label : 'Retiré'}
+                      {item.state.exclusion.atMs ? ` le ${formatDay(item.state.exclusion.atMs)}` : ''}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={savingId === item.quote.id}
+                      onClick={() => setExclusion(item.quote, null)}
+                      className={SMALL_BUTTON}
+                      title="Remettre ce devis dans le suivi des relances"
+                    >
+                      {savingId === item.quote.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                      Remettre
+                    </button>
+                    {openLink(item.quote)}
+                  </QuoteLine>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

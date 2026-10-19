@@ -12,6 +12,7 @@ import {
   permanentlyDeleteTrashedQuote,
   restoreQuoteFromTrash,
   saveQuoteDraft,
+  setQuoteFollowUpExclusion,
   subscribeToTrashedQuotes,
   subscribeToUserQuotes,
 } from '@/lib/firebase/quotes';
@@ -49,7 +50,11 @@ import EmailConfirmationModal, { useEmailConfirmation } from '@/components/Email
 import CompletionSendModal from '@/components/CompletionSendModal';
 import LiftSendModal from '@/components/LiftSendModal';
 import QuoteFollowUp from '@/components/QuoteFollowUp';
-import { countQuotesToFollowUp } from '@/lib/quote-follow-up.mjs';
+import {
+  buildFollowUpExclusion,
+  countQuotesToFollowUp,
+  getFollowUpExclusionReason,
+} from '@/lib/quote-follow-up.mjs';
 import {
   BellRing,
   Check,
@@ -1281,6 +1286,27 @@ export default function SavedQuotesPage() {
     return copied;
   };
 
+  // Retirer un devis du suivi des relances (reason), ou l'y remettre (null).
+  const handleSetFollowUpExclusion = async (quote, reason) => {
+    if (!user) return;
+    setActionError(''); setActionMessage('');
+    try {
+      await setQuoteFollowUpExclusion({
+        userId: user.uid,
+        quoteId: quote.id,
+        exclusion: reason ? buildFollowUpExclusion(quote, reason) : null,
+      });
+      const label = reason ? getFollowUpExclusionReason(reason)?.label : '';
+      setActionMessage(
+        reason
+          ? `Devis retiré du suivi${label ? ` (${label.toLowerCase()})` : ''}. Il reste dans « Mes devis ».`
+          : 'Devis remis dans le suivi des relances.'
+      );
+    } catch (e) {
+      setActionError(e.message || 'Modification du suivi impossible.');
+    }
+  };
+
   const handleOpenSignedQuote = (quote) => {
     const sessionId = getQuoteSignatureWorkflow(quote).sessionId;
     if (!sessionId) return;
@@ -1525,6 +1551,7 @@ export default function SavedQuotesPage() {
               onSendReminder={handleSendReminder}
               onSendForSignature={handleSendForSignature}
               onCopySignatureLink={handleCopySignatureLink}
+              onSetExclusion={handleSetFollowUpExclusion}
             />
           )}
 

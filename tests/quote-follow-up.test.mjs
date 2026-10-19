@@ -4,6 +4,7 @@ import {
   FOLLOW_UP_STATUS,
   MIN_GAP_DAYS,
   QUOTE_REMINDER_STEPS,
+  buildFollowUpExclusion,
   computeQuoteFollowUpState,
   countQuotesToFollowUp,
   daysBetweenMs,
@@ -110,4 +111,34 @@ assert.equal(countQuotesToFollowUp(groups.due.map((item) => item.quote).concat(g
 assert.equal(countQuotesToFollowUp([], { now }), 0);
 assert.equal(countQuotesToFollowUp(undefined, { now }), 0);
 
+
+// Retrait manuel du suivi : plus de relance proposée, hors du compte, et
+// retour automatique si le devis est renvoyé ensuite.
+{
+  const quote = sent(12);
+  const exclusion = buildFollowUpExclusion(quote, 'perdu', { now });
+  assert.equal(exclusion.reason, 'perdu');
+  assert.equal(exclusion.sentAtMs, daysAgo(12).getTime());
+  assert.equal(buildFollowUpExclusion(quote, 'inconnue', { now }).reason, 'stop');
+
+  const removed = { ...quote, followUpExclusion: exclusion };
+  const state = computeQuoteFollowUpState(removed, { now });
+  assert.equal(state.status, FOLLOW_UP_STATUS.RETIRE);
+  assert.equal(state.exclusion.reason, 'perdu');
+  assert.equal(state.exclusion.atMs, now);
+
+  const groups = groupQuotesForFollowUp([removed, sent(4)], { now });
+  assert.equal(groups.count, 1, 'un devis retiré ne compte plus');
+  assert.equal(groups.removed.length, 1);
+  assert.equal(groups.due.length, 1);
+  assert.equal(countQuotesToFollowUp([removed], { now }), 0);
+
+  // Renvoyé après le retrait : de retour dans le suivi.
+  const resent = { ...removed, signatureWorkflow: { ...removed.signatureWorkflow, sentAt: daysAgo(1) } };
+  assert.equal(computeQuoteFollowUpState(resent, { now }).status, FOLLOW_UP_STATUS.EN_ATTENTE);
+
+  // Signé ou refusé entre-temps : hors suivi, le retrait ne compte plus.
+  const signed = { ...removed, signatureWorkflow: { ...removed.signatureWorkflow, status: 'signed' } };
+  assert.equal(computeQuoteFollowUpState(signed, { now }).status, FOLLOW_UP_STATUS.HORS_SUIVI);
+}
 console.log('quote-follow-up ok');
