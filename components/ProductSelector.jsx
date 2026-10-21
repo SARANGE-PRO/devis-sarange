@@ -44,6 +44,8 @@ import {
   getCataloguePosePrice,
   normalizePosePriceOverride,
   calculateItemPrice,
+  getItemPricingSummary,
+  getVoletMonoblocPricing,
   calculateWasteManagementForItems,
   createCatalogServiceCartItem,
   normalizeCompositeComposition,
@@ -78,6 +80,8 @@ import CompositeFrameEditor from '@/components/CompositeFrameEditor';
 import VeluxConfigurator from '@/components/VeluxConfigurator';
 import PosePriceEditor from '@/components/PosePriceEditor';
 import VoletMonoblocCouleurPicker from '@/components/VoletMonoblocCouleurPicker';
+import VoletMonoblocPrixOptions from '@/components/VoletMonoblocPrixOptions';
+import { splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
 import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
@@ -194,6 +198,9 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   voletMonoblocManoeuvre: 'manuel',
   // Couleur du volet ('' = ton menuiserie), voir lib/volet-monobloc.mjs.
   voletMonoblocCouleur: '',
+  // Prix du volet sur sa propre ligne du devis, et prix saisi (null = grille).
+  voletMonoblocSeparate: false,
+  voletMonoblocPriceOverride: null,
   // Menuiseries cintrées (Formes spéciales) : type de cintrage, flèche et prix
   // saisi (fixe cintré en imposte, ou prix total en cintre intégré). Aucun
   // type par défaut : ce formulaire est recopié tel quel dans les options des
@@ -1390,6 +1397,8 @@ export default function ProductSelector({
         voletMonobloc: Boolean(compositeFrame.voletMonobloc),
         voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
         voletMonoblocCouleur: compositeFrame.voletMonoblocCouleur || '',
+        voletMonoblocSeparate: Boolean(compositeFrame.voletMonoblocSeparate),
+        voletMonoblocPriceOverride: compositeFrame.voletMonoblocPriceOverride ?? null,
         modules: compositePricing.modules,
       };
       const thermalMetrics = getItemThermalMetrics(compositePreviewItem);
@@ -1480,6 +1489,10 @@ export default function ProductSelector({
         ? simpleConfig.voletMonoblocManoeuvre
         : 'manuel',
       voletMonoblocCouleur: workingSupportsMonobloc ? simpleConfig.voletMonoblocCouleur || '' : '',
+      voletMonoblocSeparate: workingSupportsMonobloc && Boolean(simpleConfig.voletMonoblocSeparate),
+      voletMonoblocPriceOverride: workingSupportsMonobloc
+        ? simpleConfig.voletMonoblocPriceOverride ?? null
+        : null,
     };
     const thermalMetrics = getItemThermalMetrics(simplePreviewItem);
     return {
@@ -1490,6 +1503,11 @@ export default function ProductSelector({
   })();
 
   const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
+  // Volet monobloc à prix séparé : parts menuiserie / volet affichées sous l'estimation.
+  const previewVoletSplit =
+    previewItem && previewCalc
+      ? splitVoletMonoblocPricing(previewItem, previewCalc, getItemPricingSummary(previewItem, previewCalc))
+      : null;
 
   const handleNetAdjustmentModeChange = (nextMode) => {
     const normalizedMode = nextMode === 'discount' ? 'discount' : 'margin';
@@ -1807,6 +1825,8 @@ export default function ProductSelector({
         voletMonobloc: editingItem.voletMonobloc || false,
         voletMonoblocManoeuvre: editingItem.voletMonoblocManoeuvre || 'manuel',
         voletMonoblocCouleur: editingItem.voletMonoblocCouleur || '',
+        voletMonoblocSeparate: Boolean(editingItem.voletMonoblocSeparate),
+        voletMonoblocPriceOverride: editingItem.voletMonoblocPriceOverride ?? null,
         cintrageType: normalizeCintrageType(editingItem.cintrageType),
         cintrageFlecheMm:
           editingItem.cintrageFlecheMm != null ? String(editingItem.cintrageFlecheMm) : '',
@@ -1897,6 +1917,8 @@ export default function ProductSelector({
         voletMonobloc: Boolean(compositeFrame.voletMonobloc),
         voletMonoblocManoeuvre: compositeFrame.voletMonoblocManoeuvre || 'manuel',
         voletMonoblocCouleur: compositeFrame.voletMonoblocCouleur || '',
+        voletMonoblocSeparate: Boolean(compositeFrame.voletMonoblocSeparate),
+        voletMonoblocPriceOverride: compositeFrame.voletMonoblocPriceOverride ?? null,
         modules: frameModules,
         modulePricing: frameModules,
       };
@@ -2228,6 +2250,10 @@ export default function ProductSelector({
         ? simpleConfig.voletMonoblocManoeuvre
         : 'manuel',
       voletMonoblocCouleur: workingSupportsMonobloc ? simpleConfig.voletMonoblocCouleur || '' : '',
+      voletMonoblocSeparate: workingSupportsMonobloc && Boolean(simpleConfig.voletMonoblocSeparate),
+      voletMonoblocPriceOverride: workingSupportsMonobloc
+        ? simpleConfig.voletMonoblocPriceOverride ?? null
+        : null,
       rawColorState: simpleConfig.rawColorState,
       repere,
       showThermalData,
@@ -2631,6 +2657,12 @@ export default function ProductSelector({
                         <VoletMonoblocCouleurPicker
                           value={simpleConfig.voletMonoblocCouleur}
                           onChange={(couleur) => updateSimpleOptions({ voletMonoblocCouleur: couleur })}
+                        />
+                        <VoletMonoblocPrixOptions
+                          pricing={previewItem ? getVoletMonoblocPricing(previewItem) : null}
+                          separate={simpleConfig.voletMonoblocSeparate}
+                          priceOverride={simpleConfig.voletMonoblocPriceOverride}
+                          onChange={updateSimpleOptions}
                         />
                         <p className="mt-2 text-xs text-slate-400">
                           La pose de l&apos;ensemble menuiserie + volet reste facturée une
@@ -4042,6 +4074,12 @@ export default function ProductSelector({
               setCompositeFrame((previous) => ({ ...previous, voletMonoblocCouleur: couleur }))
             }
           />
+          <VoletMonoblocPrixOptions
+            pricing={previewItem ? getVoletMonoblocPricing(previewItem) : null}
+            separate={compositeFrame.voletMonoblocSeparate}
+            priceOverride={compositeFrame.voletMonoblocPriceOverride}
+            onChange={(patch) => setCompositeFrame((previous) => ({ ...previous, ...patch }))}
+          />
           </>
         )}
       </div>
@@ -4209,6 +4247,12 @@ export default function ProductSelector({
                         ? `${(compositeUnitPrice * quantity).toFixed(2)} EUR`
                         : 'A definir'}
               </p>
+              {previewVoletSplit ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  Menuiserie : {previewVoletSplit.menuiserie.totalLine.toFixed(2)} EUR · Volet :{' '}
+                  {previewVoletSplit.volet.totalLine.toFixed(2)} EUR
+                </p>
+              ) : null}
               {previewCalc?.posePrice ? (
                 <p className="mt-1 text-sm text-slate-500">
                   Pose : {(previewCalc.posePrice * quantity).toFixed(2)} EUR

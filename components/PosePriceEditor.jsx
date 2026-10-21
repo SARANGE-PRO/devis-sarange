@@ -1,11 +1,12 @@
 'use client';
 
-// Tarif de pose modifiable EN PLACE, sans champ supplémentaire dans le
-// formulaire : le montant affiché à côté de « Inclure la pose » est une pastille
-// cliquable. Un clic ouvre une saisie compacte ; Entrée ou la perte de focus
-// valide, Échap annule. Vider le champ (ou saisir le tarif catalogue) revient au
-// tarif catalogue. Quand un tarif spécifique est appliqué, la pastille passe en
-// orange et un bouton discret permet de revenir au tarif catalogue.
+// Tarif modifiable EN PLACE, sans champ supplémentaire dans le formulaire : le
+// montant affiché (tarif de pose à côté de « Inclure la pose », prix du volet
+// monobloc) est une pastille cliquable. Un clic ouvre une saisie compacte ;
+// Entrée ou la perte de focus valide, Échap annule. Vider le champ (ou saisir
+// le tarif de référence) revient au tarif de référence. Quand un tarif
+// spécifique est appliqué, la pastille passe en orange et un bouton discret
+// permet de revenir au tarif de référence.
 
 import { useEffect, useRef, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
@@ -23,6 +24,10 @@ export default function PosePriceEditor({
   defaultValue = 0,
   onChange,
   disabled = false,
+  // Libellés : « Tarif de pose » / « tarif catalogue » par défaut, « Prix du
+  // volet » / « tarif grille » pour le volet monobloc.
+  subject = 'Tarif de pose',
+  reference = 'tarif catalogue',
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -46,8 +51,8 @@ export default function PosePriceEditor({
   const commit = () => {
     setEditing(false);
     const next = normalizePosePriceOverride(draft);
-    // Champ vidé, valeur invalide ou tarif catalogue ressaisi : plus de tarif
-    // spécifique.
+    // Champ vidé, valeur invalide ou tarif de référence ressaisi : plus de
+    // tarif spécifique.
     onChange?.(next === null || next === catalogue ? null : next);
   };
 
@@ -74,7 +79,7 @@ export default function PosePriceEditor({
               cancel();
             }
           }}
-          aria-label="Tarif de pose HT par unité"
+          aria-label={`${subject} HT par unité`}
           className="w-24 rounded-lg border border-orange-300 bg-white px-2 py-1 text-right text-sm font-bold text-slate-800 outline-none ring-2 ring-orange-200"
         />
         <span className="text-sm font-bold text-slate-500">€</span>
@@ -90,8 +95,8 @@ export default function PosePriceEditor({
         disabled={disabled}
         title={
           isCustom
-            ? `Tarif de pose spécifique à ce devis (catalogue : ${formatAmount(catalogue)} €). Cliquer pour modifier.`
-            : 'Cliquer pour modifier le tarif de pose de cette ligne'
+            ? `${subject} spécifique à ce devis (${reference} : ${formatAmount(catalogue)} €). Cliquer pour modifier.`
+            : `Cliquer pour modifier le ${subject.toLowerCase()} de cette ligne`
         }
         className={`rounded-lg border px-2 py-0.5 text-sm font-bold tabular-nums transition-colors disabled:cursor-default disabled:opacity-60 ${
           isCustom
@@ -105,8 +110,8 @@ export default function PosePriceEditor({
         <button
           type="button"
           onClick={() => onChange?.(null)}
-          title={`Revenir au tarif catalogue (${formatAmount(catalogue)} €)`}
-          aria-label="Revenir au tarif de pose catalogue"
+          title={`Revenir au ${reference} (${formatAmount(catalogue)} €)`}
+          aria-label={`Revenir au ${reference}`}
           className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-slate-100 hover:text-orange-600"
         >
           <RotateCcw size={12} />

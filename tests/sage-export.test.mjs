@@ -1017,4 +1017,51 @@ const buildModel = (overrides = {}, extraDeps = {}) =>
   );
 }
 
+/* ─── Volet monobloc à prix séparé : deux lignes, mêmes montants que le devis ─ */
+{
+  // Le moteur réel pose `voletMonoblocUnitPrice` (prix du volet avant remise).
+  const voletCalc = (item) => {
+    const base = calculateItemPrice(item);
+    return item.voletMonobloc ? { ...base, voletMonoblocUnitPrice: 300 } : base;
+  };
+  const line = {
+    id: 'm',
+    productLabel: 'Fenêtre monobloc',
+    unitPrice: 1000,
+    quantity: 2,
+    remise: 10,
+    voletMonobloc: true,
+    voletMonoblocManoeuvre: 'radio',
+    includePose: true,
+    posePrice: 250,
+  };
+  const model = buildModel(
+    { cartItems: [{ ...line, voletMonoblocSeparate: true }] },
+    {
+      calculateItemPrice: voletCalc,
+      getItemPricingSummary: () => ({ originalUnitHT: 1000, originalLineHT: 2000 }),
+    }
+  );
+  assert.equal(model.isValid, true);
+  assert.equal(model.lines.length, 3, 'menuiserie + volet + pose');
+  const [menuiserie, volet, pose] = model.lines;
+  // Ligne 1 000 × 0,9 = 900 l'unité ; volet 300 × 0,9 = 270 ; menuiserie 630.
+  assert.equal(volet.unitPriceHT, 270);
+  assert.equal(volet.lineHT, 540);
+  assert.equal(menuiserie.unitPriceHT, 630);
+  assert.equal(menuiserie.lineHT, 1260);
+  assert.equal(menuiserie.lineHT + volet.lineHT, 1800, 'la somme des deux = la ligne du devis');
+  assert.ok(volet.designationFull.startsWith('Volet roulant monobloc intégré'), volet.designationFull);
+  assert.ok(volet.designationFull.includes('radio'));
+  assert.equal(volet.nature, menuiserie.nature, 'même nature (fourniture) que la menuiserie');
+  assert.equal(volet.sageArticle, menuiserie.sageArticle, 'même taux de TVA');
+  assert.equal(pose.nature, 'pose');
+  assert.equal(model.totals.exportedHT, 1800 + 500, 'HT exporté inchangé');
+
+  // Sans l'option : une seule ligne, montants inchangés.
+  const merged = buildModel({ cartItems: [line] }, { calculateItemPrice: voletCalc });
+  assert.equal(merged.lines.length, 2, 'menuiserie + pose');
+  assert.equal(merged.lines[0].lineHT, 1800);
+}
+
 console.log('sage-export.test.mjs : OK');

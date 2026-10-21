@@ -47,6 +47,7 @@ import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/
 import { formatCintrageShortLabel } from '@/lib/cintrage.mjs';
 import { formatTraverseBadge, getTraverseHeights } from '@/lib/traverses.mjs';
 import { formatPetitsBoisTypeLabel } from '@/lib/petits-bois.mjs';
+import { splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
 import LeadPhotoStrip from '@/components/LeadPhotoStrip';
 
 const getPetitsBoisConfig = (item = {}) => {
@@ -126,6 +127,11 @@ function SortableCartItem({
 
   const calc = calculateItemPrice(item);
   const pricing = getItemPricingSummary(item, calc);
+  // Volet monobloc à prix séparé : la carte affiche la part menuiserie, puis le volet.
+  const voletSplit = splitVoletMonoblocPricing(item, calc, pricing);
+  const rowPricing = voletSplit
+    ? voletSplit.menuiserie
+    : { totalLine: calc.totalLine, originalLineHT: pricing.originalLineHT, hasDiscount: pricing.hasDiscount };
   const compositeCount = getCompositeModuleCount(
     item.compositionTree ?? item.composition,
     item.modules
@@ -475,10 +481,16 @@ function SortableCartItem({
 
         <div className="text-right">
           <PriceStack
-            finalValue={calc.totalLine}
-            originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
+            finalValue={rowPricing.totalLine}
+            originalValue={rowPricing.hasDiscount ? rowPricing.originalLineHT : null}
             emphasis="strong"
           />
+          {voletSplit && (
+            <div className="mt-1 flex items-center justify-end gap-2 text-[11px]">
+              <span className="font-semibold text-slate-500">Volet monobloc ×{item.quantity}</span>
+              <span className="font-bold text-slate-700">{voletSplit.volet.totalLine.toFixed(2)} €</span>
+            </div>
+          )}
           {item.includePose && (
             <div className="mt-1 flex items-center justify-end gap-2 text-[11px]">
               <span className="font-semibold text-slate-500">

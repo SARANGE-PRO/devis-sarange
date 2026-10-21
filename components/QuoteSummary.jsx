@@ -55,6 +55,7 @@ import {
   getItemTvaCorrection,
 } from '@/lib/quote-totals.mjs';
 import { getClientJobSiteFullName } from '@/lib/client-cloud';
+import { getVoletMonoblocLineDesignation, splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -471,7 +472,12 @@ export default function QuoteSummary({
 
               const calc = calculateItemPrice(item);
               const petitsBoisConfig = getPetitsBoisConfig(item);
-              const pricing = getItemPricingSummary(item, calc);
+              const linePricing = getItemPricingSummary(item, calc);
+              // Volet monobloc à prix séparé : la carte affiche la part menuiserie,
+              // le volet suit sur sa propre sous-ligne (total de la ligne inchangé).
+              const voletSplit = splitVoletMonoblocPricing(item, calc, linePricing);
+              const pricing = voletSplit ? { ...linePricing, ...voletSplit.menuiserie } : linePricing;
+              const rowCalc = voletSplit ? { ...calc, ...voletSplit.menuiserie } : calc;
               return (
                 <div key={item.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="flex gap-3 p-3">
@@ -560,7 +566,7 @@ export default function QuoteSummary({
                           )}
                         </p>
                         <PriceStack
-                          finalValue={calc.totalLine}
+                          finalValue={rowCalc.totalLine}
                           originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
                           emphasis="strong"
                           className="shrink-0"
@@ -580,7 +586,7 @@ export default function QuoteSummary({
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-slate-400">PU</span>
                           <PriceStack
-                            finalValue={calc.unitPriceAfterDiscount}
+                            finalValue={rowCalc.unitPriceAfterDiscount}
                             originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
                             align="left"
                             emphasis="compact"
@@ -667,6 +673,24 @@ export default function QuoteSummary({
                     </div>
                   )}
 
+                  {/* Sous-ligne « volet monobloc » (prix séparé) */}
+                  {voletSplit && (
+                    <div className="flex items-start justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                      <span className="min-w-0 font-semibold text-slate-600">
+                        Volet roulant monobloc intégré × {item.quantity}
+                        <span className="block text-[10px] font-normal text-slate-400">
+                          {getVoletMonoblocLineDesignation(item).split('\n')[1]}
+                        </span>
+                      </span>
+                      <PriceStack
+                        finalValue={voletSplit.volet.totalLine}
+                        originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
+                        emphasis="compact"
+                        className="shrink-0"
+                      />
+                    </div>
+                  )}
+
                   {/* Pose sub-row (libellé renommable) */}
                   {item.includePose && (
                     <div className="flex justify-between items-center gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
@@ -747,7 +771,11 @@ export default function QuoteSummary({
                   }
 
                   const calc = calculateItemPrice(item);
-                  const pricing = getItemPricingSummary(item, calc);
+                  const linePricing = getItemPricingSummary(item, calc);
+                  // Volet monobloc à prix séparé : part menuiserie sur la ligne, volet en sous-ligne.
+                  const voletSplit = splitVoletMonoblocPricing(item, calc, linePricing);
+                  const pricing = voletSplit ? { ...linePricing, ...voletSplit.menuiserie } : linePricing;
+                  const rowCalc = voletSplit ? { ...calc, ...voletSplit.menuiserie } : calc;
                   const petitsBoisConfig = getPetitsBoisConfig(item);
                   return (
                     <React.Fragment key={item.id}>
@@ -951,7 +979,7 @@ export default function QuoteSummary({
                         </td>
                         <td className="py-4 px-4 text-right text-sm">
                           <PriceStack
-                            finalValue={calc.unitPriceAfterDiscount}
+                            finalValue={rowCalc.unitPriceAfterDiscount}
                             originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
                             emphasis="compact"
                           />
@@ -972,12 +1000,48 @@ export default function QuoteSummary({
                         )}
                         <td className="py-4 px-4 text-right">
                           <PriceStack
-                            finalValue={calc.totalLine}
+                            finalValue={rowCalc.totalLine}
                             originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
                             emphasis="strong"
                           />
                         </td>
                       </tr>
+                      {voletSplit && (
+                        <tr className="bg-slate-50/30">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-14 shrink-0"></div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800 text-sm">Volet roulant monobloc intégré</p>
+                                <p className="text-[11px] text-slate-500">
+                                  {getVoletMonoblocLineDesignation(item).split('\n').slice(1).join(' · ')}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-center text-slate-400 text-xs">
+                            -
+                          </td>
+                          <td className="py-3 px-4 text-center font-semibold text-slate-700 text-sm">
+                            {item.quantity}
+                          </td>
+                          <td className="py-3 px-4 text-right text-sm">
+                            <PriceStack
+                              finalValue={voletSplit.volet.unitPriceAfterDiscount}
+                              originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalUnitHT : null}
+                              emphasis="compact"
+                            />
+                          </td>
+                          {isMultiTva && <td className="py-3 px-4"></td>}
+                          <td className="py-3 px-4 text-right">
+                            <PriceStack
+                              finalValue={voletSplit.volet.totalLine}
+                              originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
+                              emphasis="strong"
+                            />
+                          </td>
+                        </tr>
+                      )}
                       {item.includePose && (
                         <tr className="bg-slate-50/30">
                           <td className="py-3 px-4">
