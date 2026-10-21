@@ -9,9 +9,12 @@ import {
   getDisplayProductLabel,
   getItemPricingSummary,
   getItemSuggestedSashOptions,
+  getPoseDescription,
+  getPoseDesignation,
   getPoseLabel,
   SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
+import { parsePoseDesignation } from '@/lib/pose-designation.mjs';
 import { generateDesignation } from '@/lib/designation-generator';
 import { buildSuggestedOptionsLine } from '@/lib/suggested-options.mjs';
 import { formatPhoneNumber } from '@/lib/phone.mjs';
@@ -55,7 +58,11 @@ import {
   getItemTvaCorrection,
 } from '@/lib/quote-totals.mjs';
 import { getClientJobSiteFullName } from '@/lib/client-cloud';
-import { getVoletMonoblocLineDesignation, splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
+import {
+  normalizeVoletMonoblocDescription,
+  resolveVoletMonoblocLineDesignation,
+  splitVoletMonoblocPricing,
+} from '@/lib/volet-monobloc.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -183,6 +190,9 @@ export default function QuoteSummary({
   const [tempDesignation, setTempDesignation] = useState('');
   const [editingPoseId, setEditingPoseId] = useState(null);
   const [tempPoseLabel, setTempPoseLabel] = useState('');
+  // Désignation de la sous-ligne « volet monobloc » (prix séparé), modifiable comme le reste.
+  const [editingVoletId, setEditingVoletId] = useState(null);
+  const [tempVoletText, setTempVoletText] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   // Action demandée alors que le type de client manque : mémorisée le temps du
@@ -292,15 +302,43 @@ export default function QuoteSummary({
     setEditingDesignationId(null);
   };
 
+  // Texte de la pose : 1re ligne = libellé, la suite = ce que la pose comprend.
   const handleStartEditPose = (item) => {
-    setTempPoseLabel(getPoseLabel(item));
+    setTempPoseLabel(getPoseDesignation(item));
     setEditingPoseId(item.id);
   };
 
   const handleSavePose = (item) => {
-    updateItem({ ...item, poseLabel: tempPoseLabel.trim() });
+    updateItem({ ...item, ...parsePoseDesignation(tempPoseLabel) });
     setEditingPoseId(null);
   };
+
+  /** Retour aux textes automatiques de la pose (libellé et détail). */
+  const handleResetPose = (item) => {
+    updateItem({ ...item, poseLabel: '', poseDescription: null });
+    setEditingPoseId(null);
+  };
+
+  const isPoseTextCustom = (item) =>
+    Boolean(String(item.poseLabel || '').trim()) || typeof item.poseDescription === 'string';
+
+  const handleStartEditVolet = (item) => {
+    setTempVoletText(resolveVoletMonoblocLineDesignation(item));
+    setEditingVoletId(item.id);
+  };
+
+  const handleSaveVolet = (item) => {
+    // Vide = retour au texte automatique.
+    updateItem({ ...item, voletMonoblocDescription: normalizeVoletMonoblocDescription(tempVoletText) });
+    setEditingVoletId(null);
+  };
+
+  const handleResetVolet = (item) => {
+    updateItem({ ...item, voletMonoblocDescription: null });
+    setEditingVoletId(null);
+  };
+
+  const isVoletTextCustom = (item) => normalizeVoletMonoblocDescription(item.voletMonoblocDescription) !== null;
 
   const runPdfAction = async (action) => {
     if (!action || isGenerateDisabled || isGeneratingPdf) {
@@ -674,48 +712,111 @@ export default function QuoteSummary({
                   )}
 
                   {/* Sous-ligne « volet monobloc » (prix séparé) */}
-                  {voletSplit && (
-                    <div className="flex items-start justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
-                      <span className="min-w-0 font-semibold text-slate-600">
-                        Volet roulant monobloc intégré × {item.quantity}
-                        <span className="block text-[10px] font-normal text-slate-400">
-                          {getVoletMonoblocLineDesignation(item).split('\n')[1]}
-                        </span>
-                      </span>
-                      <PriceStack
-                        finalValue={voletSplit.volet.totalLine}
-                        originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
-                        emphasis="compact"
-                        className="shrink-0"
-                      />
-                    </div>
-                  )}
+                  {voletSplit && (() => {
+                    const [voletTitle, ...voletDetails] = resolveVoletMonoblocLineDesignation(item).split('\n');
+                    return (
+                      <div className="flex items-start justify-between gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                        {editingVoletId === item.id ? (
+                          <div className="flex flex-1 flex-col gap-1.5">
+                            <textarea
+                              value={tempVoletText}
+                              onChange={(e) => setTempVoletText(e.target.value)}
+                              autoFocus
+                              rows={3}
+                              className="min-w-0 w-full rounded border border-orange-500 px-2 py-1 text-xs leading-relaxed outline-none"
+                            />
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleSaveVolet(item)}
+                                className="rounded p-1 text-orange-600 hover:bg-orange-50"
+                                title="Valider"
+                              ><Check size={12} /></button>
+                              <button
+                                onClick={() => setEditingVoletId(null)}
+                                className="rounded px-1.5 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                              >Annuler</button>
+                              {isVoletTextCustom(item) && (
+                                <button
+                                  onClick={() => handleResetVolet(item)}
+                                  className="rounded px-1.5 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                  title="Revenir à la désignation automatique du volet"
+                                >Texte automatique</button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="min-w-0 flex-1 font-semibold text-slate-600">
+                            <span className="flex items-center gap-1.5">
+                              {voletTitle} × {item.quantity}
+                              <button
+                                onClick={() => handleStartEditVolet(item)}
+                                className="rounded p-0.5 text-slate-400 hover:text-orange-500"
+                                title="Modifier la désignation du volet"
+                              ><Pencil size={11} /></button>
+                            </span>
+                            {voletDetails.length > 0 && (
+                              <span className="mt-0.5 block whitespace-pre-line text-[10px] font-normal leading-relaxed text-slate-400">
+                                {voletDetails.join('\n')}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                        <PriceStack
+                          finalValue={voletSplit.volet.totalLine}
+                          originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
+                          emphasis="compact"
+                          className="shrink-0"
+                        />
+                      </div>
+                    );
+                  })()}
 
                   {/* Pose sub-row (libellé renommable) */}
                   {item.includePose && (
-                    <div className="flex justify-between items-center gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
+                    <div className="flex justify-between items-start gap-2 border-t border-slate-100 bg-slate-50/50 px-3 py-2 text-xs">
                       {editingPoseId === item.id ? (
-                        <div className="flex flex-1 items-center gap-1.5">
-                          <input
+                        <div className="flex flex-1 flex-col gap-1.5">
+                          <textarea
                             value={tempPoseLabel}
                             onChange={(e) => setTempPoseLabel(e.target.value)}
                             autoFocus
-                            className="min-w-0 flex-1 rounded border border-orange-500 px-2 py-1 text-xs outline-none"
+                            rows={4}
+                            className="min-w-0 w-full rounded border border-orange-500 px-2 py-1 text-xs leading-relaxed outline-none"
                           />
-                          <button
-                            onClick={() => handleSavePose(item)}
-                            className="shrink-0 rounded p-1 text-orange-600 hover:bg-orange-50"
-                            title="Valider"
-                          ><Check size={12} /></button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleSavePose(item)}
+                              className="rounded p-1 text-orange-600 hover:bg-orange-50"
+                              title="Valider"
+                            ><Check size={12} /></button>
+                            <button
+                              onClick={() => setEditingPoseId(null)}
+                              className="rounded px-1.5 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                            >Annuler</button>
+                            {isPoseTextCustom(item) && (
+                              <button
+                                onClick={() => handleResetPose(item)}
+                                className="rounded px-1.5 py-1 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                title="Revenir au libellé et au détail automatiques"
+                              >Texte automatique</button>
+                            )}
+                          </div>
                         </div>
                       ) : (
-                        <span className="flex items-center gap-1.5 font-semibold text-slate-600">
-                          {getPoseLabel(item)} × {item.quantity}
-                          <button
-                            onClick={() => handleStartEditPose(item)}
-                            className="rounded p-0.5 text-slate-400 hover:text-orange-500"
-                            title="Renommer la pose"
-                          ><Pencil size={11} /></button>
+                        <span className="min-w-0 flex-1 font-semibold text-slate-600">
+                          <span className="flex items-center gap-1.5">
+                            {getPoseLabel(item)} × {item.quantity}
+                            <button
+                              onClick={() => handleStartEditPose(item)}
+                              className="rounded p-0.5 text-slate-400 hover:text-orange-500"
+                              title="Modifier le texte de la pose"
+                            ><Pencil size={11} /></button>
+                          </span>
+                          {getPoseDescription(item) && (
+                            <span className="mt-0.5 block whitespace-pre-line text-[10px] font-normal leading-relaxed text-slate-400">
+                              {getPoseDescription(item)}
+                            </span>
+                          )}
                         </span>
                       )}
                       <span className="shrink-0 font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
@@ -1011,12 +1112,67 @@ export default function QuoteSummary({
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <div className="w-14 shrink-0"></div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-slate-800 text-sm">Volet roulant monobloc intégré</p>
-                                <p className="text-[11px] text-slate-500">
-                                  {getVoletMonoblocLineDesignation(item).split('\n').slice(1).join(' · ')}
-                                </p>
-                              </div>
+                              {editingVoletId === item.id ? (
+                                <div className="flex flex-1 flex-col gap-2">
+                                  <textarea
+                                    value={tempVoletText}
+                                    onChange={(e) => setTempVoletText(e.target.value)}
+                                    autoFocus
+                                    rows={3}
+                                    className="min-w-0 w-full rounded-lg border border-orange-500 px-2.5 py-1.5 text-sm leading-relaxed outline-none shadow-sm"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleSaveVolet(item)}
+                                      className="shrink-0 flex items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-orange-600"
+                                    >
+                                      <Check size={12} /> Valider
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingVoletId(null)}
+                                      className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                    >
+                                      Annuler
+                                    </button>
+                                    {isVoletTextCustom(item) && (
+                                      <button
+                                        onClick={() => handleResetVolet(item)}
+                                        className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                        title="Revenir à la désignation automatique du volet"
+                                      >
+                                        Texte automatique
+                                      </button>
+                                    )}
+                                    <span className="text-[10px] text-slate-400">1re ligne : titre (en gras sur le devis).</span>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="group flex flex-1 items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    {(() => {
+                                      const [voletTitle, ...voletDetails] = resolveVoletMonoblocLineDesignation(item).split('\n');
+                                      return (
+                                        <>
+                                          <p className="font-semibold text-slate-800 text-sm">{voletTitle}</p>
+                                          {voletDetails.length > 0 && (
+                                            <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-500">
+                                              {voletDetails.join('\n')}
+                                            </p>
+                                          )}
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                  <button
+                                    onClick={() => handleStartEditVolet(item)}
+                                    className="flex shrink-0 items-center gap-1.5 rounded border border-transparent p-1 px-2 text-slate-400 opacity-0 transition-all hover:border-orange-200 hover:bg-orange-50 hover:text-orange-500 group-hover:opacity-100"
+                                    title="Modifier la désignation du volet"
+                                  >
+                                    <Pencil size={12} />
+                                    <span className="text-[10px] font-bold">Modifier</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-4 text-center text-slate-400 text-xs">
@@ -1048,38 +1204,58 @@ export default function QuoteSummary({
                             <div className="flex items-center gap-3">
                               <div className="w-14 shrink-0"></div>
                               {editingPoseId === item.id ? (
-                                <div className="flex flex-1 items-center gap-2">
-                                  <input
+                                <div className="flex flex-1 flex-col gap-2">
+                                  <textarea
                                     value={tempPoseLabel}
                                     onChange={(e) => setTempPoseLabel(e.target.value)}
                                     autoFocus
-                                    className="min-w-0 flex-1 rounded-lg border border-orange-500 px-2.5 py-1.5 text-sm outline-none shadow-sm"
+                                    rows={4}
+                                    className="min-w-0 w-full rounded-lg border border-orange-500 px-2.5 py-1.5 text-sm leading-relaxed outline-none shadow-sm"
                                   />
-                                  <button
-                                    onClick={() => handleSavePose(item)}
-                                    className="shrink-0 flex items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-orange-600"
-                                  >
-                                    <Check size={12} /> Valider
-                                  </button>
-                                  <button
-                                    onClick={() => setEditingPoseId(null)}
-                                    className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
-                                  >
-                                    Annuler
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => handleSavePose(item)}
+                                      className="shrink-0 flex items-center gap-1 rounded-md bg-orange-500 px-2.5 py-1.5 text-[10px] font-bold text-white hover:bg-orange-600"
+                                    >
+                                      <Check size={12} /> Valider
+                                    </button>
+                                    <button
+                                      onClick={() => setEditingPoseId(null)}
+                                      className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                    >
+                                      Annuler
+                                    </button>
+                                    {isPoseTextCustom(item) && (
+                                      <button
+                                        onClick={() => handleResetPose(item)}
+                                        className="shrink-0 rounded-md px-2 py-1.5 text-[10px] font-bold text-slate-500 hover:bg-slate-100"
+                                        title="Revenir au libellé et au détail automatiques"
+                                      >
+                                        Texte automatique
+                                      </button>
+                                    )}
+                                    <span className="text-[10px] text-slate-400">1re ligne : libellé ; dessous : ce que la pose comprend.</span>
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="group flex flex-1 items-center justify-between gap-2">
-                                  <p className="font-semibold text-slate-800 text-sm">
-                                    {getPoseLabel(item)}
-                                  </p>
+                                <div className="group flex flex-1 items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-slate-800 text-sm">
+                                      {getPoseLabel(item)}
+                                    </p>
+                                    {getPoseDescription(item) && (
+                                      <p className="whitespace-pre-line text-[11px] leading-relaxed text-slate-500">
+                                        {getPoseDescription(item)}
+                                      </p>
+                                    )}
+                                  </div>
                                   <button
                                     onClick={() => handleStartEditPose(item)}
                                     className="flex shrink-0 items-center gap-1.5 rounded border border-transparent p-1 px-2 text-slate-400 opacity-0 transition-all hover:border-orange-200 hover:bg-orange-50 hover:text-orange-500 group-hover:opacity-100"
-                                    title="Renommer la pose"
+                                    title="Modifier le texte de la pose"
                                   >
                                     <Pencil size={12} />
-                                    <span className="text-[10px] font-bold">Renommer</span>
+                                    <span className="text-[10px] font-bold">Modifier</span>
                                   </button>
                                 </div>
                               )}

@@ -9,8 +9,11 @@ import {
   getVoletMonoblocManoeuvreSurcharge,
   isPresetVoletMonoblocCouleur,
   normalizeVoletMonoblocCouleur,
+  normalizeVoletMonoblocDescription,
   normalizeVoletMonoblocPriceOverride,
+  resolveVoletMonoblocLineDesignation,
   splitVoletMonoblocPricing,
+  VOLET_MONOBLOC_DESCRIPTION_MAX_LENGTH,
 } from '../lib/volet-monobloc.mjs';
 
 const run = (name, fn) => {
@@ -110,6 +113,19 @@ run('sous-ligne « volet » : titre seul en 1re ligne, détail dessous', () => {
   assert.equal(lines[1], 'Manœuvre solaire (sans raccordement) – coloris Noir');
   assert.ok(lines[2].startsWith('Coffre isolé intégré'));
   assert.equal(getVoletMonoblocLineDesignation({ voletMonobloc: false }), '');
+});
+
+run('désignation du volet modifiable : texte saisi prioritaire, vide = automatique, borné', () => {
+  assert.equal(normalizeVoletMonoblocDescription(''), null);
+  assert.equal(normalizeVoletMonoblocDescription('   '), null);
+  assert.equal(normalizeVoletMonoblocDescription(null), null);
+  assert.equal(normalizeVoletMonoblocDescription(undefined), null);
+  assert.equal(normalizeVoletMonoblocDescription(' Volet sur mesure \r\n coloris gris '), 'Volet sur mesure\n coloris gris');
+  assert.equal(normalizeVoletMonoblocDescription('x'.repeat(700)).length, VOLET_MONOBLOC_DESCRIPTION_MAX_LENGTH);
+  const item = { voletMonobloc: true, voletMonoblocManoeuvre: 'radio' };
+  assert.equal(resolveVoletMonoblocLineDesignation(item), getVoletMonoblocLineDesignation(item));
+  assert.equal(resolveVoletMonoblocLineDesignation({ ...item, voletMonoblocDescription: 'Mon volet\nDétail' }), 'Mon volet\nDétail');
+  assert.equal(resolveVoletMonoblocLineDesignation({ ...item, voletMonoblocDescription: '  ' }), getVoletMonoblocLineDesignation(item));
 });
 
 /* ─── Prix séparé : répartition menuiserie / volet ───────────────────────── */

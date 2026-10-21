@@ -18,8 +18,10 @@ import {
   calculateWasteManagementForItems,
   createCatalogServiceCartItem,
   getItemPricingSummary,
+  getPoseDescription,
   getProductById,
 } from '@/lib/products';
+import { getVoletMonoblocLineDesignation } from '@/lib/volet-monobloc.mjs';
 import {
   buildMultiVariantQuotePdfDocument,
   buildQuotePdfDocument,
@@ -181,6 +183,38 @@ const buildGeneratedDesignationSignature = (item) => {
   } catch {
     return '';
   }
+};
+
+/**
+ * Textes modifiés dans le récapitulatif (libellé et détail de la pose,
+ * désignation de la sous-ligne « volet ») : conservés quand la ligne repasse
+ * par le configurateur, tant que leurs textes automatiques ne changent pas
+ * (même principe que la désignation manuelle). Un libellé de pose posé par le
+ * configurateur lui-même (produit libre) n'est jamais écrasé.
+ */
+const keepRecapTexts = (previousItem, nextItem) => {
+  const kept = {};
+  const hadPoseText =
+    Boolean(String(previousItem?.poseLabel || '').trim()) ||
+    typeof previousItem?.poseDescription === 'string';
+  if (hadPoseText && nextItem?.poseLabel === undefined) {
+    const autoBefore = getPoseDescription({ ...previousItem, poseDescription: null });
+    const autoAfter = getPoseDescription({ ...nextItem, poseDescription: null });
+    if (autoBefore === autoAfter) {
+      kept.poseLabel = previousItem.poseLabel || '';
+      kept.poseDescription =
+        typeof previousItem.poseDescription === 'string' ? previousItem.poseDescription : null;
+    }
+  }
+  if (
+    typeof previousItem?.voletMonoblocDescription === 'string' &&
+    nextItem?.voletMonobloc &&
+    nextItem?.voletMonoblocSeparate &&
+    getVoletMonoblocLineDesignation(previousItem) === getVoletMonoblocLineDesignation(nextItem)
+  ) {
+    kept.voletMonoblocDescription = previousItem.voletMonoblocDescription;
+  }
+  return kept;
 };
 
 const shouldKeepManualDesignation = (previousItem, nextItem) => {
@@ -819,13 +853,15 @@ export default function HomePageClient() {
       if (existing >= 0) {
         const nextItems = [...prev];
         const previousItem = nextItems[existing];
+        const recapTexts = keepRecapTexts(previousItem, item);
         nextItems[existing] = shouldKeepManualDesignation(previousItem, item)
           ? {
               ...item,
+              ...recapTexts,
               customDescription: previousItem.customDescription,
               customDescriptionManual: true,
             }
-          : item;
+          : { ...item, ...recapTexts };
         return nextItems;
       }
       return [...prev, item];

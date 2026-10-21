@@ -1062,6 +1062,36 @@ const buildModel = (overrides = {}, extraDeps = {}) =>
   const merged = buildModel({ cartItems: [line] }, { calculateItemPrice: voletCalc });
   assert.equal(merged.lines.length, 2, 'menuiserie + pose');
   assert.equal(merged.lines[0].lineHT, 1800);
+
+  // Désignation du volet modifiée dans le récapitulatif : reprise telle quelle.
+  const custom = buildModel(
+    { cartItems: [{ ...line, voletMonoblocSeparate: true, voletMonoblocDescription: 'Volet roulant sur mesure\nTablier alu isolé' }] },
+    { calculateItemPrice: voletCalc }
+  );
+  assert.equal(custom.lines[1].designationFull, 'Volet roulant sur mesure Tablier alu isolé');
+}
+
+/* ─── Désignation de la pose : libellé + détail quand le moteur le fournit ── */
+{
+  const model = buildModel(
+    {
+      cartItems: [
+        { id: 'p', productLabel: 'Fenêtre', unitPrice: 500, quantity: 1, includePose: true, posePrice: 250 },
+      ],
+    },
+    {
+      getPoseDesignation: (item) =>
+        `Pose ${item.productLabel}\nPose et fixation de la menuiserie, calfeutrement et étanchéité.\nRéglage des ouvrants, contrôle du bon fonctionnement.`,
+    }
+  );
+  const pose = model.lines[1];
+  assert.equal(pose.nature, 'pose');
+  assert.equal(
+    pose.designationFull,
+    'Pose Fenêtre Pose et fixation de la menuiserie, calfeutrement et étanchéité. Réglage des ouvrants, contrôle du bon fonctionnement.',
+    'détail aplati derrière le libellé'
+  );
+  assert.equal(pose.lineHT, 250);
 }
 
 console.log('sage-export.test.mjs : OK');
