@@ -832,6 +832,10 @@ export default function ProductSelector({
   const [customLabel, setCustomLabel] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customPrice, setCustomPrice] = useState('');
+  // Prix HT de la ligne fixé directement sur l'estimation (clic sur le montant) :
+  // la marge nette (ou la remise nette) souhaitée se calcule toute seule.
+  const [editingTotal, setEditingTotal] = useState(false);
+  const [totalDraft, setTotalDraft] = useState('');
   const [customImage, setCustomImage] = useState(null);
   const [customHasDimensions, setCustomHasDimensions] = useState(false);
   const [customWidthMm, setCustomWidthMm] = useState('');
@@ -1503,6 +1507,41 @@ export default function ProductSelector({
   })();
 
   const previewCalc = previewItem ? calculateItemPrice(previewItem) : null;
+
+  /**
+   * Prix HT voulu pour la ligne (quantité comprise), tapé sur l'estimation :
+   * l'écart avec le prix calculé sans ajustement devient la marge nette
+   * souhaitée (prix voulu plus haut) ou la remise nette souhaitée (plus bas),
+   * en euros nets par unité, remise de la ligne déjà prise en compte. Ligne à
+   * prix manuel (cintre intégré) ou produit à prix fixe : pas concernés.
+   */
+  const canEditTotal = Boolean(previewCalc) && !isCintreManualPrice && !isFixedPriceProduct;
+  const applyTargetTotal = (rawValue) => {
+    const target = Number.parseFloat(String(rawValue ?? '').replace(',', '.'));
+    if (!previewItem || !Number.isFinite(target) || target < 0) return;
+    const units = Math.max(1, quantity);
+    const neutral = calculateItemPrice({ ...previewItem, netMarginWanted: 0, netDiscountWanted: 0 });
+    const diff = Math.round((target / units - neutral.unitPriceAfterDiscount) * 100) / 100;
+    if (diff >= 0) {
+      setNetAdjustmentMode('margin');
+      setNetMarginWanted(diff);
+      setNetDiscountWanted(0);
+    } else {
+      setNetAdjustmentMode('discount');
+      setNetDiscountWanted(-diff);
+      setNetMarginWanted(0);
+    }
+  };
+  const startEditingTotal = () => {
+    if (!canEditTotal) return;
+    setTotalDraft(previewCalc.totalLine.toFixed(2));
+    setEditingTotal(true);
+  };
+  const commitTotal = () => {
+    setEditingTotal(false);
+    applyTargetTotal(totalDraft);
+  };
+
   // Volet monobloc à prix séparé : parts menuiserie / volet affichées sous l'estimation.
   const previewVoletSplit =
     previewItem && previewCalc
@@ -4236,7 +4275,45 @@ export default function ProductSelector({
                       : 0
                     ).toFixed(2)} EUR`
                   : previewCalc
-                  ? `${previewCalc.totalLine.toFixed(2)} EUR`
+                  ? canEditTotal
+                    ? editingTotal
+                      ? (
+                        <span className="inline-flex items-center gap-2">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step={0.01}
+                            autoFocus
+                            value={totalDraft}
+                            onChange={(event) => setTotalDraft(event.target.value)}
+                            onFocus={(event) => event.target.select()}
+                            onBlur={commitTotal}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                commitTotal();
+                              } else if (event.key === 'Escape') {
+                                event.preventDefault();
+                                setEditingTotal(false);
+                              }
+                            }}
+                            aria-label="Prix HT voulu pour la ligne"
+                            className="w-44 rounded-xl border border-orange-300 bg-white px-3 py-1 text-right text-2xl font-black text-slate-900 outline-none ring-2 ring-orange-200"
+                          />
+                          <span className="text-xl font-bold text-slate-500">EUR</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={startEditingTotal}
+                          title="Cliquer pour fixer le prix HT de la ligne : la marge nette (ou la remise nette) souhaitée se remplit automatiquement"
+                          className="-mx-1 rounded-xl border border-transparent px-1 text-left transition-colors hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                        >
+                          {previewCalc.totalLine.toFixed(2)} EUR
+                        </button>
+                      )
+                    : `${previewCalc.totalLine.toFixed(2)} EUR`
                   : isWasteManagement
                     ? `${wasteCalculation.totalWastePrice.toFixed(2)} EUR`
                     : isCustomProduct
@@ -4247,6 +4324,12 @@ export default function ProductSelector({
                         ? `${(compositeUnitPrice * quantity).toFixed(2)} EUR`
                         : 'A definir'}
               </p>
+              {canEditTotal && !editingTotal ? (
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Clique sur le montant pour fixer le prix : la marge nette souhaitée se remplit toute seule
+                  {quantity > 1 ? ` (prix pour ${quantity} pièces)` : ''}.
+                </p>
+              ) : null}
               {previewVoletSplit ? (
                 <p className="mt-1 text-sm text-slate-500">
                   Menuiserie : {previewVoletSplit.menuiserie.totalLine.toFixed(2)} EUR · Volet :{' '}
