@@ -64,6 +64,19 @@ run('radio et solaire au même devis : chaque box sous son premier volet', () =>
   assert.equal(same.size, 2);
 });
 
+run('prix de la box remisé comme le volet concerné', () => {
+  const lines = getBoxSuggestionLines(
+    [
+      { id: 's', productId: 'volet-solaire', remise: 20 },
+      { id: 'r', productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'radio', remise: 10 },
+    ],
+    variants,
+    fmt
+  );
+  assert.ok(lines.get('s').endsWith('+143,20 € HT'), lines.get('s'));
+  assert.ok(lines.get('r').endsWith('+232,20 € HT'), lines.get('r'));
+});
+
 run('rien si la box est déjà au devis, ni pour filaire ou manuel', () => {
   assert.equal(
     getBoxSuggestionLines(
