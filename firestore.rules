@@ -155,5 +155,19 @@ service cloud.firestore {
     match /fin_formalNotices/{noticeId}    { allow read: if isSarange(); allow write: if false; }
     match /fin_audit/{entryId}             { allow read: if isSarange(); allow write: if false; }
     match /fin_settings/{documentId}       { allow read: if isSarange(); allow write: if false; }
+
+    // ---- zib-labs-gestion (facturation, commissions, URSSAF de ZiB Labs) : SERVEUR UNIQUEMENT ----
+    // Toutes les lectures et écritures passent par les routes API de
+    // zib-labs-gestion (Admin SDK, compte Google autorisé vérifié à chaque
+    // appel). Refusé par défaut, rendu explicite ici ; les jetons d'envoi
+    // d'e-mail (zib_settings/mail) ne doivent jamais être lisibles côté client.
+    match /zib_settings/{documentId}       { allow read, write: if false; }
+    match /zib_clients/{clientId}          { allow read, write: if false; }
+    match /zib_catalogue/{itemId}          { allow read, write: if false; }
+    match /zib_invoices/{invoiceId}        { allow read, write: if false; }
+    match /zib_payments/{paymentId}        { allow read, write: if false; }
+    match /zib_deals/{dealId}              { allow read, write: if false; }
+    match /zib_emails/{emailId}            { allow read, write: if false; }
+    match /zib_audit/{entryId}             { allow read, write: if false; }
   }
 }
