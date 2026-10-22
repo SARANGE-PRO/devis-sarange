@@ -399,4 +399,25 @@ run('echeancier 100% a la commande : les clauses 2.3 et 3.1 visent le reglement 
   assert.ok(standard.includes("à compter de l'encaissement de l'acompte et de la validation technique"));
 });
 
+run('mention « alimentation électrique » : carte en plus, avec pose seulement, figée dans le snapshot', () => {
+  const withPower = getLegalNoticeColumns(CONTRACT_TYPES.AVEC_POSE, undefined, { powerSupply: true });
+  assert.equal(withPower.length, 2);
+  assert.equal(withPower[1].title, 'Alimentation électrique');
+  assert.equal(withPower[1].items.length, 1, 'une seule mention générale');
+  assert.ok(withPower[1].items[0].includes('arrivée 230 V conforme'));
+  assert.ok(withPower[1].items[0].includes('sans branchement ni mise en service'));
+  assert.equal(getLegalNoticeColumns(CONTRACT_TYPES.AVEC_POSE).length, 1, 'sans volet électrique : rien');
+  assert.equal(
+    getLegalNoticeColumns(CONTRACT_TYPES.FOURNITURE_SEULE, undefined, { powerSupply: true }).length,
+    1,
+    'fourniture seule : pas de pose, pas de mention'
+  );
+  const snapshot = buildCgvSnapshot({
+    clientType: 'PARTICULIER',
+    generatedAt: '2026-10-22T10:00:00.000Z',
+    entries: [{ variantId: 'mono', contractType: CONTRACT_TYPES.AVEC_POSE, quoteSettings: {}, powerSupply: true }],
+  });
+  assert.ok(JSON.stringify(snapshot.entries[0].legalNotices).includes('Alimentation électrique'));
+});
+
 console.log('Tous les tests des CGV adaptatives ont reussi.');

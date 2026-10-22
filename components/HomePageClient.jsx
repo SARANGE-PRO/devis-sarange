@@ -22,6 +22,8 @@ import {
   getProductById,
 } from '@/lib/products';
 import { getVoletMonoblocLineDesignation } from '@/lib/volet-monobloc.mjs';
+import { quoteNeedsPowerSupply } from '@/lib/pose-designation.mjs';
+import { WASTE_MANAGEMENT_LABEL } from '@/lib/waste-management.mjs';
 import {
   buildMultiVariantQuotePdfDocument,
   buildQuotePdfDocument,
@@ -94,7 +96,7 @@ const createWasteManagementCartItem = (cartItems = []) => {
   return {
     id: createCartItemId('dechets'),
     productId: WASTE_MANAGEMENT_PRODUCT_ID,
-    productLabel: product?.label || 'Gestion des déchets',
+    productLabel: product?.label || WASTE_MANAGEMENT_LABEL,
     sheetName: product?.sheet || 'Gestion Déchets',
     totalSurface: wasteCalculation.totalSurface,
     totalWeight: wasteCalculation.totalWeight,
@@ -457,7 +459,7 @@ export default function HomePageClient() {
     if (hasPose && !hasWasteManagement) {
       missing.push({
         id: WASTE_MANAGEMENT_PRODUCT_ID,
-        label: 'Gestion des déchets',
+        label: WASTE_MANAGEMENT_LABEL,
       });
     }
 
@@ -1171,6 +1173,9 @@ export default function HomePageClient() {
                   contractType: variantContractType,
                 }),
                 quoteSettings: variant.quoteSettings,
+                // Volet roulant électrique dans la variante : mention
+                // « alimentation électrique » figée avec ses conditions.
+                powerSupply: quoteNeedsPowerSupply(variant.cartItems),
               };
             }),
           }) || undefined

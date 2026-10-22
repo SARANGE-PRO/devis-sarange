@@ -3,10 +3,14 @@ import {
   POSE_DESCRIPTION_MAX_LENGTH,
   buildPoseDescription,
   buildPoseDesignation,
+  buildPoseLabel,
+  itemNeedsPowerSupply,
   normalizePoseDescription,
   parsePoseDesignation,
+  quoteNeedsPowerSupply,
   resolvePoseDescription,
   resolvePoseKind,
+  resolvePoseMaterial,
 } from '../lib/pose-designation.mjs';
 
 const run = (name, fn) => {
@@ -20,88 +24,138 @@ const run = (name, fn) => {
 };
 
 const lineCount = (text) => text.split('\n').length;
-const ELEC = 'alimentation 230 V en attente (électricité à la charge du client)';
 
-run('nature du poste : menuiserie, volet seul, porte, composé, produit libre, box', () => {
-  assert.equal(resolvePoseKind({ productId: 'fenetre-1v', sheetName: 'Fenêtre 1V' }), 'menuiserie');
-  assert.equal(resolvePoseKind({ productId: 'pf-2v-alu', sheetName: 'Porte-Fenêtre 2V ALU' }), 'menuiserie');
+run('nature du poste : fenêtre, porte-fenêtre, coulissant, châssis fixe, porte, volet, composé, libre, box', () => {
+  assert.equal(resolvePoseKind({ productId: 'fenetre-1v', sheetName: 'Fenêtre 1V' }), 'fenetre');
+  assert.equal(resolvePoseKind({ productId: 'fenetre-fixe-alu', sheetName: 'Fenêtre Fixe ALU' }), 'fixe');
+  assert.equal(resolvePoseKind({ productId: 'pf-2v-alu', sheetName: 'Porte-Fenêtre 2V ALU' }), 'porte-fenetre');
+  assert.equal(resolvePoseKind({ productId: 'coulissant-2v2r', sheetName: 'Coulissant 2 vantaux 2 rails' }), 'coulissant');
+  assert.equal(resolvePoseKind({ productId: 'galandage-2v-alu', sheetName: 'Galandage 2 vantaux ALU' }), 'coulissant');
   assert.equal(resolvePoseKind({ productId: 'volet-radio', sheetName: 'Volet Filaire' }), 'volet');
   assert.equal(resolvePoseKind({ productId: 'volet-box-domotique', sheetName: 'Volet Box domotique' }), 'box-domotique');
   assert.equal(resolvePoseKind({ productId: 'porte-reno', sheetName: 'Porte Entrée RENO' }), 'porte');
-  assert.equal(resolvePoseKind({ productId: 'porte-neuf-alu', sheetName: 'Porte Entrée NEUF ALU' }), 'porte');
   assert.equal(resolvePoseKind({ isComposite: true }), 'composite');
   assert.equal(resolvePoseKind({ productId: 'custom-product' }), 'custom');
 });
 
-run('menuiserie sans volet : une seule ligne courte', () => {
-  const text = buildPoseDescription({ productId: 'fenetre-1v', sheetName: 'Fenêtre 1V' });
-  assert.equal(text, 'Fixation, calfeutrement et étanchéité, réglage des ouvrants, contrôle du fonctionnement.');
-  assert.equal(lineCount(text), 1);
+run('matériau : champ explicite, jumeau -alu, feuille ALU, PVC par défaut', () => {
+  assert.equal(resolvePoseMaterial({ productId: 'fenetre-1v' }), 'pvc');
+  assert.equal(resolvePoseMaterial({ productId: 'fenetre-1v-alu' }), 'alu');
+  assert.equal(resolvePoseMaterial({ productId: 'fenetre-1v', sheetName: 'Fenêtre 1V ALU' }), 'alu');
+  assert.equal(resolvePoseMaterial({ productId: 'fenetre-1v', material: 'alu' }), 'alu');
+  assert.equal(resolvePoseMaterial({ isComposite: true, compositeMaterial: 'alu' }), 'alu');
 });
 
-run('menuiserie avec volet monobloc : deux lignes, électricité à la charge du client', () => {
-  const radio = buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'radio' });
-  assert.equal(lineCount(radio), 2);
+run('libellés adaptés au produit : matériau, vantaux, rails, motorisation', () => {
+  assert.equal(buildPoseLabel({ productId: 'fenetre-2v', productLabel: 'Fenêtre 2 vantaux' }), 'Pose fenêtre PVC 2 vantaux');
   assert.equal(
-    radio.split('\n')[0],
-    'La menuiserie et le volet monobloc posés en une seule intervention : fixation, calfeutrement et étanchéité, réglage des ouvrants.'
+    buildPoseLabel({ productId: 'fenetre-2v-alu', productLabel: 'Fenêtre 2 vantaux', sheetName: 'Fenêtre 2V ALU' }),
+    'Pose fenêtre aluminium 2 vantaux'
   );
-  assert.equal(radio.split('\n')[1], `Volet : raccordement sur ${ELEC}, appairage de la télécommande, réglages, contrôle du fonctionnement.`);
-  assert.ok(!radio.includes('deux lignes ci-dessus'));
-  const manuel = buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true });
-  assert.equal(manuel.split('\n')[1], 'Volet : réglage de la manœuvre, contrôle du fonctionnement.');
-  const filaire = buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'filaire' });
-  assert.equal(filaire.split('\n')[1], `Volet : raccordement sur ${ELEC}, réglages, contrôle du fonctionnement.`);
-  const solaire = buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'solaire' });
-  assert.equal(solaire.split('\n')[1], 'Volet : mise en service solaire sans raccordement électrique, réglages, contrôle du fonctionnement.');
-  assert.ok(!solaire.includes('230 V'), 'pas d’électricité pour le solaire');
-});
-
-run('volet chiffré séparément : la pose rappelle qu’elle couvre les deux lignes', () => {
-  const text = buildPoseDescription({
-    productId: 'pf-1v',
-    voletMonobloc: true,
-    voletMonoblocSeparate: true,
-    voletMonoblocManoeuvre: 'filaire',
-  });
+  assert.equal(buildPoseLabel({ productId: 'fenetre-2v1f', productLabel: 'Fenêtre 2V + 1 fixe' }), 'Pose fenêtre PVC 2V + 1 fixe');
+  assert.equal(buildPoseLabel({ productId: 'fenetre-soufflet', productLabel: 'Fenêtre soufflet' }), 'Pose fenêtre PVC soufflet');
+  assert.equal(buildPoseLabel({ productId: 'pf-2v', productLabel: 'Porte-fenêtre 2 vantaux' }), 'Pose porte-fenêtre PVC 2 vantaux');
   assert.equal(
-    text.split('\n')[0],
-    'Pose unique de la menuiserie et du volet monobloc (deux lignes ci-dessus) : fixation, calfeutrement et étanchéité, réglage des ouvrants.'
+    buildPoseLabel({ productId: 'coulissant-2v2r-alu', productLabel: 'Coulissant 2 vantaux 2 rails' }),
+    'Pose coulissant aluminium 2 vantaux – 2 rails'
   );
-  assert.equal(lineCount(text), 2);
-});
-
-run('volet roulant seul : une ligne, manœuvre d’après le produit', () => {
-  const radio = buildPoseDescription({ productId: 'volet-radio', productLabel: 'Volet roulant radio' });
-  assert.equal(radio, `Fixation du coffre et des coulisses, calfeutrement, raccordement sur ${ELEC}, appairage de la télécommande, réglages.`);
-  assert.equal(buildPoseDescription({ productId: 'volet-manuel' }), 'Fixation du coffre et des coulisses, calfeutrement, réglage de la manœuvre.');
-  assert.ok(buildPoseDescription({ productId: 'volet-solaire' }).includes('mise en service solaire sans raccordement électrique'));
-  assert.ok(buildPoseDescription({ productId: 'volet-filaire' }).includes(ELEC));
-});
-
-run('porte d’entrée : une ligne, dormant existant ou dormant neuf', () => {
-  const reno = buildPoseDescription({ productId: 'porte-reno', sheetName: 'Porte Entrée RENO' });
-  assert.equal(reno, 'Sur dormant existant : fixation, calfeutrement et étanchéité, réglage des paumelles et de la serrure, contrôle du fonctionnement.');
-  const neuf = buildPoseDescription({ productId: 'porte-neuf-alu', sheetName: 'Porte Entrée NEUF ALU' });
-  assert.ok(neuf.startsWith('Dormant neuf : fixation'));
-  assert.equal(lineCount(neuf), 1);
-});
-
-run('châssis composé : l’ensemble en une seule intervention, nombre de châssis', () => {
   assert.equal(
-    buildPoseDescription({ isComposite: true }, { moduleCount: 3 }),
-    "L'ensemble composé (3 châssis) posé en une seule intervention : fixation, calfeutrement et étanchéité, réglage des ouvrants, contrôle du fonctionnement."
+    buildPoseLabel({ productId: 'galandage-2v-alu', productLabel: 'Coulissant à galandage 2 vantaux' }),
+    'Pose coulissant à galandage aluminium 2 vantaux'
   );
-  assert.ok(buildPoseDescription({ isComposite: true }).startsWith("L'ensemble composé posé en une seule intervention"));
-  const withVolet = buildPoseDescription({ isComposite: true, voletMonobloc: true, voletMonoblocManoeuvre: 'radio' }, { moduleCount: 2 });
-  assert.ok(withVolet.startsWith("L'ensemble composé (2 châssis) et le volet monobloc posés en une seule intervention"));
-  const separate = buildPoseDescription({ isComposite: true, voletMonobloc: true, voletMonoblocSeparate: true }, { moduleCount: 2 });
-  assert.ok(separate.startsWith("Pose unique de l'ensemble composé (2 châssis) et du volet monobloc (deux lignes ci-dessus)"));
+  assert.equal(buildPoseLabel({ productId: 'fenetre-fixe', productLabel: 'Fenêtre fixe' }), 'Pose châssis fixe');
+  assert.equal(buildPoseLabel({ isComposite: true }), 'Pose châssis composé');
+  assert.equal(buildPoseLabel({ productId: 'porte-reno', productLabel: "Porte d'entrée rénovation" }), "Pose porte d'entrée");
+  assert.equal(buildPoseLabel({ productId: 'porte-neuf-alu', productLabel: "Porte d'entrée neuf" }), "Pose porte d'entrée");
+  assert.equal(buildPoseLabel({ productId: 'volet-radio', productLabel: 'Volet roulant radio' }), 'Pose volet roulant motorisé radio');
+  assert.equal(buildPoseLabel({ productId: 'volet-filaire', productLabel: 'Volet roulant filaire' }), 'Pose volet roulant motorisé filaire');
+  assert.equal(buildPoseLabel({ productId: 'volet-solaire', productLabel: 'Volet roulant solaire' }), 'Pose volet roulant solaire');
+  assert.equal(buildPoseLabel({ productId: 'volet-manuel', productLabel: 'Volet roulant manuel' }), 'Pose volet roulant manuel');
+  assert.equal(buildPoseLabel({ productId: 'volet-box-domotique' }), 'Pose box domotique');
+  assert.equal(buildPoseLabel({ productId: 'custom-product', productLabel: 'Fenêtre de toit' }), 'Pose Fenêtre de toit');
+  // Ligne importée du site qui porte déjà le matériau : pas de doublon.
+  assert.equal(buildPoseLabel({ productId: 'fenetre-1v', productLabel: 'Fenêtre PVC 1 vantail' }), 'Pose fenêtre PVC 1 vantail');
+  // Volet monobloc : la pose couvre les deux.
+  assert.equal(
+    buildPoseLabel({ productId: 'fenetre-2v', productLabel: 'Fenêtre 2 vantaux', voletMonobloc: true }),
+    'Pose fenêtre PVC 2 vantaux et volet roulant monobloc'
+  );
+  assert.equal(buildPoseLabel({ isComposite: true, voletMonobloc: true }), 'Pose châssis composé et volet roulant monobloc');
 });
 
-run('produit libre et box domotique', () => {
+run('descriptions : une ligne par poste, textes de la spécification', () => {
+  assert.equal(
+    buildPoseDescription({ productId: 'fenetre-1v' }),
+    'Installation, fixation, calfeutrement et étanchéité périphérique, réglages et contrôle du bon fonctionnement.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'pf-2v' }),
+    'Installation, fixation, calfeutrement et étanchéité, réglages des ouvrants et contrôle du fonctionnement.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'porte-reno' }),
+    'Installation, fixation, étanchéité, réglages des paumelles et de la serrure, contrôle du fonctionnement.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'coulissant-2v2r' }),
+    'Installation, fixation, étanchéité périphérique, réglages des vantaux et contrôle du coulissement.'
+  );
+  const fixe = 'Installation, fixation, calfeutrement et étanchéité périphérique, contrôle des finitions.';
+  assert.equal(buildPoseDescription({ productId: 'fenetre-fixe' }), fixe);
+  assert.equal(buildPoseDescription({ isComposite: true }), fixe);
+  assert.equal(
+    buildPoseDescription({ productId: 'volet-radio' }),
+    'Installation et fixation du volet roulant, branchement sur alimentation mise à disposition, réglages, programmation et essais de fonctionnement.'
+  );
+  assert.equal(buildPoseDescription({ productId: 'volet-filaire' }), buildPoseDescription({ productId: 'volet-radio' }));
+  assert.equal(
+    buildPoseDescription({ productId: 'volet-solaire' }),
+    'Installation et fixation du volet roulant, réglages, programmation et essais de fonctionnement.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'volet-manuel' }),
+    'Installation et fixation du volet roulant, réglages et vérification du bon fonctionnement.'
+  );
   assert.equal(buildPoseDescription({ productId: 'custom-product' }), "Dépose éventuelle, pose et raccordement d'étanchéité.");
   assert.equal(buildPoseDescription({ productId: 'volet-box-domotique' }), 'Installation, paramétrage et appairage des volets.');
+  for (const item of [{ productId: 'fenetre-1v' }, { productId: 'pf-2v' }, { productId: 'volet-radio' }, { isComposite: true }]) {
+    assert.equal(lineCount(buildPoseDescription(item)), 1);
+  }
+});
+
+run('volet monobloc : deuxième ligne selon la manœuvre, jamais plus de deux lignes', () => {
+  const radio = buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'radio' });
+  assert.equal(lineCount(radio), 2);
+  assert.equal(radio.split('\n')[1], 'Volet roulant monobloc : branchement sur alimentation mise à disposition, réglages, programmation et essais.');
+  assert.equal(
+    buildPoseDescription({ productId: 'pf-1v', voletMonobloc: true, voletMonoblocManoeuvre: 'filaire', voletMonoblocSeparate: true }).split('\n')[1],
+    'Volet roulant monobloc : branchement sur alimentation mise à disposition, réglages, programmation et essais.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'solaire' }).split('\n')[1],
+    'Volet roulant monobloc : réglages, programmation et essais.'
+  );
+  assert.equal(
+    buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true }).split('\n')[1],
+    'Volet roulant monobloc : réglages et vérification du bon fonctionnement.'
+  );
+  assert.equal(lineCount(buildPoseDescription({ isComposite: true, voletMonobloc: true, voletMonoblocManoeuvre: 'radio' })), 2);
+  assert.ok(!buildPoseDescription({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'radio' }).includes('230 V'), 'jamais sous le poste');
+});
+
+run('alimentation 230 V : volets électriques seuls ou monobloc, jamais solaire ni manuel', () => {
+  assert.equal(itemNeedsPowerSupply({ productId: 'volet-radio' }), true);
+  assert.equal(itemNeedsPowerSupply({ productId: 'volet-filaire' }), true);
+  assert.equal(itemNeedsPowerSupply({ productId: 'volet-solaire' }), false);
+  assert.equal(itemNeedsPowerSupply({ productId: 'volet-manuel' }), false);
+  assert.equal(itemNeedsPowerSupply({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'radio' }), true);
+  assert.equal(itemNeedsPowerSupply({ productId: 'fenetre-2v', voletMonobloc: true, voletMonoblocManoeuvre: 'solaire' }), false);
+  assert.equal(itemNeedsPowerSupply({ productId: 'fenetre-2v', voletMonobloc: true }), false);
+  assert.equal(itemNeedsPowerSupply({ productId: 'fenetre-2v' }), false);
+  assert.equal(quoteNeedsPowerSupply([{ productId: 'fenetre-2v' }, { productId: 'volet-solaire' }]), false);
+  assert.equal(quoteNeedsPowerSupply([{ productId: 'fenetre-2v' }, { productId: 'volet-radio' }]), true);
+  assert.equal(quoteNeedsPowerSupply([]), false);
+  assert.equal(quoteNeedsPowerSupply(null), false);
 });
 
 run('texte saisi : prioritaire, nettoyé et borné ; null = automatique ; vide = aucun détail', () => {
@@ -111,7 +165,7 @@ run('texte saisi : prioritaire, nettoyé et borné ; null = automatique ; vide =
   assert.equal(normalizePoseDescription('x'.repeat(700)).length, POSE_DESCRIPTION_MAX_LENGTH);
   assert.equal(resolvePoseDescription({ productId: 'fenetre-1v', poseDescription: 'Avec nacelle.' }), 'Avec nacelle.');
   assert.equal(resolvePoseDescription({ productId: 'fenetre-1v', poseDescription: '' }), '', 'vide = pas de détail');
-  assert.ok(resolvePoseDescription({ productId: 'fenetre-1v' }).startsWith('Fixation'));
+  assert.ok(resolvePoseDescription({ productId: 'fenetre-1v' }).startsWith('Installation'));
 });
 
 run('désignation complète et lecture inverse du texte édité', () => {
