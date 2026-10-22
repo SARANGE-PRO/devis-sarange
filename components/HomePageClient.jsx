@@ -1009,9 +1009,15 @@ export default function HomePageClient() {
     resetGenerationState();
   };
 
-  const handleRenameVariant = (id, name) => {
+  // Nom de la variante et, en option, le texte « Ce qui change » de la page
+  // comparative (vide = différences calculées avec la variante A).
+  const handleRenameVariant = (id, name, summary) => {
     setVariants((previous) =>
-      previous.map((variant) => (variant.id === id ? { ...variant, name } : variant))
+      previous.map((variant) =>
+        variant.id === id
+          ? { ...variant, name, ...(typeof summary === 'string' ? { summary } : {}) }
+          : variant
+      )
     );
   };
 

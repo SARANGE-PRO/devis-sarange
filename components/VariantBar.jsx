@@ -12,6 +12,12 @@ import {
   X,
 } from 'lucide-react';
 import { computeQuoteTotals } from '@/lib/quote-totals.mjs';
+import {
+  VARIANT_SUMMARY_MAX_LENGTH,
+  buildAutoVariantSummary,
+  normalizeVariantSummary,
+  resolveVariantSummary,
+} from '@/lib/variant-summary.mjs';
 
 const currencyFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
@@ -41,6 +47,7 @@ export default function VariantBar({
 }) {
   const [editingId, setEditingId] = useState(null);
   const [tempName, setTempName] = useState('');
+  const [tempSummary, setTempSummary] = useState('');
 
   if (!variantsMode) {
     return (
@@ -60,12 +67,16 @@ export default function VariantBar({
   const startRename = (variant) => {
     setEditingId(variant.id);
     setTempName(variant.name || '');
+    setTempSummary(variant.summary || '');
   };
 
   const commitRename = (id) => {
-    onRename?.(id, tempName.trim());
+    onRename?.(id, tempName.trim(), normalizeVariantSummary(tempSummary));
     setEditingId(null);
   };
+
+  // Variante de référence : la première, base des différences automatiques.
+  const referenceVariant = variants[0];
 
   return (
     <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -93,7 +104,7 @@ export default function VariantBar({
               }`}
             >
               {isEditing ? (
-                <div className="flex items-center gap-1.5">
+                <div className="flex w-64 flex-col gap-1.5">
                   <input
                     value={tempName}
                     onChange={(event) => setTempName(event.target.value)}
@@ -102,22 +113,53 @@ export default function VariantBar({
                       if (event.key === 'Enter') commitRename(variant.id);
                       if (event.key === 'Escape') setEditingId(null);
                     }}
-                    placeholder="Ex : Gris anthracite RAL 7016"
-                    className="w-48 rounded-lg border border-orange-400 px-2 py-1 text-xs outline-none"
+                    placeholder="Nom : Gris anthracite RAL 7016"
+                    aria-label="Nom de la variante"
+                    className="w-full rounded-lg border border-orange-400 px-2 py-1 text-xs outline-none"
                   />
-                  <button
-                    type="button"
-                    onClick={() => commitRename(variant.id)}
-                    className="rounded-md bg-orange-500 p-1 text-white hover:bg-orange-600"
-                    aria-label="Valider le nom"
-                  >
-                    <Check size={13} />
-                  </button>
+                  <textarea
+                    value={tempSummary}
+                    onChange={(event) => setTempSummary(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        commitRename(variant.id);
+                      }
+                      if (event.key === 'Escape') setEditingId(null);
+                    }}
+                    rows={2}
+                    maxLength={VARIANT_SUMMARY_MAX_LENGTH}
+                    placeholder={`Ce qui change (PDF) : ${buildAutoVariantSummary(variant, referenceVariant)}`}
+                    aria-label="Ce qui change, sur la page comparative du PDF"
+                    className="w-full resize-none rounded-lg border border-slate-200 px-2 py-1 text-[11px] leading-snug outline-none focus:border-orange-400"
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-slate-400">Vide = texte automatique</span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded-md p-1 text-slate-400 hover:bg-slate-100"
+                        aria-label="Annuler"
+                      >
+                        <X size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => commitRename(variant.id)}
+                        className="rounded-md bg-orange-500 p-1 text-white hover:bg-orange-600"
+                        aria-label="Valider"
+                      >
+                        <Check size={13} />
+                      </button>
+                    </span>
+                  </div>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => onSelect?.(variant.id)}
+                  title={`Ce qui change : ${resolveVariantSummary(variant, referenceVariant)}`}
                   className="flex min-w-[8rem] items-center justify-between gap-3 text-left"
                 >
                   <span className="flex flex-col">
@@ -159,7 +201,8 @@ export default function VariantBar({
                     type="button"
                     onClick={() => startRename(variant)}
                     className="rounded p-1 text-slate-400 transition hover:bg-orange-100 hover:text-orange-600"
-                    aria-label="Renommer"
+                    aria-label="Renommer et décrire ce qui change"
+                    title="Nom et « ce qui change » (page comparative du PDF)"
                   >
                     <Pencil size={13} />
                   </button>
