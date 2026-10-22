@@ -16,6 +16,7 @@ import {
   getPoseDescription,
   getPoseDesignation,
   getPoseLabel,
+  getQuoteBoxSuggestionLines,
   SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import { parsePoseDesignation } from '@/lib/pose-designation.mjs';
@@ -109,15 +110,17 @@ const buildDesignationWithDiscount = (baseText, item, pricing) => {
 
 // Même ligne que dans le PDF, affichée à part pour ne jamais se mêler à la
 // désignation éditable.
-const SuggestedOptionsNote = ({ item, enabled, className = '' }) => {
+// `boxLine` : box domotique proposée une fois par devis (volets radio / solaires).
+const SuggestedOptionsNote = ({ item, enabled, boxLine = '', className = '' }) => {
   if (!enabled) return null;
   const line = buildSuggestedOptionsLine(
     getItemSuggestedSashOptions(item),
     formatPriceLabel,
     item?.quantity
   );
-  if (!line) return null;
-  return <p className={`not-italic text-slate-400 ${className}`}>{line}</p>;
+  const text = [line, boxLine].filter(Boolean).join('\n');
+  if (!text) return null;
+  return <p className={`whitespace-pre-line not-italic text-slate-400 ${className}`}>{text}</p>;
 };
 
 const PriceStack = ({
@@ -246,6 +249,11 @@ export default function QuoteSummary({
   const totals = useMemo(
     () => computeQuoteTotals(commissionedItems, tvaRate),
     [commissionedItems, tvaRate]
+  );
+  // Box domotique proposée une fois par devis, sous le premier volet radio / solaire.
+  const boxSuggestionLines = useMemo(
+    () => getQuoteBoxSuggestionLines(cartItems, formatPriceLabel),
+    [cartItems]
   );
 
   // Toute remontée vers le panier doit repartir SANS la majoration éphémère.
@@ -772,6 +780,7 @@ export default function QuoteSummary({
                             <SuggestedOptionsNote
                               item={item}
                               enabled={quoteSettings?.showSuggestedOptions}
+                              boxLine={boxSuggestionLines.get(item.id)}
                               className="mt-1 text-[10px]"
                             />
                           </div>
@@ -1082,6 +1091,7 @@ export default function QuoteSummary({
                                           <SuggestedOptionsNote
                                             item={item}
                                             enabled={quoteSettings?.showSuggestedOptions}
+                                            boxLine={boxSuggestionLines.get(item.id)}
                                             className="mt-1.5"
                                           />
                                         </div>
