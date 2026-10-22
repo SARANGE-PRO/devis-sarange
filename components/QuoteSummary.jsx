@@ -1,6 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import PdfGenerationLoader from './PdfGenerationLoader';
+
+// Visionneuse PDF (pdf.js, toutes les pages en défilement) : chargée à la demande.
+const MobilePdfViewer = dynamic(() => import('./MobilePdfViewer'), { ssr: false });
 import {
   applyCommissionToCartItems,
   calculateItemPrice,
@@ -47,6 +51,7 @@ import {
   PenLine,
   AlertTriangle,
   Plus,
+  Eye,
 } from 'lucide-react';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
@@ -169,6 +174,7 @@ export default function QuoteSummary({
   setQuoteSettings,
   onGoBack,
   onGeneratePdf,
+  onBuildPreviewPdf,
   onDownloadAgain,
   pdfGenerated = false,
   onUpdateItem,
@@ -195,6 +201,26 @@ export default function QuoteSummary({
   const [tempVoletText, setTempVoletText] = useState('');
   const [certifyTva, setCertifyTva] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  // Aperçu provisoire (sans numéro, rien d'enregistré) : URL du PDF affiché.
+  const [preview, setPreview] = useState({ url: '', loading: false, error: '' });
+
+  const openPreview = async () => {
+    if (!onBuildPreviewPdf || preview.loading) return;
+    setPreview({ url: '', loading: true, error: '' });
+    try {
+      await waitForLoaderPaint();
+      const pdfDocument = await onBuildPreviewPdf();
+      if (!pdfDocument?.blob) throw new Error("Impossible d'afficher l'aperçu du devis.");
+      setPreview({ url: URL.createObjectURL(pdfDocument.blob), loading: false, error: '' });
+    } catch (error) {
+      setPreview({ url: '', loading: false, error: error?.message || "Impossible d'afficher l'aperçu du devis." });
+    }
+  };
+
+  const closePreview = () => {
+    if (preview.url) URL.revokeObjectURL(preview.url);
+    setPreview({ url: '', loading: false, error: '' });
+  };
   // Action demandée alors que le type de client manque : mémorisée le temps du
   // choix, puis relancée automatiquement.
   const [pendingActionKey, setPendingActionKey] = useState(null);
@@ -401,6 +427,42 @@ export default function QuoteSummary({
         <PdfGenerationLoader title="Creation du devis" messages={['Veuillez patienter...']} />
       )}
 
+      {/* Aperçu provisoire du devis : PDF réel, « PROVISOIRE » à la place du numéro. */}
+      {(preview.url || preview.error) && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-6"
+          onMouseDown={closePreview}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Aperçu du devis provisoire"
+            className="flex w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <div className="min-w-0">
+                <p className="font-black text-slate-900">Devis provisoire</p>
+                <p className="text-xs text-slate-500">Aperçu sans numéro, rien n&apos;est enregistré ni envoyé.</p>
+              </div>
+              <button
+                type="button"
+                onClick={closePreview}
+                aria-label="Fermer l'aperçu"
+                className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            {preview.error ? (
+              <p className="m-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600">{preview.error}</p>
+            ) : (
+              <MobilePdfViewer url={preview.url} title="Devis provisoire" heightClass="h-[80vh]" />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Envoi du devis (email ou signature) : on bloque l'écran avec l'animation. */}
       {isSendingDelivery && !isGeneratingPdf && (
         <PdfGenerationLoader
@@ -429,10 +491,21 @@ export default function QuoteSummary({
             <h2 className="text-xl font-black text-white tracking-tight sm:text-2xl">Récapitulatif du Devis</h2>
             <p className="text-slate-400 mt-1 text-sm">Vérifiez les informations avant validation</p>
           </div>
-          <div className="flex items-center gap-2 bg-slate-800/50 text-white px-4 py-2 rounded-xl backdrop-blur-sm border border-slate-700/50">
-            <FileText size={18} className="text-orange-500" />
+          <button
+            type="button"
+            onClick={() => void openPreview()}
+            disabled={!onBuildPreviewPdf || preview.loading || !cartItems?.length}
+            title="Voir le devis tel qu'il sortira, sans numéro et sans l'enregistrer"
+            className="flex items-center gap-2 self-start rounded-xl border border-slate-700/50 bg-slate-800/50 px-4 py-2 text-white backdrop-blur-sm transition-colors hover:border-orange-400 hover:bg-slate-800 disabled:cursor-default disabled:opacity-60 sm:self-auto"
+          >
+            {preview.loading ? (
+              <Loader2 size={18} className="animate-spin text-orange-500" />
+            ) : (
+              <FileText size={18} className="text-orange-500" />
+            )}
             <span className="font-semibold text-sm">Devis Provisoire</span>
-          </div>
+            <Eye size={15} className="text-slate-400" />
+          </button>
         </div>
 
         <div className="p-5 sm:p-8 border-b border-slate-100">

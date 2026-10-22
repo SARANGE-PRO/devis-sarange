@@ -1288,6 +1288,19 @@ export default function HomePageClient() {
     }
   };
 
+  /**
+   * Aperçu provisoire depuis le récapitulatif : le devis tel qu'il sortira,
+   * SANS l'enregistrer ni lui attribuer de numéro (« PROVISOIRE » et filigrane).
+   * Renvoie le document (blob) à afficher.
+   */
+  const handleBuildPreviewPdf = async () => {
+    const previewOptions = { reference: quoteReference, insurance: companyInsurance, preview: true };
+    if (variantsMode && materializedVariants.length > 1) {
+      return buildMultiVariantQuotePdfDocument(clientData, materializedVariants, previewOptions);
+    }
+    return buildQuotePdfDocument(clientData, cartItems, tvaRate, quoteSettings, previewOptions);
+  };
+
   const handleSendQuoteDelivery = async (deliveryMode, clientTypeOverride = '') => {
     setSaveError('');
     setDeliveryError('');
@@ -1821,6 +1834,7 @@ export default function HomePageClient() {
           onGoBack={() => setCurrentStep(2)}
           onUpdateItem={handleAddToCart}
           onGeneratePdf={handleGeneratePdf}
+          onBuildPreviewPdf={handleBuildPreviewPdf}
           onDownloadAgain={handleGeneratePdf}
           pdfGenerated={pdfGenerated}
           onSendQuote={(clientTypeOverride) =>
