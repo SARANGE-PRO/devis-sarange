@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { toRouteErrorResponse } from '@/lib/api-route-errors';
 import { verifyFirebaseUserFromRequest } from '@/lib/firebase/admin';
 import {
+  previewCompletionEmail,
   previewCompletionReminder,
   previewQuoteLinkedCompletion,
   previewReservesLift,
@@ -13,7 +14,8 @@ export const runtime = 'nodejs';
 /**
  * Aperçu d'un e-mail AVANT envoi (vérification par l'utilisateur) : rien n'est
  * enregistré ni envoyé. `kind` = 'send' (bon de fin de chantier / livraison /
- * enlèvement), 'reminder' (relance du bon) ou 'lift' (PV de levée des réserves).
+ * enlèvement), 'email' (mail initial d'un bon déjà créé), 'reminder' (relance
+ * du bon) ou 'lift' (PV de levée des réserves).
  */
 export async function POST(request) {
   try {
@@ -27,6 +29,12 @@ export async function POST(request) {
           sessionId: body?.sessionId,
           reminderLevel: body?.reminderLevel,
         })
+      );
+    }
+
+    if (body?.kind === 'email') {
+      return NextResponse.json(
+        await previewCompletionEmail({ userId: user.uid, sessionId: body?.sessionId })
       );
     }
 

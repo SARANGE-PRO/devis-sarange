@@ -401,6 +401,7 @@ function QuoteCard({
   onCopySignatureLink,
   onGenerateCompletion,
   onSendCompletionReminder,
+  onSendCompletionEmail,
   onSendReservesLift,
 }) {
   const workflow = getQuoteSignatureWorkflow(quote);
@@ -645,6 +646,22 @@ function QuoteCard({
               )}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
+              {/* Bon créé par « Créer le lien et le copier » (ou mail perdu) :
+                  envoi du mail initial avec le MÊME lien, sans recréer le bon. */}
+              <button
+                type="button"
+                onClick={() => onSendCompletionEmail(quote)}
+                disabled={isWorking}
+                title={`Envoyer au client le mail du ${completionLabel}, avec le même lien de signature`}
+                className="inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {workingKind === 'completion-email' ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Mail size={12} />
+                )}
+                {completionWorkflow.deliveryMode === 'link' ? 'Envoyer par e-mail' : 'Renvoyer le mail'}
+              </button>
               {[1, 2, 3].map((level) => {
                 const meta = getCompletionReminderMeta(level);
                 return (
@@ -1167,6 +1184,61 @@ export default function SavedQuotesPage() {
       const data = await readJsonResponse(response);
       if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer la relance.");
       setActionMessage(`Relance du ${docLabel} envoyée au client.`);
+    } catch (error) {
+      setActionError(error.message);
+    } finally {
+      setActionId(null);
+      setActionKind(null);
+    }
+  };
+
+  // Mail initial d'un bon déjà créé (lien copié à la création, ou mail perdu) :
+  // même lien, même montant, l'adresse se confirme dans la vérification.
+  const handleSendCompletionEmail = async (quote) => {
+    if (!user) return;
+    const sessionId = getCompletionWorkflow(quote).sessionId;
+    if (!sessionId) return;
+
+    setActionId(quote.id);
+    setActionKind('completion-email');
+    setActionError('');
+    setActionMessage('');
+    try {
+      const idToken = await user.getIdToken();
+      const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` };
+
+      const previewResponse = await fetch('/api/completion-certificates/preview', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ kind: 'email', sessionId }),
+      });
+      const preview = await readJsonResponse(previewResponse);
+      if (!previewResponse.ok) {
+        throw new Error(preview?.error || "Impossible de préparer l'aperçu du mail.");
+      }
+      const docLabel = preview.docLabel || 'bon';
+      if (!preview.to) {
+        preview.to = quote.clientEmail || quote.payload?.clientData?.email || '';
+      }
+      const decision = await requestEmailConfirmation({
+        title: capitalizeLabel(docLabel),
+        subtitle: quote.title || '',
+        preview,
+        editableRecipients: true,
+      });
+      if (!decision) {
+        setActionMessage("Envoi annulé : rien n'a été envoyé au client.");
+        return;
+      }
+
+      const response = await fetch('/api/completion-certificates/email', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ sessionId, recipients: decision.recipients }),
+      });
+      const data = await readJsonResponse(response);
+      if (!response.ok) throw new Error(data?.error || "Impossible d'envoyer le bon par e-mail.");
+      setActionMessage(`Le ${docLabel} a été envoyé au client par e-mail.`);
     } catch (error) {
       setActionError(error.message);
     } finally {
@@ -1778,6 +1850,7 @@ export default function SavedQuotesPage() {
                   onCopySignatureLink={handleCopySignatureLink}
                   onGenerateCompletion={handleGenerateCompletion}
                   onSendCompletionReminder={handleSendCompletionReminder}
+                  onSendCompletionEmail={handleSendCompletionEmail}
                   onSendReservesLift={handleSendReservesLift}
                 />
               ))}

@@ -93,7 +93,10 @@ let nextFileKey = 0;
  * repartir des textes par défaut.
  */
 function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
-  const { title, subtitle, preview, pdfPreviewUrl, loading, error, editable } = confirmation;
+  const { title, subtitle, preview, pdfPreviewUrl, loading, error, editable, editableRecipients } = confirmation;
+  // Destinataires seuls modifiables (objet et message figés) : envoi d'un
+  // bon déjà créé dont l'adresse n'est pas forcément connue.
+  const recipientsEditable = Boolean(editable || editableRecipients);
   const [recipients, setRecipients] = useState(editable?.recipients ?? preview?.to ?? '');
   const [recipientError, setRecipientError] = useState('');
   const [subject, setSubject] = useState(editable?.subject ?? '');
@@ -136,7 +139,7 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
   };
 
   const handleConfirm = () => {
-    if (!editable) {
+    if (!recipientsEditable) {
       onConfirm();
       return;
     }
@@ -144,6 +147,10 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
     const recipientProblem = validateRecipientEmails(recipientList);
     if (recipientProblem) {
       setRecipientError(recipientProblem);
+      return;
+    }
+    if (!editable) {
+      onConfirm({ recipients: recipientList });
       return;
     }
     onConfirm({
@@ -198,12 +205,12 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
 
           {preview && (
             <>
-              <Section label={editable ? 'Destinataires' : 'Destinataire'}>
+              <Section label={recipientsEditable ? 'Destinataires' : 'Destinataire'}>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                   {preview.recipientName && (
                     <p className="text-sm font-bold text-slate-900">{preview.recipientName}</p>
                   )}
-                  {editable ? (
+                  {recipientsEditable ? (
                     <>
                       <input
                         type="text"
@@ -385,7 +392,7 @@ function ConfirmationDialog({ confirmation, onConfirm, onCancel }) {
 
 /**
  * @param {object} props
- * @param {object|null} props.confirmation  { title, subtitle, preview, pdfPreviewUrl, editable? }
+ * @param {object|null} props.confirmation  { title, subtitle, preview, pdfPreviewUrl, editable?, editableRecipients? }
  * @param {(details?: object) => void} props.onConfirm
  * @param {() => void} props.onCancel
  */
