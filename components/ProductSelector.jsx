@@ -85,6 +85,7 @@ import { splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
 import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
+import { compressCustomImageFile } from '@/lib/image-compress';
 import {
   DEFAULT_TRAVERSE_HEIGHT_MM,
   MAX_TRAVERSES,
@@ -837,6 +838,7 @@ export default function ProductSelector({
   const [editingTotal, setEditingTotal] = useState(false);
   const [totalDraft, setTotalDraft] = useState('');
   const [customImage, setCustomImage] = useState(null);
+  const [customImageError, setCustomImageError] = useState('');
   const [customHasDimensions, setCustomHasDimensions] = useState(false);
   const [customWidthMm, setCustomWidthMm] = useState('');
   const [customHeightMm, setCustomHeightMm] = useState('');
@@ -1251,12 +1253,19 @@ export default function ProductSelector({
     ? `${addButtonLabel} (hors grille)`
     : addButtonLabel;
 
-  const handleImageUpload = (event) => {
+  // Photo compressée avant d'entrer dans le devis : une photo brute était
+  // effacée à la sauvegarde cloud (trop lourde) et faisait échouer le
+  // brouillon local.
+  const handleImageUpload = async (event) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setCustomImage(reader.result);
-    reader.readAsDataURL(file);
+    setCustomImageError('');
+    try {
+      setCustomImage(await compressCustomImageFile(file));
+    } catch {
+      setCustomImageError("Cette image n'a pas pu être lue. Essayez en JPG ou PNG.");
+    }
   };
 
   // Bornes des traverses du formulaire : au-dessus du soubassement s'il y en a
@@ -1591,6 +1600,7 @@ export default function ProductSelector({
     setCustomDescription('');
     setCustomPrice('');
     setCustomImage(null);
+    setCustomImageError('');
     setCustomHasDimensions(false);
     setCustomWidthMm('');
     setCustomHeightMm('');
@@ -3688,6 +3698,9 @@ export default function ProductSelector({
                 <div className="text-center">
                   <p className="text-sm font-bold text-slate-700">Ajouter une photo</p>
                   <p className="mt-1 text-xs text-slate-400">PNG ou JPG</p>
+                  {customImageError && (
+                    <p className="mt-2 text-xs font-medium text-red-600">{customImageError}</p>
+                  )}
                 </div>
                 <input
                   type="file"
@@ -3883,6 +3896,9 @@ export default function ProductSelector({
                   <div className="text-center">
                     <p className="text-sm font-bold text-slate-700">Ajouter une image</p>
                     <p className="mt-1 text-xs text-slate-400">PNG ou JPG</p>
+                    {customImageError && (
+                      <p className="mt-2 text-xs font-medium text-red-600">{customImageError}</p>
+                    )}
                   </div>
                   <input
                     type="file"
