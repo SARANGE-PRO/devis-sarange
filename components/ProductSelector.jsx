@@ -3330,6 +3330,7 @@ export default function ProductSelector({
                 glazingId: simpleConfig.glazingId,
                 petitsBoisH: simpleConfig.petitsBoisH,
                 petitsBoisV: simpleConfig.petitsBoisV,
+                petitsBoisType: simpleConfig.petitsBoisType,
                 panneauDecoratif: simpleConfig.panneauDecoratif,
                 hasSousBassement: simpleConfig.hasSousBassement,
                 sousBassementHeight: simpleConfig.sousBassementHeight,

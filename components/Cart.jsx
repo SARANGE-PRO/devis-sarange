@@ -272,6 +272,7 @@ function SortableCartItem({
               glazingId: item.glazingOption?.id,
               petitsBoisH: petitsBoisConfig.petitsBoisH,
               petitsBoisV: petitsBoisConfig.petitsBoisV,
+              petitsBoisType: petitsBoisConfig.petitsBoisType,
               panneauDecoratif: item.panneauDecoratif,
               hasSousBassement: item.hasSousBassement,
               sousBassementHeight: item.sousBassementHeight,

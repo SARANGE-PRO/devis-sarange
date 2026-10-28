@@ -4,6 +4,7 @@ import { computeTraverseLayout } from '@/lib/traverses.mjs';
 import { normalizeCompositeComposition } from '@/lib/products';
 import { computeCompositeLayout, collectLeaves, isTreeNode } from '@/lib/composite-layout';
 import { getVoletMonoblocCouleurHex } from '@/lib/volet-monobloc.mjs';
+import { buildPetitsBoisLayout } from '@/lib/petits-bois-layout.mjs';
 
 const COLORS = {
   frameBorder: '#4A4A4A',
@@ -15,33 +16,6 @@ const COLORS = {
   ventilation: '#334155',
   panelBorder: '#CCCCCC',
 };
-
-const normalizeHexColor = (value = '') => {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!trimmed.startsWith('#')) return null;
-  if (trimmed.length === 4) {
-    return `#${trimmed
-      .slice(1)
-      .split('')
-      .map((character) => character + character)
-      .join('')}`;
-  }
-  return trimmed.length === 7 ? trimmed : null;
-};
-const isLightColor = (value) => {
-  const normalized = normalizeHexColor(value);
-  if (!normalized) return false;
-
-  const red = Number.parseInt(normalized.slice(1, 3), 16);
-  const green = Number.parseInt(normalized.slice(3, 5), 16);
-  const blue = Number.parseInt(normalized.slice(5, 7), 16);
-  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
-
-  return luminance >= 0.85;
-};
-const resolvePetitBoisColor = (frameColor) =>
-  isLightColor(frameColor) ? '#CBD5E1' : frameColor || COLORS.frameBorder;
 
 // `overrideScale` : échelle commune à tous les châssis d'un composé
 // (getCompositeModuleScale). Sans elle, un module
@@ -291,42 +265,46 @@ const VentilationGrid = ({ x, y, width, scaleFactor }) => {
   );
 };
 
-const PetitBoisLines = ({
+// Petits bois : profilés pleins à liseré, même géométrie que le canvas du PDF
+// (lib/petits-bois-layout.mjs).
+const PetitsBois = ({
   x,
   y,
   width,
   height,
   petitsBoisH = 0,
   petitsBoisV = 0,
-  stroke,
+  petitsBoisType,
+  frameColor,
   scaleFactor,
 }) => {
-  if (width <= 0 || height <= 0) return null;
-
-  const horizontalCount = Math.max(0, Number.parseInt(petitsBoisH, 10) || 0);
-  const verticalCount = Math.max(0, Number.parseInt(petitsBoisV, 10) || 0);
-
-  if (horizontalCount === 0 && verticalCount === 0) return null;
-
-  const strokeWidth = Math.max(3, 4 * scaleFactor);
-  const horizontalSpacing = height / (horizontalCount + 1);
-  const verticalSpacing = width / (verticalCount + 1);
+  const layout = buildPetitsBoisLayout({
+    x,
+    y,
+    width,
+    height,
+    petitsBoisH,
+    petitsBoisV,
+    petitsBoisType,
+    frameColor,
+    scaleFactor,
+  });
+  if (!layout) return null;
 
   return (
-    <g
-      stroke={stroke}
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      vectorEffect="non-scaling-stroke"
-    >
-      {Array.from({ length: horizontalCount }, (_, index) => {
-        const lineY = y + horizontalSpacing * (index + 1);
-        return <line key={`h-${index}`} x1={x} y1={lineY} x2={x + width} y2={lineY} />;
-      })}
-      {Array.from({ length: verticalCount }, (_, index) => {
-        const lineX = x + verticalSpacing * (index + 1);
-        return <line key={`v-${index}`} x1={lineX} y1={y} x2={lineX} y2={y + height} />;
-      })}
+    <g fill={layout.fill} stroke={layout.border} strokeWidth={layout.borderWidth}>
+      {layout.bars.map((bar, index) => (
+        <rect key={`bar-${index}`} x={bar.x} y={bar.y} width={bar.width} height={bar.height} />
+      ))}
+      {layout.joints.map((joint, index) => (
+        <rect
+          key={`joint-${index}`}
+          x={joint.x}
+          y={joint.y}
+          width={joint.width}
+          height={joint.height}
+        />
+      ))}
     </g>
   );
 };
@@ -342,13 +320,13 @@ const PanelContent = ({
   traverses,
   petitsBoisH,
   petitsBoisV,
+  petitsBoisType,
   metrics,
 }) => {
   if (width <= 0 || height <= 0) return null;
 
   const strokeWidth = Math.max(1, metrics.scaleFactor);
   const isOpaquePanel = panelType === 'sandwich';
-  const petitsBoisColor = resolvePetitBoisColor(frameColor);
   const renderPvcPanel = (panelX, panelY, panelWidth, panelHeight) => {
     if (panelWidth <= 0 || panelHeight <= 0) return null;
 
@@ -397,14 +375,15 @@ const PanelContent = ({
           rx={Math.max(2, 4 * metrics.scaleFactor)}
         />
         {withPetitsBois && (
-          <PetitBoisLines
+          <PetitsBois
             x={panelX}
             y={panelY}
             width={panelWidth}
             height={panelHeight}
             petitsBoisH={petitsBoisH}
             petitsBoisV={petitsBoisV}
-            stroke={petitsBoisColor}
+            petitsBoisType={petitsBoisType}
+            frameColor={frameColor}
             scaleFactor={metrics.scaleFactor}
           />
         )}
@@ -540,6 +519,7 @@ const CasementSash = ({
         traverses={traverses}
         petitsBoisH={metrics.scaleFactor ? sash.petitsBoisH : 0}
         petitsBoisV={metrics.scaleFactor ? sash.petitsBoisV : 0}
+        petitsBoisType={sash.petitsBoisType}
         metrics={metrics}
       />
       {sash.symbols.map((symbol) => (
@@ -631,6 +611,7 @@ const SlidingSash = ({
         panelType={panelType}
         petitsBoisH={sash.petitsBoisH}
         petitsBoisV={sash.petitsBoisV}
+        petitsBoisType={sash.petitsBoisType}
         metrics={metrics}
       />
       {sash.symbols.map((symbol) => (
@@ -839,6 +820,7 @@ export const CompositeModule = ({ module, frameColor, scaleFactor }) => {
                 ...segment.sash,
                 petitsBoisH: config.petitsBoisH,
                 petitsBoisV: config.petitsBoisV,
+                petitsBoisType: config.petitsBoisType,
               }}
               x={segment.x}
               y={innerY}
@@ -860,6 +842,7 @@ export const CompositeModule = ({ module, frameColor, scaleFactor }) => {
                 ...segment.sash,
                 petitsBoisH: config.petitsBoisH,
                 petitsBoisV: config.petitsBoisV,
+                petitsBoisType: config.petitsBoisType,
               }}
               x={segment.x}
               y={innerY}
