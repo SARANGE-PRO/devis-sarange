@@ -616,12 +616,17 @@ export default function QuoteCommercialTerms({
                 />
                 <div>
                   <p className="text-sm font-bold text-slate-900">
-                    Suggérer l&apos;oscillo-battant et la grille de ventilation
+                    Suggérer l&apos;oscillo-battant, la grille de ventilation et la box domotique
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
                     Sous chaque fenêtre qui ne les a pas : « En option (non inclus) :
                     oscillo-battant +XX € HT », au prix remisé de la ligne. OB proposé
                     jusqu&apos;à 2000 mm de haut.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Volets radio ou solaires : box domotique (CHERUBINI METAHome ou
+                    GAPOSA RollAppX) proposée une seule fois, sous le premier volet
+                    concerné, au prix remisé de ce volet. Rien si la box est déjà au devis.
                   </p>
                 </div>
               </label>
