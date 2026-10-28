@@ -150,6 +150,13 @@ const normalizeCartItemsForQuote = (items = []) => {
       ...wasteItem,
       id: existingWaste.id || wasteItem.id,
       tvaRate: existingWaste.tvaRate,
+      // Désignation modifiée dans le récapitulatif : conservée au recalcul.
+      ...(existingWaste.customDescription
+        ? {
+            customDescription: existingWaste.customDescription,
+            customDescriptionManual: true,
+          }
+        : {}),
     });
   }
 

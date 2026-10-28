@@ -21,6 +21,7 @@ import {
 } from '@/lib/products';
 import { parsePoseDesignation } from '@/lib/pose-designation.mjs';
 import { generateDesignation } from '@/lib/designation-generator';
+import { WASTE_MANAGEMENT_PRODUCT_ID, getWasteConfigurationText } from '@/lib/waste-management.mjs';
 import { buildSuggestedOptionsLine } from '@/lib/suggested-options.mjs';
 import { formatPhoneNumber } from '@/lib/phone.mjs';
 import { getPaymentPlanValidation } from '@/lib/quote-settings.mjs';
@@ -111,6 +112,13 @@ const buildDesignationWithDiscount = (baseText, item, pricing) => {
 // Même ligne que dans le PDF, affichée à part pour ne jamais se mêler à la
 // désignation éditable.
 // `boxLine` : box domotique proposée une fois par devis (volets radio / solaires).
+// Désignation affichée et modifiable. Évacuation et recyclage : le détail sous
+// l'intitulé (description, poids, centre), l'intitulé restant fixe.
+const getRecapDesignation = (item, calc, pricing) =>
+  item.productId === WASTE_MANAGEMENT_PRODUCT_ID
+    ? getWasteConfigurationText({ weightKg: calc?.weight, customText: item.customDescription })
+    : item.customDescription || generateDesignation(item, calc, pricing) || '';
+
 const SuggestedOptionsNote = ({ item, enabled, boxLine = '', className = '' }) => {
   if (!enabled) return null;
   const line = buildSuggestedOptionsLine(
@@ -320,9 +328,7 @@ export default function QuoteSummary({
   const handleStartEdit = (item) => {
     const calc = calculateItemPrice(item);
     const pricing = getItemPricingSummary(item, calc);
-    const initialText = stripDiscountLines(
-      item.customDescription || generateDesignation(item, calc, pricing) || ''
-    );
+    const initialText = stripDiscountLines(getRecapDesignation(item, calc, pricing));
     setTempDesignation(initialText);
     setEditingDesignationId(item.id);
   };
@@ -742,7 +748,6 @@ export default function QuoteSummary({
                   </div>
 
                   {/* Designation — editable */}
-                  {item.productId !== 'gestion-dechets' && (
                     <div className="border-t border-slate-100 px-3 py-2 group">
                       {editingDesignationId === item.id ? (
                         <div className="space-y-2">
@@ -772,7 +777,7 @@ export default function QuoteSummary({
                               }`}
                             >
                               {buildDesignationWithDiscount(
-                                item.customDescription || generateDesignation(item, calc, pricing) || '',
+                                getRecapDesignation(item, calc, pricing),
                                 item,
                                 pricing
                               ) || '...'}
@@ -791,7 +796,6 @@ export default function QuoteSummary({
                         </div>
                       )}
                     </div>
-                  )}
 
                   {/* Sous-ligne « volet monobloc » (prix séparé) */}
                   {voletSplit && (() => {
@@ -1049,11 +1053,11 @@ export default function QuoteSummary({
                                   </span>
                                 )}
                               </p>
-                              {item.productId === 'gestion-dechets' ? (
+                              {item.productId === 'gestion-dechets' && (
                                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
                                   <span className="text-green-600 font-medium">Surface traitée : {item.totalSurface?.toFixed(2)} m² • {calc.weight?.toFixed(0)} kg estimé</span>
                                 </div>
-                              ) : (
+                              )}
                                 <div className="mt-2 group relative">
                                   {editingDesignationId === item.id ? (
                                     <div className="space-y-2 animate-in fade-in duration-200">
@@ -1084,7 +1088,7 @@ export default function QuoteSummary({
                                       <div className="flex items-start justify-between gap-4">
                                         <div className="min-w-0 flex-1 break-words text-[11px] italic leading-relaxed text-slate-500 whitespace-pre-wrap">
                                           {buildDesignationWithDiscount(
-                                            item.customDescription || generateDesignation(item, calc, pricing) || '',
+                                            getRecapDesignation(item, calc, pricing),
                                             item,
                                             pricing
                                           ) || 'Désignation en cours...'}
@@ -1134,7 +1138,6 @@ export default function QuoteSummary({
                                     </div>
                                   )}
                                 </div>
-                              )}
                             </div>
                           </div>
                         </td>

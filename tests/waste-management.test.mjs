@@ -7,6 +7,7 @@ import {
   buildWasteDesignation,
   buildWasteDetailLine,
   buildWasteWeightLine,
+  getWasteConfigurationText,
   getWasteManagementLabel,
 } from '../lib/waste-management.mjs';
 
@@ -46,6 +47,16 @@ run('désignation : intitulé puis deux lignes ; quantités et prix inchangés',
   );
   assert.equal(buildWasteDesignation(), `${WASTE_MANAGEMENT_LABEL}\n${WASTE_MANAGEMENT_DESCRIPTION}\n${WASTE_MANAGEMENT_CENTRE}.`);
   assert.equal(buildWasteConfigurationText({ weightKg: 120 }).split('\n').length, 2, 'deux lignes sous l’intitulé');
+});
+
+run('désignation modifiée dans le récap : intitulé fixe, texte vidé = automatique', () => {
+  const custom = 'Évacuation des anciennes fenêtres.\nCentre agréé.';
+  assert.equal(getWasteConfigurationText({ weightKg: 120, customText: custom }), custom);
+  assert.equal(buildWasteDesignation({ weightKg: 120, customText: custom }), `${WASTE_MANAGEMENT_LABEL}\n${custom}`);
+  assert.equal(
+    getWasteConfigurationText({ weightKg: 120, customText: '   ' }),
+    buildWasteConfigurationText({ weightKg: 120 })
+  );
 });
 
 console.log('Tous les tests d’évacuation et recyclage ont reussi.');
