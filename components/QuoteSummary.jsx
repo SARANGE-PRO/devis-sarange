@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import PdfGenerationLoader from './PdfGenerationLoader';
@@ -70,6 +70,16 @@ import {
   resolveVoletMonoblocLineDesignation,
   splitVoletMonoblocPricing,
 } from '@/lib/volet-monobloc.mjs';
+import {
+  applyRecapPosePrice,
+  applyRecapUnitPrice,
+  applyRecapVoletPrice,
+  getRecapPriceMode,
+  parseRecapPriceInput,
+  resetRecapPosePrice,
+  resetRecapUnitPrice,
+  resetRecapVoletPrice,
+} from '@/lib/recap-price-edit.mjs';
 
 const getPetitsBoisConfig = (item = {}) => {
   const legacyValue = Math.max(0, Number.parseInt(item.petitsBois, 10) || 0);
@@ -161,6 +171,76 @@ const PriceStack = ({
       )}
       <span className={finalClass}>{formatPriceLabel(finalValue)}</span>
     </div>
+  );
+};
+
+// Prix cliquable du récapitulatif : saisie du prix NET HT (Entrée ou clic
+// ailleurs = valider, Échap = annuler). `onReset` : retour au prix automatique.
+const EditablePrice = ({ value, onCommit, onReset, title = 'Modifier le prix', children }) => {
+  const [draft, setDraft] = useState(null);
+  const cancelledRef = useRef(false);
+  if (!onCommit) return children;
+
+  if (draft !== null) {
+    const commit = () => {
+      const text = draft;
+      setDraft(null);
+      if (cancelledRef.current) return;
+      const amount = parseRecapPriceInput(text);
+      if (amount !== null && amount !== parseRecapPriceInput(Number(value || 0).toFixed(2))) {
+        onCommit(amount);
+      }
+    };
+    return (
+      <span className="inline-flex flex-col items-end gap-1">
+        <input
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          aria-label={title}
+          onChange={(event) => setDraft(event.target.value)}
+          onFocus={(event) => event.target.select()}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              cancelledRef.current = true;
+              event.currentTarget.blur();
+            }
+          }}
+          className="w-28 rounded-md border border-orange-500 bg-white px-2 py-1 text-right text-sm font-bold text-slate-900 outline-none focus:ring-2 focus:ring-orange-200"
+        />
+        {onReset && (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              cancelledRef.current = true;
+              setDraft(null);
+              onReset();
+            }}
+            className="text-[10px] font-bold text-slate-500 hover:text-orange-600"
+          >
+            Prix automatique
+          </button>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={() => {
+        cancelledRef.current = false;
+        setDraft(Number(value || 0).toFixed(2));
+      }}
+      className="group/price -mx-1 inline-flex items-center gap-1 rounded px-1 text-right transition-colors hover:bg-orange-50"
+    >
+      {children}
+      <Pencil size={10} className="shrink-0 text-slate-300 group-hover/price:text-orange-500" />
+    </button>
   );
 };
 
@@ -273,6 +353,73 @@ export default function QuoteSummary({
     const { commissionUnitHT, ...clean } = next;
     onUpdateItem(clean);
   };
+  // Prix modifiés dans le récapitulatif (voir lib/recap-price-edit.mjs) :
+  // calculs faits sur le panier SANS commission, puis commission redistribuée,
+  // pour que le prix tapé soit celui affiché, commission comprise.
+  const commissionSettings = {
+    mode: quoteSettings?.commissionMode,
+    percent: quoteSettings?.commissionPercent,
+    amount: quoteSettings?.commissionAmount,
+  };
+  const rawItemOf = (item) => cartItems.find((entry) => entry.id === item.id) || item;
+  // Total tapé = prix unitaire × quantité : ramené au prix unitaire.
+  const toUnit = (item, amount, isTotal) =>
+    isTotal ? amount / Math.max(1, Number(item.quantity) || 1) : amount;
+
+  const getPriceEditors = (item) => {
+    const raw = rawItemOf(item);
+    const mode = getRecapPriceMode(raw);
+    const applyIf = (next) => next && updateItem(next);
+    const resetMain = resetRecapUnitPrice(raw);
+    const resetPose = resetRecapPosePrice(raw);
+    const resetVolet = resetRecapVoletPrice(raw);
+    const main = (isTotal) =>
+      mode
+        ? {
+            onCommit: (amount) =>
+              applyIf(
+                applyRecapUnitPrice({
+                  items: cartItems,
+                  itemId: raw.id,
+                  target: toUnit(raw, amount, isTotal),
+                  commission: commissionSettings,
+                })
+              ),
+            onReset: resetMain ? () => updateItem(resetMain) : undefined,
+            title:
+              mode === 'discountAmount'
+                ? 'Modifier le montant de la remise'
+                : isTotal
+                  ? 'Modifier le total HT de la ligne (après remise)'
+                  : 'Modifier le prix unitaire HT (après remise)',
+          }
+        : {};
+    return {
+      isAdjusted: Boolean(resetMain),
+      main,
+      pose: (isTotal) => ({
+        onCommit: (amount) => applyIf(applyRecapPosePrice(raw, toUnit(raw, amount, isTotal))),
+        onReset: resetPose ? () => updateItem(resetPose) : undefined,
+        title: isTotal ? 'Modifier le total de la pose' : 'Modifier le prix unitaire de la pose',
+      }),
+      volet: (isTotal) => ({
+        onCommit: (amount) =>
+          applyIf(
+            applyRecapVoletPrice({
+              items: cartItems,
+              itemId: raw.id,
+              target: toUnit(raw, amount, isTotal),
+              commission: commissionSettings,
+            })
+          ),
+        onReset: resetVolet ? () => updateItem(resetVolet) : undefined,
+        title: isTotal
+          ? 'Modifier le total du volet (après remise)'
+          : 'Modifier le prix unitaire du volet (après remise)',
+      }),
+    };
+  };
+
   const billingName =
     clientData?.prenom || clientData?.nom
       ? `${clientData?.prenom || ''} ${clientData?.nom || ''}`.trim()
@@ -603,6 +750,7 @@ export default function QuoteSummary({
               const voletSplit = splitVoletMonoblocPricing(item, calc, linePricing);
               const pricing = voletSplit ? { ...linePricing, ...voletSplit.menuiserie } : linePricing;
               const rowCalc = voletSplit ? { ...calc, ...voletSplit.menuiserie } : calc;
+              const priceEditors = getPriceEditors(item);
               return (
                 <div key={item.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="flex gap-3 p-3">
@@ -691,12 +839,15 @@ export default function QuoteSummary({
                             <span className="italic text-slate-400 text-[10px] shrink-0">{item.repere}</span>
                           )}
                         </p>
-                        <PriceStack
-                          finalValue={rowCalc.totalLine}
-                          originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
-                          emphasis="strong"
-                          className="shrink-0"
-                        />
+                        <div className="shrink-0">
+                          <EditablePrice value={Math.abs(rowCalc.totalLine)} {...priceEditors.main(true)}>
+                            <PriceStack
+                              finalValue={rowCalc.totalLine}
+                              originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
+                              emphasis="strong"
+                            />
+                          </EditablePrice>
+                        </div>
                       </div>
 
                       {/* Dimensions + Qty */}
@@ -711,12 +862,14 @@ export default function QuoteSummary({
                         <span>Qté : <strong>{item.quantity}</strong></span>
                         <div className="flex items-center gap-1.5">
                           <span className="font-semibold text-slate-400">PU</span>
-                          <PriceStack
-                            finalValue={rowCalc.unitPriceAfterDiscount}
-                            originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
-                            align="left"
-                            emphasis="compact"
-                          />
+                          <EditablePrice value={Math.abs(rowCalc.unitPriceAfterDiscount)} {...priceEditors.main(false)}>
+                            <PriceStack
+                              finalValue={rowCalc.unitPriceAfterDiscount}
+                              originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
+                              align="left"
+                              emphasis="compact"
+                            />
+                          </EditablePrice>
                         </div>
                         {isMultiTva && (
                           <div className="flex items-center gap-1 ml-auto shrink-0 animate-in fade-in slide-in-from-right-2">
@@ -848,12 +1001,15 @@ export default function QuoteSummary({
                             )}
                           </span>
                         )}
-                        <PriceStack
-                          finalValue={voletSplit.volet.totalLine}
-                          originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
-                          emphasis="compact"
-                          className="shrink-0"
-                        />
+                        <div className="shrink-0">
+                          <EditablePrice value={voletSplit.volet.totalLine} {...priceEditors.volet(true)}>
+                            <PriceStack
+                              finalValue={voletSplit.volet.totalLine}
+                              originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
+                              emphasis="compact"
+                            />
+                          </EditablePrice>
+                        </div>
                       </div>
                     );
                   })()}
@@ -906,7 +1062,11 @@ export default function QuoteSummary({
                           )}
                         </span>
                       )}
-                      <span className="shrink-0 font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
+                      <span className="shrink-0">
+                        <EditablePrice value={calc.posePrice * item.quantity} {...priceEditors.pose(true)}>
+                          <span className="font-black text-slate-900">{(calc.posePrice * item.quantity).toFixed(2)} €</span>
+                        </EditablePrice>
+                      </span>
                     </div>
                   )}
 
@@ -965,6 +1125,7 @@ export default function QuoteSummary({
                   const pricing = voletSplit ? { ...linePricing, ...voletSplit.menuiserie } : linePricing;
                   const rowCalc = voletSplit ? { ...calc, ...voletSplit.menuiserie } : calc;
                   const petitsBoisConfig = getPetitsBoisConfig(item);
+                  const priceEditors = getPriceEditors(item);
                   return (
                     <React.Fragment key={item.id}>
                       <tr className="hover:bg-slate-50/50 transition-colors">
@@ -1125,6 +1286,14 @@ export default function QuoteSummary({
                                         {item.includePose && (
                                           <span className="text-[9px] px-1.5 py-0.5 bg-green-50 rounded text-green-600 font-bold">Pose incluse</span>
                                         )}
+                                        {priceEditors.isAdjusted && (
+                                          <span
+                                            className="text-[9px] px-1.5 py-0.5 bg-orange-50 rounded text-orange-600 font-bold"
+                                            title="Prix modifié à la main (ajustement net ou prix saisi)"
+                                          >
+                                            Prix ajusté
+                                          </span>
+                                        )}
                                         {(() => {
                                           const tvaCorrection = getItemTvaCorrection(item, tvaRate);
                                           return tvaCorrection.wasCorrected ? (
@@ -1167,11 +1336,13 @@ export default function QuoteSummary({
                           {item.quantity}
                         </td>
                         <td className="py-4 px-4 text-right text-sm">
-                          <PriceStack
-                            finalValue={rowCalc.unitPriceAfterDiscount}
-                            originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
-                            emphasis="compact"
-                          />
+                          <EditablePrice value={Math.abs(rowCalc.unitPriceAfterDiscount)} {...priceEditors.main(false)}>
+                            <PriceStack
+                              finalValue={rowCalc.unitPriceAfterDiscount}
+                              originalValue={pricing.hasDiscount ? pricing.originalUnitHT : null}
+                              emphasis="compact"
+                            />
+                          </EditablePrice>
                         </td>
                         {isMultiTva && (
                           <td className="py-4 px-4 text-center animate-in fade-in">
@@ -1188,11 +1359,13 @@ export default function QuoteSummary({
                           </td>
                         )}
                         <td className="py-4 px-4 text-right">
-                          <PriceStack
-                            finalValue={rowCalc.totalLine}
-                            originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
-                            emphasis="strong"
-                          />
+                          <EditablePrice value={Math.abs(rowCalc.totalLine)} {...priceEditors.main(true)}>
+                            <PriceStack
+                              finalValue={rowCalc.totalLine}
+                              originalValue={pricing.hasDiscount ? pricing.originalLineHT : null}
+                              emphasis="strong"
+                            />
+                          </EditablePrice>
                         </td>
                       </tr>
                       {voletSplit && (
@@ -1270,19 +1443,23 @@ export default function QuoteSummary({
                             {item.quantity}
                           </td>
                           <td className="py-3 px-4 text-right text-sm">
-                            <PriceStack
-                              finalValue={voletSplit.volet.unitPriceAfterDiscount}
-                              originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalUnitHT : null}
-                              emphasis="compact"
-                            />
+                            <EditablePrice value={voletSplit.volet.unitPriceAfterDiscount} {...priceEditors.volet(false)}>
+                              <PriceStack
+                                finalValue={voletSplit.volet.unitPriceAfterDiscount}
+                                originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalUnitHT : null}
+                                emphasis="compact"
+                              />
+                            </EditablePrice>
                           </td>
                           {isMultiTva && <td className="py-3 px-4"></td>}
                           <td className="py-3 px-4 text-right">
-                            <PriceStack
-                              finalValue={voletSplit.volet.totalLine}
-                              originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
-                              emphasis="strong"
-                            />
+                            <EditablePrice value={voletSplit.volet.totalLine} {...priceEditors.volet(true)}>
+                              <PriceStack
+                                finalValue={voletSplit.volet.totalLine}
+                                originalValue={voletSplit.volet.hasDiscount ? voletSplit.volet.originalLineHT : null}
+                                emphasis="strong"
+                              />
+                            </EditablePrice>
                           </td>
                         </tr>
                       )}
@@ -1356,11 +1533,15 @@ export default function QuoteSummary({
                             {item.quantity}
                           </td>
                           <td className="py-3 px-4 text-right text-sm text-slate-900 font-medium">
-                            {calc.posePrice.toFixed(2)} €
+                            <EditablePrice value={calc.posePrice} {...priceEditors.pose(false)}>
+                              {calc.posePrice.toFixed(2)} €
+                            </EditablePrice>
                           </td>
                           {isMultiTva && <td className="py-3 px-4"></td>}
                           <td className="py-3 px-4 text-right font-black text-slate-900">
-                            {(calc.posePrice * item.quantity).toFixed(2)} €
+                            <EditablePrice value={calc.posePrice * item.quantity} {...priceEditors.pose(true)}>
+                              {(calc.posePrice * item.quantity).toFixed(2)} €
+                            </EditablePrice>
                           </td>
                         </tr>
                       )}

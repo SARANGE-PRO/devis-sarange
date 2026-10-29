@@ -150,6 +150,8 @@ const normalizeCartItemsForQuote = (items = []) => {
       ...wasteItem,
       id: existingWaste.id || wasteItem.id,
       tvaRate: existingWaste.tvaRate,
+      // Prix saisi dans le récapitulatif : conservé au recalcul du poids.
+      wastePriceOverride: existingWaste.wastePriceOverride ?? null,
       // Désignation modifiée dans le récapitulatif : conservée au recalcul.
       ...(existingWaste.customDescription
         ? {

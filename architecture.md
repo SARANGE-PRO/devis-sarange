@@ -750,6 +750,15 @@ Cas particuliers :
 - `gestion-dechets` : calcule un cout a partir de facteurs de surface/poids,
 - composites : aggregation des modules enfants.
 
+Prix modifies dans le recapitulatif (`lib/recap-price-edit.mjs`) : le prix
+tape (PU ou total, net HT apres remise, commission comprise) passe par le
+levier existant de la ligne, jamais par un prix force : ajustement net
+(marge / remise nette, garde a 4 decimales) pour les menuiseries catalogue,
+`customPrice` / `unitPrice` pour les lignes a prix saisi, `posePriceOverride`
+pour la pose, `voletMonoblocPriceOverride` pour le volet separe,
+`wastePriceOverride` pour l'evacuation des dechets. La commission est
+redistribuee a chaque essai jusqu'a retomber sur le prix tape.
+
 ### 9.3 TVA
 
 `lib/quote-totals.mjs` prend en charge :
