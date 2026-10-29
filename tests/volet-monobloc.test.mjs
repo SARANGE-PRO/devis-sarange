@@ -88,12 +88,18 @@ run('prix saisi : vide = grille, 0 = offert, jamais négatif, arrondi au centime
 
 /* ─── Désignation du volet ───────────────────────────────────────────────── */
 
-run('désignation : manœuvre, coloris s’il diffère, coffre et tablier', () => {
+run('désignation : manœuvre, coloris s’il diffère, coffre et tablier, ΔR', () => {
   assert.deepEqual(buildVoletMonoblocDesignationLines({ voletMonobloc: false }), []);
   const manuel = buildVoletMonoblocDesignationLines({ voletMonobloc: true });
-  assert.equal(manuel.length, 2);
+  assert.equal(manuel.length, 3);
   assert.equal(manuel[0], 'Volet roulant monobloc intégré – manœuvre manuelle (manivelle)');
   assert.ok(manuel[1].startsWith('Coffre isolé intégré'));
+  assert.equal(manuel[2], 'ΔR > 0.22 m².K/W', 'même ΔR que les volets seuls');
+  assert.equal(
+    buildVoletMonoblocDesignationLines({ voletMonobloc: true, showThermalData: false }).length,
+    2,
+    'données thermiques masquées : pas de ΔR'
+  );
   const radio = buildVoletMonoblocDesignationLines({
     voletMonobloc: true,
     voletMonoblocManoeuvre: 'radio',
@@ -112,6 +118,7 @@ run('sous-ligne « volet » : titre seul en 1re ligne, détail dessous', () => {
   assert.equal(lines[0], 'Volet roulant monobloc intégré');
   assert.equal(lines[1], 'Manœuvre solaire (sans raccordement) – coloris Noir');
   assert.ok(lines[2].startsWith('Coffre isolé intégré'));
+  assert.equal(lines[3], 'ΔR > 0.22 m².K/W');
   assert.equal(getVoletMonoblocLineDesignation({ voletMonobloc: false }), '');
 });
 
