@@ -7,7 +7,9 @@
   justify-content: center;
   padding: 24px;
   background: rgba(248, 250, 252, 0.78);
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
+  animation: overlayIn 220ms ease-out both;
 }
 
 .loaderCard {
@@ -17,6 +19,7 @@
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
   padding: 32px 28px;
+  animation: cardIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .loaderWrapper {
@@ -26,56 +29,218 @@
   gap: 24px;
 }
 
+/* ── Pictogramme : fenêtre 2 vantaux + volet roulant qui descend ─────────────
+   Tout est en HTML. Seul le tablier bouge, par `transform` sur sa propre
+   couche (will-change), pour que l'animation reste fluide même quand le fil
+   principal est occupé par la génération du PDF. */
+
 .iconContainer {
   position: relative;
-  width: 110px;
-  height: 110px;
+  width: 112px;
+  height: 112px;
   filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.12));
 }
 
-.loaderSvg {
-  width: 100%;
-  height: 100%;
+/* Coffre du volet, au-dessus du dormant : le tablier sort de dessous. */
+.shutterBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  border-radius: 5px 5px 3px 3px;
+  background: #1a1a1a;
+  z-index: 3;
 }
 
+.shutterBox::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Dormant : la bordure sert de cadre, le débordement est coupé au bord
+   intérieur, ce qui découpe le tablier sans clipPath. */
+.windowFrame {
+  position: absolute;
+  top: 14px;
+  left: 4px;
+  right: 4px;
+  bottom: 0;
+  border: 5px solid #1a1a1a;
+  border-radius: 4px;
+  background: #ffffff;
+  overflow: hidden;
+  z-index: 1;
+  transform: translateZ(0);
+}
+
+.windowGlass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #eaf1fb 0%, #ffffff 48%, #f1f5f9 100%);
+}
+
+.windowReflection {
+  position: absolute;
+  top: -20%;
+  left: -35%;
+  width: 55%;
+  height: 140%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(18deg);
+}
+
+.mullionVertical,
+.mullionHorizontal {
+  position: absolute;
+  background: #1a1a1a;
+  z-index: 1;
+}
+
+.mullionVertical {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  margin-left: -2px;
+}
+
+.mullionHorizontal {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+}
+
+/* Tablier : lames orange + lame finale sombre. Position de départ : remonté
+   au-dessus du cadre (caché sous le coffre). */
 .shutter {
-  transform-box: fill-box;
-  transform-origin: center top;
-  animation: slideDownUp 2.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  z-index: 2;
+  transform: translate3d(0, -100%, 0);
+  will-change: transform;
+  backface-visibility: hidden;
+  animation: shutterCycle 3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.shutterSlats {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    #ff5f1f 0px,
+    #ff5f1f 7px,
+    #d94d14 7px,
+    #d94d14 8px,
+    #ff7a42 8px,
+    #ff7a42 9px
+  );
+}
+
+.shutterLame {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 9px;
+  background: #1a1a1a;
 }
 
 .subtitle {
   margin: 6px 0 0;
+  min-height: 20px;
   color: #ff5f1f;
   font-size: 14px;
   font-weight: 600;
-  animation: pulseText 1.5s ease-in-out infinite;
+  animation: messageIn 360ms ease-out both;
 }
 
-@keyframes slideDownUp {
+@keyframes shutterCycle {
   0%,
-  15% {
-    transform: translateY(-75px);
+  12% {
+    transform: translate3d(0, -100%, 0);
   }
 
-  45%,
-  55% {
-    transform: translateY(0);
+  46% {
+    transform: translate3d(0, 0, 0);
   }
 
-  85%,
+  /* Léger rebond à l'arrivée en butée. */
+  50% {
+    transform: translate3d(0, -2%, 0);
+  }
+
+  54%,
+  62% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  90%,
   100% {
-    transform: translateY(-75px);
+    transform: translate3d(0, -100%, 0);
   }
 }
 
-@keyframes pulseText {
-  0%,
-  100% {
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes overlayIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
     opacity: 1;
   }
+}
 
-  50% {
-    opacity: 0.4;
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Utilisateur ayant réduit les animations : volet à mi-course, rien ne bouge. */
+@media (prefers-reduced-motion: reduce) {
+  .loaderOverlay,
+  .loaderCard,
+  .subtitle {
+    animation: none;
+  }
+
+  .shutter {
+    animation: none;
+    transform: translate3d(0, -50%, 0);
   }
 }
