@@ -171,6 +171,70 @@
   animation: messageIn 360ms ease-out both;
 }
 
+/* ── Barre de progression ────────────────────────────────────────────────────
+   Remplissage par `transform: scaleX` (composé GPU, comme le volet) : la
+   transition reste fluide même pendant le travail lourd. */
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.progressTrack {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff7a42 0%, #ff5f1f 100%);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.progressIndeterminate {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff7a42 0%, #ff5f1f 100%);
+  will-change: transform;
+  animation: progressSlide 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.progressLabel {
+  flex: none;
+  min-width: 42px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #475569;
+}
+
+@keyframes progressSlide {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+
+  to {
+    transform: translate3d(250%, 0, 0);
+  }
+}
+
 @keyframes shutterCycle {
   0%,
   12% {
@@ -242,5 +306,11 @@
   .shutter {
     animation: none;
     transform: translate3d(0, -50%, 0);
+  }
+
+  .progressIndeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.35;
   }
 }

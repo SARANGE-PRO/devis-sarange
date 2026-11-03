@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import usePdfProgress from './usePdfProgress';
 import styles from './QuoteSummary.module.css';
 
 /**
@@ -12,6 +13,10 @@ import styles from './QuoteSummary.module.css';
  * sont animées (transform, opacity). L'animation continue donc de tourner sans
  * saccade pendant que la génération du PDF occupe le fil principal, et Safari ne
  * bute plus sur un transform appliqué à un groupe SVG découpé.
+ *
+ * Barre de progression : suit l'avancement réel publié par lib/pdf-generator.js
+ * tant qu'un PDF se construit ; sinon (envoi, signature côté serveur) elle
+ * devient indéterminée.
  */
 export default function PdfGenerationLoader({
   title = 'Création du devis',
@@ -19,6 +24,8 @@ export default function PdfGenerationLoader({
 }) {
   const list = Array.isArray(messages) && messages.length ? messages : ['Veuillez patienter...'];
   const [index, setIndex] = useState(0);
+  const progress = usePdfProgress();
+  const percent = progress == null ? null : Math.round(progress * 100);
 
   useEffect(() => {
     if (list.length <= 1) return undefined;
@@ -59,6 +66,28 @@ export default function PdfGenerationLoader({
             <p key={index} className={styles.subtitle}>
               {list[index]}
             </p>
+          </div>
+
+          <div
+            className={styles.progress}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={percent ?? undefined}
+          >
+            <div className={styles.progressTrack}>
+              {percent == null ? (
+                <div className={styles.progressIndeterminate} />
+              ) : (
+                <div
+                  className={styles.progressFill}
+                  style={{ transform: `scaleX(${progress})` }}
+                />
+              )}
+            </div>
+            <span className={styles.progressLabel}>
+              {percent == null ? 'En cours' : `${percent} %`}
+            </span>
           </div>
         </div>
       </div>
