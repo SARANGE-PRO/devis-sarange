@@ -9,10 +9,13 @@ import styles from './QuoteSummary.module.css';
  * longue est en cours (génération PDF d'un devis, signature…). On peut faire défiler
  * une liste de messages rassurants : ils tournent automatiquement.
  *
- * Dessin en HTML/CSS pur (pas de SVG) : seules des propriétés composées par le GPU
- * sont animées (transform, opacity). L'animation continue donc de tourner sans
- * saccade pendant que la génération du PDF occupe le fil principal, et Safari ne
- * bute plus sur un transform appliqué à un groupe SVG découpé.
+ * Pictogramme en HTML/CSS pur, géométrie entièrement en pixels. Seul le tablier
+ * bouge, par un `transform` en px sur sa propre couche : c'est la seule forme
+ * d'animation que le navigateur exécute sur le GPU, indépendamment du fil
+ * principal (occupé par la génération du PDF). Aucune valeur en pourcentage dans
+ * les keyframes : Chrome refuse de composer une animation dont la valeur dépend
+ * de la taille de la boîte, et la ferait alors tourner sur le fil principal,
+ * donc figée pendant le travail lourd.
  *
  * Barre de progression : suit l'avancement réel publié par lib/pdf-generator.js
  * tant qu'un PDF se construit ; sinon (envoi, signature côté serveur) elle
@@ -45,18 +48,18 @@ export default function PdfGenerationLoader({
     >
       <div className={styles.loaderCard}>
         <div className={styles.loaderWrapper}>
-          <div className={styles.iconContainer} aria-hidden="true">
-            <div className={styles.windowFrame}>
-              <div className={styles.windowGlass} />
-              <div className={styles.windowReflection} />
-              <div className={styles.mullionVertical} />
-              <div className={styles.mullionHorizontal} />
-              <div className={styles.shutter}>
-                <div className={styles.shutterSlats} />
-                <div className={styles.shutterLame} />
+          <div className={styles.icon} aria-hidden="true">
+            <div className={styles.iconFrame}>
+              <div className={styles.iconGlass} />
+              <div className={styles.iconShine} />
+              <div className={styles.iconMullionV} />
+              <div className={styles.iconMullionH} />
+              <div className={styles.iconShutter}>
+                <div className={styles.iconSlats} />
+                <div className={styles.iconLame} />
               </div>
             </div>
-            <div className={styles.shutterBox} />
+            <div className={styles.iconBox} />
           </div>
 
           <div className="text-center">

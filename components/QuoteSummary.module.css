@@ -6,20 +6,19 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(248, 250, 252, 0.78);
+  background: rgba(248, 250, 252, 0.82);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
-  animation: overlayIn 220ms ease-out both;
+  animation: fadeIn 200ms ease-out both;
 }
 
 .loaderCard {
   width: min(100%, 360px);
   border-radius: 32px;
   border: 1px solid rgba(226, 232, 240, 0.9);
-  background: rgba(255, 255, 255, 0.96);
+  background: #ffffff;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
   padding: 32px 28px;
-  animation: cardIn 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .loaderWrapper {
@@ -30,30 +29,30 @@
 }
 
 /* ── Pictogramme : fenêtre 2 vantaux + volet roulant qui descend ─────────────
-   Tout est en HTML. Seul le tablier bouge, par `transform` sur sa propre
-   couche (will-change), pour que l'animation reste fluide même quand le fil
-   principal est occupé par la génération du PDF. */
+   Boîte de 112 × 112 px, géométrie fixe en px :
+     coffre        y 0 → 20
+     dormant       y 14 → 112, x 4 → 108, bordure 5 px
+     intérieur     94 × 88 px (le tablier fait exactement cette taille)
+   Le tablier démarre 88 px plus haut (caché sous le coffre) et descend à 0. */
 
-.iconContainer {
+.icon {
   position: relative;
   width: 112px;
   height: 112px;
-  filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.12));
 }
 
-/* Coffre du volet, au-dessus du dormant : le tablier sort de dessous. */
-.shutterBox {
+.iconBox {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
+  width: 112px;
   height: 20px;
   border-radius: 5px 5px 3px 3px;
   background: #1a1a1a;
   z-index: 3;
 }
 
-.shutterBox::after {
+.iconBox::after {
   content: '';
   position: absolute;
   left: 10px;
@@ -64,34 +63,36 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* Dormant : la bordure sert de cadre, le débordement est coupé au bord
-   intérieur, ce qui découpe le tablier sans clipPath. */
-.windowFrame {
+.iconFrame {
   position: absolute;
   top: 14px;
   left: 4px;
-  right: 4px;
-  bottom: 0;
+  width: 104px;
+  height: 98px;
+  box-sizing: border-box;
   border: 5px solid #1a1a1a;
   border-radius: 4px;
   background: #ffffff;
   overflow: hidden;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
   z-index: 1;
-  transform: translateZ(0);
 }
 
-.windowGlass {
+.iconGlass {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 94px;
+  height: 88px;
   background: linear-gradient(135deg, #eaf1fb 0%, #ffffff 48%, #f1f5f9 100%);
 }
 
-.windowReflection {
+.iconShine {
   position: absolute;
-  top: -20%;
-  left: -35%;
-  width: 55%;
-  height: 140%;
+  top: -20px;
+  left: -40px;
+  width: 50px;
+  height: 130px;
   background: linear-gradient(
     90deg,
     rgba(255, 255, 255, 0) 0%,
@@ -101,47 +102,46 @@
   transform: rotate(18deg);
 }
 
-.mullionVertical,
-.mullionHorizontal {
+.iconMullionV,
+.iconMullionH {
   position: absolute;
   background: #1a1a1a;
   z-index: 1;
 }
 
-.mullionVertical {
+.iconMullionV {
   top: 0;
-  bottom: 0;
-  left: 50%;
+  left: 45px;
   width: 4px;
-  margin-left: -2px;
+  height: 88px;
 }
 
-.mullionHorizontal {
+.iconMullionH {
+  top: 42px;
   left: 0;
-  right: 0;
-  top: 50%;
+  width: 94px;
   height: 4px;
-  margin-top: -2px;
 }
 
-/* Tablier : lames orange + lame finale sombre. Position de départ : remonté
-   au-dessus du cadre (caché sous le coffre). */
-.shutter {
+/* Tablier : taille fixe, animé uniquement par `transform` en px. */
+.iconShutter {
   position: absolute;
   top: 0;
   left: 0;
-  right: 0;
-  height: 100%;
+  width: 94px;
+  height: 88px;
   z-index: 2;
-  transform: translate3d(0, -100%, 0);
+  transform: translate3d(0, -88px, 0);
   will-change: transform;
-  backface-visibility: hidden;
-  animation: shutterCycle 3s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  animation: shutterCycle 2.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
-.shutterSlats {
+.iconSlats {
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 94px;
+  height: 88px;
   background: repeating-linear-gradient(
     to bottom,
     #ff5f1f 0px,
@@ -153,14 +153,42 @@
   );
 }
 
-.shutterLame {
+.iconLame {
   position: absolute;
   left: 0;
-  right: 0;
   bottom: 0;
+  width: 94px;
   height: 9px;
   background: #1a1a1a;
 }
+
+@keyframes shutterCycle {
+  0%,
+  10% {
+    transform: translate3d(0, -88px, 0);
+  }
+
+  46% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  /* Léger rebond à l'arrivée en butée. */
+  50% {
+    transform: translate3d(0, -2px, 0);
+  }
+
+  54%,
+  62% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  92%,
+  100% {
+    transform: translate3d(0, -88px, 0);
+  }
+}
+
+/* ── Texte ──────────────────────────────────────────────────────────────── */
 
 .subtitle {
   margin: 6px 0 0;
@@ -171,9 +199,31 @@
   animation: messageIn 360ms ease-out both;
 }
 
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 /* ── Barre de progression ────────────────────────────────────────────────────
-   Remplissage par `transform: scaleX` (composé GPU, comme le volet) : la
-   transition reste fluide même pendant le travail lourd. */
+   Remplissage par `scaleX` (indépendant de la taille de la boîte, composé
+   GPU) : la transition reste fluide même pendant le travail lourd. */
 
 .progress {
   display: flex;
@@ -189,30 +239,26 @@
   border-radius: 999px;
   background: #e2e8f0;
   overflow: hidden;
-  transform: translateZ(0);
 }
 
-.progressFill {
+.progressFill,
+.progressIndeterminate {
   position: absolute;
   inset: 0;
   border-radius: 999px;
   background: linear-gradient(90deg, #ff7a42 0%, #ff5f1f 100%);
   transform-origin: left center;
-  transform: scaleX(0);
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
+.progressFill {
+  transform: scaleX(0);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Indéterminée : se remplit depuis la gauche puis s'efface, en boucle. */
 .progressIndeterminate {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 40%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #ff7a42 0%, #ff5f1f 100%);
-  will-change: transform;
-  animation: progressSlide 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  animation: progressSweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .progressLabel {
@@ -225,92 +271,19 @@
   color: #475569;
 }
 
-@keyframes progressSlide {
-  from {
-    transform: translate3d(-100%, 0, 0);
+@keyframes progressSweep {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
   }
 
-  to {
-    transform: translate3d(250%, 0, 0);
-  }
-}
-
-@keyframes shutterCycle {
-  0%,
-  12% {
-    transform: translate3d(0, -100%, 0);
+  70% {
+    transform: scaleX(1);
+    opacity: 1;
   }
 
-  46% {
-    transform: translate3d(0, 0, 0);
-  }
-
-  /* Léger rebond à l'arrivée en butée. */
-  50% {
-    transform: translate3d(0, -2%, 0);
-  }
-
-  54%,
-  62% {
-    transform: translate3d(0, 0, 0);
-  }
-
-  90%,
   100% {
-    transform: translate3d(0, -100%, 0);
-  }
-}
-
-@keyframes messageIn {
-  from {
+    transform: scaleX(1);
     opacity: 0;
-    transform: translate3d(0, 4px, 0);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes overlayIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes cardIn {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 10px, 0) scale(0.98);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-/* Utilisateur ayant réduit les animations : volet à mi-course, rien ne bouge. */
-@media (prefers-reduced-motion: reduce) {
-  .loaderOverlay,
-  .loaderCard,
-  .subtitle {
-    animation: none;
-  }
-
-  .shutter {
-    animation: none;
-    transform: translate3d(0, -50%, 0);
-  }
-
-  .progressIndeterminate {
-    animation: none;
-    width: 100%;
-    opacity: 0.35;
   }
 }
