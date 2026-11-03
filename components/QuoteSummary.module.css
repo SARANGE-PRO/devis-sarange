@@ -6,192 +6,122 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(248, 250, 252, 0.82);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: rgba(248, 250, 252, 0.84);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   animation: fadeIn 200ms ease-out both;
 }
 
 .loaderCard {
-  width: min(100%, 360px);
-  border-radius: 32px;
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-sizing: border-box;
+  width: min(100%, 340px);
+  border-radius: 28px;
+  border: 1px solid #e2e8f0;
   background: #ffffff;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
-  padding: 32px 28px;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 30px 80px -20px rgba(15, 23, 42, 0.28);
+  padding: 36px 28px 28px;
 }
 
 .loaderWrapper {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 22px;
 }
 
 /* ── Pictogramme : fenêtre 2 vantaux + volet roulant qui descend ─────────────
-   Boîte de 112 × 112 px, géométrie fixe en px :
-     coffre        y 0 → 20
-     dormant       y 14 → 112, x 4 → 108, bordure 5 px
-     intérieur     94 × 88 px (le tablier fait exactement cette taille)
-   Le tablier démarre 88 px plus haut (caché sous le coffre) et descend à 0. */
+   Boîte de 120 × 120 px ; le SVG statique et les couches HTML partagent le
+   même repère (1 unité SVG = 1 px). Ouverture du tablier : x 15 → 105,
+   y 31 → 112, soit 90 × 81 px. Le tablier (90 × 90 px, ombre comprise) part
+   81 px plus haut, caché sous le coffre, et descend jusqu'à 0. */
 
 .icon {
   position: relative;
-  width: 112px;
-  height: 112px;
+  width: 120px;
+  height: 120px;
 }
 
-.iconBox {
+.iconSvg {
   position: absolute;
   top: 0;
   left: 0;
-  width: 112px;
-  height: 20px;
-  border-radius: 5px 5px 3px 3px;
-  background: #1a1a1a;
-  z-index: 3;
+  display: block;
+  width: 120px;
+  height: 120px;
 }
 
-.iconBox::after {
-  content: '';
+.shutterClip {
   position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 5px;
-  height: 2px;
-  border-radius: 1px;
-  background: rgba(255, 255, 255, 0.18);
-}
-
-.iconFrame {
-  position: absolute;
-  top: 14px;
-  left: 4px;
-  width: 104px;
-  height: 98px;
-  box-sizing: border-box;
-  border: 5px solid #1a1a1a;
-  border-radius: 4px;
-  background: #ffffff;
+  top: 31px;
+  left: 15px;
+  width: 90px;
+  height: 81px;
   overflow: hidden;
-  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12);
-  z-index: 1;
-}
-
-.iconGlass {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 94px;
-  height: 88px;
-  background: linear-gradient(135deg, #eaf1fb 0%, #ffffff 48%, #f1f5f9 100%);
-}
-
-.iconShine {
-  position: absolute;
-  top: -20px;
-  left: -40px;
-  width: 50px;
-  height: 130px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.9) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  transform: rotate(18deg);
-}
-
-.iconMullionV,
-.iconMullionH {
-  position: absolute;
-  background: #1a1a1a;
-  z-index: 1;
-}
-
-.iconMullionV {
-  top: 0;
-  left: 45px;
-  width: 4px;
-  height: 88px;
-}
-
-.iconMullionH {
-  top: 42px;
-  left: 0;
-  width: 94px;
-  height: 4px;
-}
-
-/* Tablier : taille fixe, animé uniquement par `transform` en px. */
-.iconShutter {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 94px;
-  height: 88px;
   z-index: 2;
-  transform: translate3d(0, -88px, 0);
-  will-change: transform;
-  animation: shutterCycle 2.8s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
-.iconSlats {
+.shutter {
   position: absolute;
   top: 0;
   left: 0;
-  width: 94px;
-  height: 88px;
-  background: repeating-linear-gradient(
-    to bottom,
-    #ff5f1f 0px,
-    #ff5f1f 7px,
-    #d94d14 7px,
-    #d94d14 8px,
-    #ff7a42 8px,
-    #ff7a42 9px
-  );
+  width: 90px;
+  height: 90px;
+  transform: translate3d(0, -81px, 0);
+  will-change: transform;
+  animation: shutterCycle 3.2s cubic-bezier(0.65, 0, 0.35, 1) infinite;
 }
 
-.iconLame {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 94px;
-  height: 9px;
-  background: #1a1a1a;
+.shutter svg {
+  display: block;
+  width: 90px;
+  height: 90px;
 }
 
 @keyframes shutterCycle {
   0%,
-  10% {
-    transform: translate3d(0, -88px, 0);
+  8% {
+    transform: translate3d(0, -81px, 0);
   }
 
-  46% {
+  48% {
     transform: translate3d(0, 0, 0);
   }
 
-  /* Léger rebond à l'arrivée en butée. */
-  50% {
-    transform: translate3d(0, -2px, 0);
+  /* Léger tassement à l'arrivée en butée. */
+  52% {
+    transform: translate3d(0, -1.5px, 0);
   }
 
-  54%,
-  62% {
+  56%,
+  66% {
     transform: translate3d(0, 0, 0);
   }
 
-  92%,
+  94%,
   100% {
-    transform: translate3d(0, -88px, 0);
+    transform: translate3d(0, -81px, 0);
   }
 }
 
 /* ── Texte ──────────────────────────────────────────────────────────────── */
 
+.loaderText {
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
 .subtitle {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   min-height: 20px;
   color: #ff5f1f;
   font-size: 14px;
@@ -237,7 +167,7 @@
   flex: 1;
   height: 6px;
   border-radius: 999px;
-  background: #e2e8f0;
+  background: #eef2f7;
   overflow: hidden;
 }
 
@@ -246,7 +176,7 @@
   position: absolute;
   inset: 0;
   border-radius: 999px;
-  background: linear-gradient(90deg, #ff7a42 0%, #ff5f1f 100%);
+  background: linear-gradient(90deg, #ff8049 0%, #ff5f1f 100%);
   transform-origin: left center;
   will-change: transform;
 }
@@ -263,12 +193,12 @@
 
 .progressLabel {
   flex: none;
-  min-width: 42px;
+  min-width: 44px;
   text-align: right;
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: #475569;
+  color: #64748b;
 }
 
 @keyframes progressSweep {
