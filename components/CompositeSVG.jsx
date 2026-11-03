@@ -477,26 +477,31 @@ const CasementSash = ({
   if (width <= 0 || height <= 0) return null;
 
   const outerStrokeWidth = Math.max(1, metrics.scaleFactor);
-  const insetWidth = Math.max(0, width - metrics.gap * 2);
-  const insetHeight = Math.max(0, height - metrics.gap * 2);
-  const glassX = x + metrics.gap + metrics.sashFrame;
-  const glassY = y + metrics.gap + metrics.sashFrame;
-  const glassWidth = Math.max(0, width - metrics.gap * 2 - metrics.sashFrame * 2);
-  const glassHeight = Math.max(0, height - metrics.gap * 2 - metrics.sashFrame * 2);
+  // Châssis fixe : vitrage directement dans le dormant, pas d'ouvrant.
+  const gap = sash.fixed ? 0 : metrics.gap;
+  const sashFrame = sash.fixed ? 0 : metrics.sashFrame;
+  const insetWidth = Math.max(0, width - gap * 2);
+  const insetHeight = Math.max(0, height - gap * 2);
+  const glassX = x + gap + sashFrame;
+  const glassY = y + gap + sashFrame;
+  const glassWidth = Math.max(0, width - gap * 2 - sashFrame * 2);
+  const glassHeight = Math.max(0, height - gap * 2 - sashFrame * 2);
 
   return (
     <g>
-      <rect
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        fill={frameColor}
-        stroke={COLORS.frameBorder}
-        strokeWidth={outerStrokeWidth}
-        rx={Math.max(2, 4 * metrics.scaleFactor)}
-      />
-      {insetWidth > 0 && insetHeight > 0 && (
+      {!sash.fixed && (
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={frameColor}
+          stroke={COLORS.frameBorder}
+          strokeWidth={outerStrokeWidth}
+          rx={Math.max(2, 4 * metrics.scaleFactor)}
+        />
+      )}
+      {!sash.fixed && insetWidth > 0 && insetHeight > 0 && (
         <rect
           x={x + metrics.gap}
           y={y + metrics.gap}
