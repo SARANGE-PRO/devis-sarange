@@ -16,8 +16,10 @@ import {
   Paperclip,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 
 import AppShell from '@/components/AppShell';
@@ -62,6 +64,43 @@ const storeUnlocked = () => {
   } catch {
     // Stockage indisponible (navigation privée) : le code sera redemandé.
   }
+};
+
+// Recherche par nom : conservée le temps de la session (retour sur la page
+// après un détour par un devis, par exemple), comme le déverrouillage.
+const SEARCH_STORAGE_KEY = 'sarange.commissions.search';
+
+const readSearch = () => {
+  try {
+    return sessionStorage.getItem(SEARCH_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+const storeSearch = (value) => {
+  try {
+    if (value) sessionStorage.setItem(SEARCH_STORAGE_KEY, value);
+    else sessionStorage.removeItem(SEARCH_STORAGE_KEY);
+  } catch {
+    // Stockage indisponible : la recherche vaut pour la page courante seulement.
+  }
+};
+
+// Comparaison sans accents ni casse : « dupont » trouve « DUPONT », « helene » « Hélène ».
+const foldText = (value) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+
+// Chaque mot tapé doit se retrouver dans le libellé, le n° de devis ou le statut.
+const dossierMatches = (dossier, foldedQuery) => {
+  if (!foldedQuery) return true;
+  const statusLabel = COMMISSION_STATUSES.find((status) => status.value === dossier.status)?.label || '';
+  const haystack = foldText([dossier.label, dossier.quoteNumber, statusLabel].join(' '));
+  return foldedQuery.split(/\s+/).every((word) => haystack.includes(word));
 };
 
 const STATUS_STYLES = {
@@ -487,10 +526,17 @@ export default function CommissionsPage() {
   const [pending, setPending] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [expandedId, setExpandedId] = useState('');
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     setUnlocked(readUnlocked());
+    setQuery(readSearch());
   }, []);
+
+  const updateQuery = (value) => {
+    setQuery(value);
+    storeSearch(value);
+  };
 
   const authorizedFetch = useCallback(
     async (path, { method = 'GET', body } = {}) => {
@@ -575,7 +621,13 @@ export default function CommissionsPage() {
     [act]
   );
 
+  // Les totaux portent sur TOUS les dossiers : la recherche ne filtre que la liste.
   const totals = useMemo(() => computeCommissionTotals(dossiers || []), [dossiers]);
+  const foldedQuery = foldText(query);
+  const filtered = useMemo(
+    () => (dossiers || []).filter((dossier) => dossierMatches(dossier, foldedQuery)),
+    [dossiers, foldedQuery]
+  );
 
   let content;
   if (!user || (access?.checked && !isAdmin)) {
@@ -595,7 +647,8 @@ export default function CommissionsPage() {
   } else if (!unlocked) {
     content = <PinGate onUnlock={() => setUnlocked(true)} />;
   } else {
-    const list = dossiers || [];
+    const list = filtered;
+    const total = (dossiers || []).length;
     content = (
       <div className="space-y-4 sm:space-y-5">
         {/* Totaux : le total dû d'abord, bien visible sur mobile */}
@@ -677,6 +730,43 @@ export default function CommissionsPage() {
           </div>
         </div>
 
+        {/* Recherche par nom : filtre la liste au fil de la saisie */}
+        {dossiers !== null && (total > 0 || query) && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <label className="relative flex-1 sm:max-w-md">
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                type="text"
+                inputMode="search"
+                enterKeyHint="search"
+                value={query}
+                onChange={(event) => updateQuery(event.target.value)}
+                placeholder="Rechercher un client, un dossier, un n° de devis"
+                aria-label="Rechercher un dossier"
+                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-base text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 sm:text-sm"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => updateQuery('')}
+                  aria-label="Effacer la recherche"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </label>
+            {query && (
+              <p className="text-xs text-slate-400">
+                {list.length} dossier{list.length > 1 ? 's' : ''} sur {total}
+              </p>
+            )}
+          </div>
+        )}
+
         {notice && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
             {notice}
@@ -693,6 +783,17 @@ export default function CommissionsPage() {
           <div className="flex items-center gap-2 py-8 text-sm text-slate-400">
             <Loader2 size={16} className="animate-spin" />
             Chargement des dossiers...
+          </div>
+        ) : list.length === 0 && query ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
+            Aucun dossier ne correspond à « {query} ».{' '}
+            <button
+              type="button"
+              onClick={() => updateQuery('')}
+              className="font-semibold text-orange-500 hover:text-orange-600"
+            >
+              Effacer la recherche
+            </button>
           </div>
         ) : list.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-400">
