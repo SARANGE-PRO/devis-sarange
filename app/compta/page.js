@@ -59,6 +59,9 @@ import {
 } from 'lucide-react';
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
+// Lignes rendues par paquets : une grosse base ne construit pas toute la liste d'un coup.
+const COMPTA_PAGE_SIZE = 50;
+
 const currencyFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'currency',
   currency: 'EUR',
@@ -560,6 +563,9 @@ export default function ComptaPage() {
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [selectedQuoteId, setSelectedQuoteId] = useState(null);
   const [searchTerm, setSearchTerm] = useSessionSearch('sarange.compta.search');
+  // Fenêtre d'affichage de la liste (« Afficher plus »), remise au premier
+  // paquet quand la recherche ou le filtre de statut change.
+  const [visibleWindow, setVisibleWindow] = useState({ key: '', count: COMPTA_PAGE_SIZE });
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
@@ -581,7 +587,9 @@ export default function ComptaPage() {
     setLoadingQuotes(true);
     return subscribeToUserQuotes({
       userId: user.uid,
-      onNext: (next) => {
+      onNext: (next, meta) => {
+        // Cache local encore vide : on attend le serveur (voir « Mes devis »).
+        if (meta?.fromCache && next.length === 0) return;
         setQuotes(next);
         setLoadingQuotes(false);
       },
@@ -638,6 +646,12 @@ export default function ComptaPage() {
     if (statusFilter === 'stale') return state.isStale;
     return state.key === statusFilter;
   });
+  const filtersKey = `${normalizedSearch}|${statusFilter}`;
+  const visibleCount = visibleWindow.key === filtersKey ? visibleWindow.count : COMPTA_PAGE_SIZE;
+  const visibleQuotes = filteredQuotes.slice(0, visibleCount);
+  const hiddenQuotesCount = filteredQuotes.length - visibleQuotes.length;
+  const showMoreQuotes = () =>
+    setVisibleWindow({ key: filtersKey, count: visibleCount + COMPTA_PAGE_SIZE });
 
   const stats = useMemo(() => {
     const counters = { total: decoratedQuotes.length, generated: 0, imported: 0, notPrepared: 0 };
@@ -1023,7 +1037,7 @@ export default function ComptaPage() {
                     Aucun devis ne correspond à cette recherche.
                   </div>
                 )}
-                {filteredQuotes.map(({ quote, state }) => {
+                {visibleQuotes.map(({ quote, state }) => {
                   const statusMeta = getComptaStatusMeta(state.key);
                   const isSelected = quote.id === selectedQuoteId;
                   return (
@@ -1084,6 +1098,16 @@ export default function ComptaPage() {
                     </button>
                   );
                 })}
+                {hiddenQuotesCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={showMoreQuotes}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                  >
+                    Afficher {Math.min(COMPTA_PAGE_SIZE, hiddenQuotesCount)} devis de plus
+                    <span className="ml-1 font-normal text-slate-400">({hiddenQuotesCount} restants)</span>
+                  </button>
+                )}
               </div>
 
               {/* ── Détail / prévisualisation ─────────────────────────── */}

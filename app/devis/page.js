@@ -103,6 +103,12 @@ Object.assign(STATUS_META, {
   archived: { label: 'Archivé', className: 'bg-orange-100 text-orange-700' },
 });
 
+// Cartes rendues par paquets (« Afficher plus ») : une base de plusieurs
+// centaines de devis ne construit pas des centaines de cartes d'un coup.
+const QUOTES_PAGE_SIZE = 30;
+// Au-delà, on explique l'attente (grosse base, connexion lente).
+const SLOW_LOADING_DELAY_MS = 8000;
+
 const getTimestampMs = (value) => {
   if (!value) return 0;
   const d =
@@ -887,6 +893,10 @@ export default function SavedQuotesPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Vue : liste complète, ou suivi des devis envoyés (relances dues, renvois).
   const [viewMode, setViewMode] = useState('list');
+  // Fenêtre d'affichage des cartes : repart au premier paquet dès que la
+  // recherche, les filtres ou le tri changent (clé comparée au rendu).
+  const [visibleWindow, setVisibleWindow] = useState({ key: '', count: QUOTES_PAGE_SIZE });
+  const [slowLoading, setSlowLoading] = useState(false);
 
   const deferredSearch = useDeferredValue(searchTerm);
 
@@ -895,10 +905,26 @@ export default function SavedQuotesPage() {
     setLoadingQuotes(true);
     return subscribeToUserQuotes({
       userId: user.uid,
-      onNext: (q) => { setQuotes(q); setLoadingQuotes(false); },
+      onNext: (q, meta) => {
+        // Cache local encore vide (premier passage sur ce poste) : on attend la
+        // réponse du serveur plutôt que d'afficher « aucun devis » un instant.
+        if (meta?.fromCache && q.length === 0) return;
+        setQuotes(q);
+        setLoadingQuotes(false);
+      },
       onError: (e) => { setActionError(e.message || 'Impossible de charger vos devis.'); setLoadingQuotes(false); },
     });
   }, [initializing, isConfigured, user]);
+
+  // Chargement initial plus long que prévu : message d'explication.
+  useEffect(() => {
+    if (!loadingQuotes) return undefined;
+    const timer = setTimeout(() => setSlowLoading(true), SLOW_LOADING_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlowLoading(false);
+    };
+  }, [loadingQuotes]);
 
   useEffect(() => {
     if (!isConfigured || initializing || !user) { setLoadingClients(false); return undefined; }
@@ -1427,6 +1453,13 @@ export default function SavedQuotesPage() {
     sortBy
   );
 
+  const filtersKey = [normalizedSearch, statusFilter, clientFilter, periodFilter, sourceFilter, sortBy].join('|');
+  const visibleCount = visibleWindow.key === filtersKey ? visibleWindow.count : QUOTES_PAGE_SIZE;
+  const visibleQuotes = filteredQuotes.slice(0, visibleCount);
+  const hiddenQuotesCount = filteredQuotes.length - visibleQuotes.length;
+  const showMoreQuotes = () =>
+    setVisibleWindow({ key: filtersKey, count: visibleCount + QUOTES_PAGE_SIZE });
+
   const visibleTotalTTC = filteredQuotes.reduce((s, q) => s + (q.totalTTC || 0), 0);
   const totalQuotesHT   = quotes.reduce((s, q) => s + (q.totalHT || 0), 0);
   // Devis envoyés qui demandent une action aujourd'hui : relance due ou renvoi.
@@ -1794,9 +1827,17 @@ export default function SavedQuotesPage() {
 
           {/* ── Loading ────────────────────────────────────────────────── */}
           {(loadingQuotes || loadingClients) && (
-            <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
-              <Loader2 size={16} className="animate-spin" />
-              Chargement de votre espace cloud...
+            <div className="inline-flex flex-col gap-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm">
+              <span className="inline-flex items-center gap-2">
+                <Loader2 size={16} className="animate-spin" />
+                Chargement de votre espace cloud...
+              </span>
+              {loadingQuotes && slowLoading && (
+                <span className="text-xs text-slate-400">
+                  C&apos;est plus long que d&apos;habitude : beaucoup de devis ou connexion lente. Les prochaines
+                  ouvertures seront immédiates grâce au cache local de ce poste.
+                </span>
+              )}
             </div>
           )}
 
@@ -1844,7 +1885,7 @@ export default function SavedQuotesPage() {
           {/* ── Liste des devis ────────────────────────────────────────── */}
           {!loadingQuotes && filteredQuotes.length > 0 && (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {filteredQuotes.map((quote) => (
+              {visibleQuotes.map((quote) => (
                 <QuoteCard
                   key={quote.id}
                   quote={quote}
@@ -1864,6 +1905,19 @@ export default function SavedQuotesPage() {
                   onSendReservesLift={handleSendReservesLift}
                 />
               ))}
+            </div>
+          )}
+
+          {!loadingQuotes && hiddenQuotesCount > 0 && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={showMoreQuotes}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+              >
+                Afficher {Math.min(QUOTES_PAGE_SIZE, hiddenQuotesCount)} devis de plus
+                <span className="font-normal text-slate-400">({hiddenQuotesCount} restants)</span>
+              </button>
             </div>
           )}
             </>

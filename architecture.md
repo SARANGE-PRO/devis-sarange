@@ -598,6 +598,8 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `components/FirebaseProvider.jsx` | Provider auth Firebase, persistance de session et hooks exposes au reste de l'app. |
 | `components/FirebaseAuthCard.jsx` | Carte d'authentification email/mot de passe et Google. |
 | `components/MenuiserieVisual.jsx` | Rendu visuel d'une menuiserie ou composition cote interface. |
+| `components/useSessionSearch.js` | Terme de recherche d'un onglet conservé le temps de la session (sessionStorage, useSyncExternalStore). |
+| `components/usePdfProgress.js` | Lecture de l'avancement de génération PDF (lib/pdf-progress.mjs) pour le loader. |
 | `components/CompositeSVG.jsx` | SVG riche pour les produits composes. |
 | `components/QuoteCloudPanel.jsx` | Panneau de sauvegarde cloud non monte actuellement dans l'application. |
 | `components/icons/WasteRecycleIcon.jsx` | Icone SVG de gestion des dechets. |
@@ -616,6 +618,9 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/cintrage.mjs` | Menuiseries cintrees (categorie « Formes speciales ») : geometrie de l'arc (rayon, fleche bornee a L/2, hauteur totale), regle de prix (fixe cintre en imposte ajoute au calcul standard, ou prix total manuel qui desactive le calcul automatique en cintre integre sous-traite), lignes de designation. Module pur, teste dans `tests/cintrage.test.mjs`. |
 | `lib/traverses.mjs` | Soubassement et traverses intermediaires : hauteurs visibles normalisees (`traverseHeights`, jusqu'a 4 traverses, ancien champ `traverseHeight` encore lu), libelles de designation, et decoupe verticale partagee par le SVG et le canvas (le soubassement est la barre la plus basse, seule sa partie basse etant un panneau opaque ; les traverses se placent au-dessus de lui). Module pur. |
 | `lib/MenuiserieRenderer.js` | Rendu canvas des menuiseries pour l'UI et le PDF. |
+| `lib/search.mjs` | Recherche commune aux onglets (Mes devis, Clients, Compta, Demandes, Commissions) : sans accents ni casse, chaque mot requis, numéros avec ou sans espaces et tirets. Module pur. |
+| `lib/firebase/snapshot-cache.mjs` | Sérialisation incrémentale des abonnements Firestore (seuls les documents qui changent sont re-sérialisés, document illisible ignoré) et métadonnées cache/serveur. Module pur. |
+| `lib/pdf-progress.mjs` | Avancement de la génération d'un PDF publié vers le loader (barre de progression réelle). Module pur. |
 | `lib/designation-generator.js` | Generation des designations lisibles inserees dans le PDF. |
 | `lib/pdf-generator.js` | Generation du PDF client complet et memorisation des ancres de signature. |
 | `lib/pdf-page-utils.js` | Helpers de pagination jsPDF et deduplication de sources image. |
