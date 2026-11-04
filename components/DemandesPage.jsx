@@ -38,6 +38,8 @@ import {
   isPublicMailboxDomain,
   toDemandeListItem,
 } from '@/lib/demandes.mjs';
+import { buildSearchIndex, collectSearchValues, matchesSearchIndex } from '@/lib/search.mjs';
+import useSessionSearch from '@/components/useSessionSearch';
 
 /**
  * Page /demande : demandes de devis reçues par e-mail, détectées par le scan
@@ -105,11 +107,26 @@ const formatSize = (bytes) => {
   return `${value} o`;
 };
 
-const normalizeSearch = (value) =>
-  String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+// Index de recherche d'une demande : expéditeur, objet, résumé, ville, notes,
+// indices relevés (téléphones, e-mails, produits, code postal), analyse,
+// statut. Règles de comparaison : lib/search.mjs.
+const getDemandeSearchIndex = (item) =>
+  buildSearchIndex(
+    item.displayName,
+    item.from?.name,
+    item.from?.email,
+    item.subject,
+    item.summary,
+    item.city,
+    item.notes,
+    item.hints?.phones,
+    item.hints?.emails,
+    item.hints?.products,
+    item.hints?.postalCode,
+    item.hints?.city,
+    collectSearchValues(item.analysis),
+    demandeStatusLabel(item.status)
+  );
 
 const Badge = ({ className = '', children }) => (
   <span
@@ -765,7 +782,7 @@ export default function DemandesPage() {
   const [loading, setLoading] = useState(false);
   const [listError, setListError] = useState('');
   const [filter, setFilter] = useState('nouvelle');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useSessionSearch('sarange.demandes.search');
 
   const [selectedId, setSelectedId] = useState('');
   const [selected, setSelected] = useState(null);
@@ -900,15 +917,12 @@ export default function DemandesPage() {
   );
 
   const visible = useMemo(() => {
-    const term = normalizeSearch(search.trim());
+    const term = search.trim();
     return items.filter((item) => {
       // « Toutes » ne montre pas les exclues : elles ont leur onglet.
       if (filter === 'toutes' ? item.status === EXCLUDED_STATUS : item.status !== filter) return false;
       if (!term) return true;
-      const haystack = normalizeSearch(
-        [item.displayName, item.from.email, item.subject, item.summary, item.city, item.notes].join(' ')
-      );
-      return haystack.includes(term);
+      return matchesSearchIndex(getDemandeSearchIndex(item), term);
     });
   }, [items, filter, search]);
 
@@ -969,7 +983,7 @@ export default function DemandesPage() {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Nom, ville, objet…"
+                placeholder="Nom, téléphone, email, ville, produit, objet, statut…"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-base outline-none transition-all focus:border-orange-500 focus:ring-2 focus:ring-orange-200 sm:text-sm"
               />
             </label>

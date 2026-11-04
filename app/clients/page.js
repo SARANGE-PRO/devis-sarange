@@ -6,6 +6,7 @@ import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   EMPTY_CLIENT_DATA,
+  buildClientSearchText,
   getClientDisplayName,
   getClientFullLocation,
   hasMeaningfulClientData,
@@ -16,7 +17,10 @@ import {
   saveClientProfile,
   subscribeToUserClients,
 } from '@/lib/firebase/clients';
-import { formatPhoneNumber, formatPhoneWhileTyping, matchesSearchTerm } from '@/lib/phone.mjs';
+import { formatPhoneNumber, formatPhoneWhileTyping } from '@/lib/phone.mjs';
+import { getClientTypeLabel } from '@/lib/client-type.mjs';
+import { buildSearchIndex, matchesSearchIndex } from '@/lib/search.mjs';
+import useSessionSearch from '@/components/useSessionSearch';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
 import {
   ArrowRight,
@@ -33,8 +37,20 @@ import {
   X,
 } from 'lucide-react';
 
-const normalizeSearchValue = (value) =>
-  (typeof value === 'string' ? value : '').trim().toLowerCase();
+// Index de recherche d'une fiche : identité, coordonnées, adresse, chantier,
+// SIRET/SIREN/TVA, type de client. Règles de comparaison : lib/search.mjs.
+const getClientSearchIndex = (client) =>
+  buildSearchIndex(
+    client.displayName,
+    client.fullName,
+    client.email,
+    client.telephone,
+    client.city,
+    client.codePostal,
+    client.searchText,
+    buildClientSearchText(client.payload),
+    getClientTypeLabel(client.payload?.clientType)
+  );
 
 /* ─── Drawer ────────────────────────────────────────────────────────────── */
 function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, editingClientId, onChange, onPhoneBlur, onSave, onCancel }) {
@@ -240,13 +256,13 @@ export default function ClientsPage() {
   const [clientsOwnerId, setClientsOwnerId] = useState('');
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useSessionSearch('sarange.clients.search');
   const [editingClientId, setEditingClientId] = useState('');
   const [editingClientData, setEditingClientData] = useState({ ...EMPTY_CLIENT_DATA });
   const [workingClientId, setWorkingClientId] = useState('');
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
-  const normalizedSearchTerm = normalizeSearchValue(deferredSearchTerm);
+  const normalizedSearchTerm = deferredSearchTerm.trim();
 
   useEffect(() => {
     if (!isConfigured || initializing || !user) return undefined;
@@ -266,9 +282,7 @@ export default function ClientsPage() {
 
   const filteredClients = clients.filter((client) => {
     if (!normalizedSearchTerm) return true;
-    const haystack = (client.searchText || '').toLowerCase();
-    // Recherche par téléphone tolérante à la mise en forme (avec ou sans espaces).
-    return matchesSearchTerm(haystack, normalizedSearchTerm);
+    return matchesSearchIndex(getClientSearchIndex(client), normalizedSearchTerm);
   });
 
   const loadingClients = isConfigured && !initializing && !!user && clientsOwnerId !== user.uid;
@@ -459,7 +473,7 @@ export default function ClientsPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Nom, email, téléphone, ville..."
+                  placeholder="Nom, téléphone, email, ville, code postal, SIRET, chantier..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-11 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
                 />
                 {searchTerm && (

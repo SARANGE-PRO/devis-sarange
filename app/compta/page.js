@@ -5,6 +5,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import ComptaClientRecap from '@/components/ComptaClientRecap';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
+import useSessionSearch from '@/components/useSessionSearch';
 import {
   buildComptaConfigJson,
   buildComptaExportRecord,
@@ -21,7 +22,9 @@ import {
   saveComptaSettings as mirrorComptaSettingsToCloud,
 } from '@/lib/firebase/compta';
 import { subscribeToUserQuotes } from '@/lib/firebase/quotes';
+import { buildClientSearchText } from '@/lib/client-cloud';
 import { formatQuoteUpdatedAt } from '@/lib/quote-cloud';
+import { buildSearchIndex, matchesSearchIndex } from '@/lib/search.mjs';
 import { buildSageExportModelForQuote } from '@/lib/sage-export-service';
 import {
   DEFAULT_COMPTA_SETTINGS,
@@ -61,16 +64,29 @@ const currencyFormatter = new Intl.NumberFormat('fr-FR', {
   currency: 'EUR',
 });
 
-const normalizeSearchValue = (value) =>
-  (typeof value === 'string' ? value : '').trim().toLowerCase();
-
-const getQuoteSearchText = (quote) =>
-  normalizeSearchValue(
-    quote.searchText ||
-      [quote.title, quote.clientName, quote.referenceDevis, quote.quoteNumber]
-        .filter(Boolean)
-        .join(' ')
+// Index de recherche d'un devis (même périmètre que « Mes devis ») : client et
+// coordonnées, chantier, SIRET/TVA, n° de devis, référence, statut Compta,
+// produits, repères, variantes, montants. Règles de comparaison : lib/search.mjs.
+const getQuoteSearchIndex = (quote, statusLabel) => {
+  const payload = quote.payload || {};
+  const cartItems = Array.isArray(payload.cartItems) ? payload.cartItems : [];
+  return buildSearchIndex(
+    quote.title,
+    quote.clientName,
+    quote.clientEmail,
+    quote.clientPhone,
+    quote.clientCity,
+    quote.referenceDevis,
+    quote.quoteNumber,
+    statusLabel,
+    quote.searchText,
+    buildClientSearchText(payload.clientData),
+    cartItems.map((item) => [item.productLabel, item.sheetName, item.customLabel, item.repere]),
+    (Array.isArray(payload.variants) ? payload.variants : []).map((variant) => variant?.name),
+    Number.isFinite(quote.totalTTC) ? Math.round(quote.totalTTC) : null,
+    Number.isFinite(quote.totalHT) ? Math.round(quote.totalHT) : null
   );
+};
 
 // Statut Compta d'un devis, dérivé de son historique d'exports :
 //  • aucun enregistrement → « Non préparé » ;
@@ -543,7 +559,7 @@ export default function ComptaPage() {
   const [settings, setSettings] = useState(() => normalizeComptaSettings({}));
   const [loadingQuotes, setLoadingQuotes] = useState(true);
   const [selectedQuoteId, setSelectedQuoteId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useSessionSearch('sarange.compta.search');
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionError, setActionError] = useState('');
   const [actionMessage, setActionMessage] = useState('');
@@ -597,7 +613,7 @@ export default function ComptaPage() {
     return map;
   }, [exportRecords]);
 
-  const normalizedSearch = normalizeSearchValue(deferredSearch);
+  const normalizedSearch = deferredSearch.trim();
 
   const decoratedQuotes = useMemo(
     () =>
@@ -609,7 +625,15 @@ export default function ComptaPage() {
   );
 
   const filteredQuotes = decoratedQuotes.filter(({ quote, state }) => {
-    if (normalizedSearch && !getQuoteSearchText(quote).includes(normalizedSearch)) return false;
+    if (
+      normalizedSearch &&
+      !matchesSearchIndex(
+        getQuoteSearchIndex(quote, getComptaStatusMeta(state.key)?.label),
+        normalizedSearch
+      )
+    ) {
+      return false;
+    }
     if (statusFilter === 'all') return true;
     if (statusFilter === 'stale') return state.isStale;
     return state.key === statusFilter;
@@ -940,7 +964,7 @@ export default function ComptaPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Client, référence, numéro de devis..."
+                  placeholder="Client, n° de devis, téléphone, référence, produit, statut, montant..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
                 />
               </div>

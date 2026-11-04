@@ -4,8 +4,10 @@ import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
-import { getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
-import { formatPhoneNumber, matchesSearchTerm } from '@/lib/phone.mjs';
+import { buildClientSearchText, getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
+import { formatPhoneNumber } from '@/lib/phone.mjs';
+import { buildSearchIndex, matchesSearchIndex } from '@/lib/search.mjs';
+import useSessionSearch from '@/components/useSessionSearch';
 import { subscribeToUserClients } from '@/lib/firebase/clients';
 import {
   moveQuoteToTrash,
@@ -35,7 +37,6 @@ import {
   getQuoteSignatureStatusMeta,
   getQuoteSignatureWorkflow,
   quoteNeedsResend,
-  quoteNumberMatchesSearch,
 } from '@/lib/quote-signature';
 import {
   capitalizeLabel,
@@ -102,9 +103,6 @@ Object.assign(STATUS_META, {
   archived: { label: 'Archivé', className: 'bg-orange-100 text-orange-700' },
 });
 
-const normalizeSearchValue = (v) =>
-  (typeof v === 'string' ? v : '').trim().toLowerCase();
-
 const getTimestampMs = (value) => {
   if (!value) return 0;
   const d =
@@ -127,20 +125,30 @@ const matchesPeriodFilter = (quote, periodFilter) => {
 const getQuoteClientId = (quote) =>
   quote.clientId || quote.payload?.clientData?.savedClientId || '';
 
-const getQuoteSearchText = (quote) =>
-  normalizeSearchValue(
-    quote.searchText ||
-      [
-        quote.title,
-        quote.clientName,
-        quote.clientEmail,
-        quote.clientPhone,
-        quote.clientCity,
-        quote.referenceDevis,
-      ]
-        .filter(Boolean)
-        .join(' ')
+// Index de recherche d'un devis : tout ce qui s'affiche ou s'y rattache
+// (client et coordonnées, chantier, SIRET/TVA, n° de devis, référence, statut,
+// produits, repères, variantes, montants). Règles de comparaison : lib/search.mjs.
+const getQuoteSearchIndex = (quote, statusLabel) => {
+  const payload = quote.payload || {};
+  const cartItems = Array.isArray(payload.cartItems) ? payload.cartItems : [];
+  return buildSearchIndex(
+    quote.title,
+    quote.clientName,
+    quote.clientEmail,
+    quote.clientPhone,
+    quote.clientCity,
+    quote.referenceDevis,
+    getQuoteNumber(quote),
+    statusLabel,
+    quote.searchText,
+    buildClientSearchText(payload.clientData),
+    cartItems.map((item) => [item.productLabel, item.sheetName, item.customLabel, item.repere]),
+    (Array.isArray(payload.variants) ? payload.variants : []).map((variant) => variant?.name),
+    Number.isFinite(quote.totalTTC) ? Math.round(quote.totalTTC) : null,
+    Number.isFinite(quote.totalHT) ? Math.round(quote.totalHT) : null,
+    quote.leadImport ? 'site' : null
   );
+};
 
 // Numéro figé sur le devis (racine) ; repli sur le workflow de signature.
 const getQuoteNumber = (quote) =>
@@ -868,7 +876,7 @@ export default function SavedQuotesPage() {
   // Vérification avant tout envoi d'e-mail au client (aperçu serveur).
   const { confirmation: emailConfirmation, requestEmailConfirmation, confirmEmail, cancelEmail } =
     useEmailConfirmation();
-  const [searchTerm, setSearchTerm]   = useState('');
+  const [searchTerm, setSearchTerm] = useSessionSearch('sarange.devis.search');
   const [statusFilter, setStatusFilter]   = useState('all');
   const [clientFilter, setClientFilter]   = useState('all');
   const [periodFilter, setPeriodFilter]   = useState('all');
@@ -1385,7 +1393,7 @@ export default function SavedQuotesPage() {
     window.open(buildSignatureDocumentHref(sessionId, 'signed'), '_blank', 'noopener,noreferrer');
   };
 
-  const normalizedSearch = normalizeSearchValue(deferredSearch);
+  const normalizedSearch = deferredSearch.trim();
   const hasActiveFilters =
     normalizedSearch || statusFilter !== 'all' || clientFilter !== 'all' ||
     periodFilter !== 'all' || sourceFilter !== 'all' || sortBy !== 'updated-desc';
@@ -1403,8 +1411,10 @@ export default function SavedQuotesPage() {
     quotes.filter((q) => {
       if (
         normalizedSearch &&
-        !matchesSearchTerm(getQuoteSearchText(q), normalizedSearch) &&
-        !quoteNumberMatchesSearch(getQuoteNumber(q), normalizedSearch)
+        !matchesSearchIndex(
+          getQuoteSearchIndex(q, STATUS_META[getQuoteDisplayStatus(q)]?.label),
+          normalizedSearch
+        )
       ) {
         return false;
       }
@@ -1639,7 +1649,7 @@ export default function SavedQuotesPage() {
                   type="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Nom, n° de devis, email, référence, ville..."
+                  placeholder="Nom, n° de devis, téléphone, email, ville, produit, statut, montant..."
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-2 focus:ring-orange-200"
                 />
                 {searchTerm && (

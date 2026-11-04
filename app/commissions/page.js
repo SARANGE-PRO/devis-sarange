@@ -33,6 +33,8 @@ import {
   computeCommissionTotals,
   formatMoney,
 } from '@/lib/commission-dossiers.mjs';
+import { buildSearchIndex, matchesSearchIndex } from '@/lib/search.mjs';
+import useSessionSearch from '@/components/useSessionSearch';
 
 /**
  * Page discrète de suivi des commissions de vente. Doublement gardée :
@@ -66,42 +68,28 @@ const storeUnlocked = () => {
   }
 };
 
-// Recherche par nom : conservée le temps de la session (retour sur la page
-// après un détour par un devis, par exemple), comme le déverrouillage.
+// Recherche conservée le temps de la session (retour sur la page après un
+// détour par un devis, par exemple), comme le déverrouillage.
 const SEARCH_STORAGE_KEY = 'sarange.commissions.search';
 
-const readSearch = () => {
-  try {
-    return sessionStorage.getItem(SEARCH_STORAGE_KEY) || '';
-  } catch {
-    return '';
-  }
+const SOURCE_LABELS = {
+  [COMMISSION_SOURCES.WEBSITE]: 'Site',
+  [COMMISSION_SOURCES.EMAIL]: 'E-mail',
 };
 
-const storeSearch = (value) => {
-  try {
-    if (value) sessionStorage.setItem(SEARCH_STORAGE_KEY, value);
-    else sessionStorage.removeItem(SEARCH_STORAGE_KEY);
-  } catch {
-    // Stockage indisponible : la recherche vaut pour la page courante seulement.
-  }
-};
-
-// Comparaison sans accents ni casse : « dupont » trouve « DUPONT », « helene » « Hélène ».
-const foldText = (value) =>
-  String(value || '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim();
-
-// Chaque mot tapé doit se retrouver dans le libellé, le n° de devis ou le statut.
-const dossierMatches = (dossier, foldedQuery) => {
-  if (!foldedQuery) return true;
-  const statusLabel = COMMISSION_STATUSES.find((status) => status.value === dossier.status)?.label || '';
-  const haystack = foldText([dossier.label, dossier.quoteNumber, statusLabel].join(' '));
-  return foldedQuery.split(/\s+/).every((word) => haystack.includes(word));
-};
+// Index de recherche d'un dossier : nom, n° de devis, statut, origine,
+// montants, noms des documents. Règles de comparaison : lib/search.mjs.
+const getDossierSearchIndex = (dossier) =>
+  buildSearchIndex(
+    dossier.label,
+    dossier.quoteNumber,
+    COMMISSION_STATUSES.find((status) => status.value === dossier.status)?.label,
+    SOURCE_LABELS[dossier.source],
+    dossier.purchasePrice,
+    dossier.salePrice,
+    dossier.paidAmount,
+    (dossier.documents || []).map((entry) => entry.name || entry.filename)
+  );
 
 const STATUS_STYLES = {
   'attente-devis': 'bg-amber-50 text-amber-700 border-amber-200',
@@ -526,17 +514,11 @@ export default function CommissionsPage() {
   const [pending, setPending] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [expandedId, setExpandedId] = useState('');
-  const [query, setQuery] = useState('');
+  const [query, updateQuery] = useSessionSearch(SEARCH_STORAGE_KEY);
 
   useEffect(() => {
     setUnlocked(readUnlocked());
-    setQuery(readSearch());
   }, []);
-
-  const updateQuery = (value) => {
-    setQuery(value);
-    storeSearch(value);
-  };
 
   const authorizedFetch = useCallback(
     async (path, { method = 'GET', body } = {}) => {
@@ -623,10 +605,13 @@ export default function CommissionsPage() {
 
   // Les totaux portent sur TOUS les dossiers : la recherche ne filtre que la liste.
   const totals = useMemo(() => computeCommissionTotals(dossiers || []), [dossiers]);
-  const foldedQuery = foldText(query);
+  const trimmedQuery = query.trim();
   const filtered = useMemo(
-    () => (dossiers || []).filter((dossier) => dossierMatches(dossier, foldedQuery)),
-    [dossiers, foldedQuery]
+    () =>
+      (dossiers || []).filter((dossier) =>
+        matchesSearchIndex(getDossierSearchIndex(dossier), trimmedQuery)
+      ),
+    [dossiers, trimmedQuery]
   );
 
   let content;
@@ -744,7 +729,7 @@ export default function CommissionsPage() {
                 enterKeyHint="search"
                 value={query}
                 onChange={(event) => updateQuery(event.target.value)}
-                placeholder="Rechercher un client, un dossier, un n° de devis"
+                placeholder="Nom, n° de devis, statut, montant, document..."
                 aria-label="Rechercher un dossier"
                 className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-9 text-base text-slate-800 outline-none placeholder:text-slate-400 focus:border-orange-300 sm:text-sm"
               />
