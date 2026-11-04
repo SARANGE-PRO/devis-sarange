@@ -1085,7 +1085,7 @@ export default function HomePageClient() {
   // Dossier /commissions d'un devis « Vente Ange » : création, mise à jour ou
   // suppression (case décochée et dossier encore vierge) via l'API, réservée aux
   // administrateurs. Jamais bloquant : un échec laisse un message discret.
-  const syncVenteAngeDossier = async (savedQuote, { enabled, stage }) => {
+  const syncVenteAngeDossier = async (savedQuote, { enabled, stage, commissionAmount = null }) => {
     try {
       const idToken = await user.getIdToken();
       const response = await fetch('/api/commissions', {
@@ -1100,6 +1100,8 @@ export default function HomePageClient() {
             city: savedQuote.payload?.clientData?.ville || '',
             // Prix de vente = total HT du devis (variante active en multi-options).
             salePrice: Number.isFinite(Number(savedQuote.totalHT)) ? Number(savedQuote.totalHT) : null,
+            // Commission saisie librement avec la case (reportée telle quelle).
+            commissionAmount,
             stage,
             enabled,
           },
@@ -1222,13 +1224,15 @@ export default function HomePageClient() {
 
       // Suivi « Vente Ange » (administrateurs) : ligne /commissions synchronisée
       // après chaque enregistrement ; aussi quand la case vient d'être décochée.
-      const venteAngeChecked =
-        quoteSettings?.venteAnge === true ||
-        materializedVariants.some((variant) => variant?.quoteSettings?.venteAnge === true);
+      const venteAngeSettings = quoteSettings?.venteAnge === true
+        ? quoteSettings
+        : materializedVariants.find((variant) => variant?.quoteSettings?.venteAnge === true)?.quoteSettings;
+      const venteAngeChecked = Boolean(venteAngeSettings);
       if (access?.isAdmin === true && (venteAngeChecked || venteAngeSyncedRef.current)) {
         await syncVenteAngeDossier(savedQuote, {
           enabled: venteAngeChecked,
           stage: ['pdf', 'delivery'].includes(origin) ? 'sent' : 'draft',
+          commissionAmount: venteAngeSettings?.venteAngeCommission ?? null,
         });
       }
 

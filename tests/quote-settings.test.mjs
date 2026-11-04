@@ -341,4 +341,17 @@ run('vente Ange : marqueur interne, décoché par défaut et sur les anciens dev
   assert.equal(avec, sans);
 });
 
+run('vente Ange : commission saisie librement, nombre au centime ou null', () => {
+  assert.equal(normalizeQuoteSettings().venteAngeCommission, null);
+  assert.equal(normalizeQuoteSettings({ venteAngeCommission: '' }).venteAngeCommission, null);
+  assert.equal(normalizeQuoteSettings({ venteAngeCommission: '1 234,567' }).venteAngeCommission, 1234.57);
+  assert.equal(normalizeQuoteSettings({ venteAngeCommission: 850 }).venteAngeCommission, 850);
+  assert.equal(normalizeQuoteSettings({ venteAngeCommission: -5 }).venteAngeCommission, null);
+  assert.equal(normalizeQuoteSettings({ venteAngeCommission: 'abc' }).venteAngeCommission, null);
+  // Aucun effet sur les textes du devis.
+  const avec = buildPaymentTermsForPdf({ paymentMode: 'standard', venteAngeCommission: 500 }).join('\n');
+  const sans = buildPaymentTermsForPdf({ paymentMode: 'standard' }).join('\n');
+  assert.equal(avec, sans);
+});
+
 console.log('Tous les tests de reglages de devis ont reussi.');

@@ -53,6 +53,52 @@ const NATURE_OVERRIDE_OPTIONS = [
   { value: 'recyclage', label: 'Recyclage (chantier)' },
 ];
 
+// Saisie « 1 234,56 » / « 1234.56 » → nombre au centime, vide ou invalide → null.
+const parseCommissionInput = (raw) => {
+  const text = String(raw ?? '').replace(/[€\s  ]/g, '').replace(',', '.');
+  if (!text) return null;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : null;
+};
+
+/**
+ * Commission de la vente Ange : montant libre en euros HT, sans aucun calcul
+ * (l'utilisateur la détermine comme il l'entend), enregistré à la sortie du
+ * champ et reporté tel quel dans le dossier /commissions.
+ */
+function VenteAngeCommissionField({ value, onCommit }) {
+  const current = typeof value === 'number' ? String(value).replace('.', ',') : '';
+  return (
+    <div className="mt-3 flex flex-col gap-2 border-t border-emerald-200/70 pt-3 sm:flex-row sm:items-end sm:gap-4">
+      <label className="block sm:w-48">
+        <span className="text-xs font-bold uppercase tracking-widest text-emerald-700">
+          Commission (€ HT)
+        </span>
+        <div className="mt-1 flex items-center gap-1 rounded-xl border border-emerald-200 bg-white px-3 py-2 focus-within:border-emerald-400">
+          <input
+            key={`vente-ange-commission:${current}`}
+            type="text"
+            inputMode="decimal"
+            defaultValue={current}
+            placeholder="0,00"
+            onBlur={(event) => {
+              const raw = event.target.value.trim();
+              if (raw === current) return;
+              onCommit(parseCommissionInput(raw));
+            }}
+            className="w-full bg-transparent text-right text-base font-semibold text-slate-900 outline-none placeholder:text-slate-300 sm:text-sm"
+          />
+          <span className="shrink-0 text-sm text-slate-400">€</span>
+        </div>
+      </label>
+      <p className="text-xs text-slate-500 sm:pb-2">
+        Montant libre, sans calcul : il apparaît tel quel dans la colonne Commission du suivi,
+        où il reste modifiable.
+      </p>
+    </div>
+  );
+}
+
 export default function QuoteCommercialTerms({
   quoteSettings,
   onChange,
@@ -157,6 +203,8 @@ export default function QuoteCommercialTerms({
               {isAdmin && settings.venteAnge && (
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
                   Vente Ange
+                  {settings.venteAngeCommission !== null &&
+                    ` · commission ${settings.venteAngeCommission.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`}
                 </span>
               )}
             </div>
@@ -744,30 +792,38 @@ export default function QuoteCommercialTerms({
                   page /commissions, synchronisée à chaque enregistrement du devis.
                   Aucun effet sur le devis, le PDF ou les e-mails. */}
               {isAdmin && (
-                <label
-                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors ${
+                <div
+                  className={`rounded-2xl border p-4 transition-colors ${
                     settings.venteAnge
                       ? 'border-emerald-200 bg-emerald-50'
                       : 'border-slate-200 bg-slate-50'
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={settings.venteAnge}
-                    onChange={(event) => updateSettings({ venteAnge: event.target.checked })}
-                    className="mt-1 accent-emerald-600"
-                  />
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Vente Ange</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      À l&apos;enregistrement du devis, une ligne est ajoutée au suivi des
-                      commissions (icône €) avec le nom du client, le statut et le prix de
-                      vente HT. Le prix SARANGE se renseigne là-bas. Le statut passe en
-                      « Devis envoyé » au PDF ou à l&apos;envoi, puis en « Vendu » à la
-                      signature.
-                    </p>
-                  </div>
-                </label>
+                  <label className="flex cursor-pointer items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={settings.venteAnge}
+                      onChange={(event) => updateSettings({ venteAnge: event.target.checked })}
+                      className="mt-1 accent-emerald-600"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">Vente Ange</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        À l&apos;enregistrement du devis, une ligne est ajoutée au suivi des
+                        commissions (icône €) avec le nom du client, le statut, le prix de
+                        vente HT et la commission ci-dessous. Le prix SARANGE se renseigne
+                        là-bas. Le statut passe en « Devis envoyé » au PDF ou à
+                        l&apos;envoi, puis en « Vendu » à la signature.
+                      </p>
+                    </div>
+                  </label>
+                  {settings.venteAnge && (
+                    <VenteAngeCommissionField
+                      value={settings.venteAngeCommission}
+                      onCommit={(amount) => updateSettings({ venteAngeCommission: amount })}
+                    />
+                  )}
+                </div>
               )}
             </div>
 

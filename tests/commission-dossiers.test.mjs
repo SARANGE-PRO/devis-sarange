@@ -10,6 +10,7 @@ import {
   computeBalance,
   computeCommission,
   computeCommissionTotals,
+  getCommissionAmount,
   isUntouchedQuoteDossier,
   normalizeCommissionDossier,
   normalizeCommissionStatus,
@@ -62,6 +63,28 @@ run('commission : uniquement un dossier VENDU aux deux prix renseignés', () => 
   assert.equal(computeCommission({ status: 'vendu', purchasePrice: 8000 }), null);
   // Vente à perte : la commission peut être négative, on ne masque pas.
   assert.equal(computeCommission({ status: 'vendu', purchasePrice: 10000, salePrice: 9000 }), -1000);
+});
+
+run('commission saisie librement : prime sur le calcul, connue avant la vente, due seulement vendue', () => {
+  const base = { purchasePrice: 8000, salePrice: 10000 };
+  // Montant libre : remplace prix de vente - prix SARANGE.
+  assert.equal(getCommissionAmount({ ...base, commissionAmount: 1500 }), 1500);
+  assert.equal(computeCommission({ ...base, status: 'vendu', commissionAmount: 1500 }), 1500);
+  // Saisi avec la case « Vente Ange », sans aucun prix : connu mais pas dû.
+  assert.equal(getCommissionAmount({ status: 'devis-envoye', commissionAmount: '1 200,50' }), 1200.5);
+  assert.equal(computeCommission({ status: 'devis-envoye', commissionAmount: 1200.5 }), null);
+  assert.equal(computeCommission({ status: 'vendu', commissionAmount: 1200.5 }), 1200.5);
+  // Sans saisie : calcul habituel, null si un prix manque.
+  assert.equal(getCommissionAmount(base), 2000);
+  assert.equal(getCommissionAmount({ salePrice: 10000 }), null);
+  assert.equal(normalizeCommissionDossier({ commissionAmount: 'abc' }).commissionAmount, null);
+  // Totaux : seule la commission des dossiers vendus compte.
+  const totals = computeCommissionTotals([
+    { status: 'vendu', commissionAmount: 1500, paidAmount: 0 },
+    { status: 'devis-envoye', commissionAmount: 900, paidAmount: 0 },
+  ]);
+  assert.equal(totals.commissionTotal, 1500);
+  assert.equal(totals.dueTotal, 1500);
 });
 
 run('solde dû : commission - payé, null quand il n’y a rien à dire', () => {
@@ -131,6 +154,8 @@ run('saisie partielle : seules les clés fournies sont renvoyées', () => {
   assert.deepEqual(sanitizeCommissionDossierInput({ paidAmount: '1 000' }), { paidAmount: 1000 });
   assert.deepEqual(sanitizeCommissionDossierInput({ paidAmount: '' }), { paidAmount: 0 });
   assert.deepEqual(sanitizeCommissionDossierInput({ salePrice: '' }), { salePrice: null });
+  assert.deepEqual(sanitizeCommissionDossierInput({ commissionAmount: '1 500' }), { commissionAmount: 1500 });
+  assert.deepEqual(sanitizeCommissionDossierInput({ commissionAmount: '' }), { commissionAmount: null });
   assert.deepEqual(sanitizeCommissionDossierInput({ status: 'perdu', label: '  Villa Bleue  ' }), {
     status: 'perdu',
     label: 'Villa Bleue',
@@ -197,6 +222,7 @@ run('vente Ange : payload de synchronisation nettoyé', () => {
     clientName: 'Marie Dupont',
     city: 'Nantes',
     salePrice: 12345.678,
+    commissionAmount: '1 200,50',
     stage: 'sent',
     enabled: true,
   });
@@ -205,6 +231,7 @@ run('vente Ange : payload de synchronisation nettoyé', () => {
     quoteNumber: 'D-2026-042',
     label: 'Marie Dupont (Nantes)',
     salePrice: 12345.68,
+    commissionAmount: 1200.5,
     stage: 'sent',
     enabled: true,
   });
@@ -212,6 +239,7 @@ run('vente Ange : payload de synchronisation nettoyé', () => {
   assert.equal(vide.quoteId, '');
   assert.equal(vide.label, 'Devis');
   assert.equal(vide.salePrice, null);
+  assert.equal(vide.commissionAmount, null);
   assert.equal(vide.stage, 'draft');
   assert.equal(vide.enabled, false);
   assert.equal(sanitizeQuoteSyncInput({ enabled: 'true' }).enabled, false);

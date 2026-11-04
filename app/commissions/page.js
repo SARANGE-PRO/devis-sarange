@@ -32,6 +32,7 @@ import {
   computeCommission,
   computeCommissionTotals,
   formatMoney,
+  getCommissionAmount,
 } from '@/lib/commission-dossiers.mjs';
 import { buildSearchIndex, matchesSearchIndex } from '@/lib/search.mjs';
 import useSessionSearch from '@/components/useSessionSearch';
@@ -87,6 +88,7 @@ const getDossierSearchIndex = (dossier) =>
     SOURCE_LABELS[dossier.source],
     dossier.purchasePrice,
     dossier.salePrice,
+    dossier.commissionAmount,
     dossier.paidAmount,
     (dossier.documents || []).map((entry) => entry.name || entry.filename)
   );
@@ -390,6 +392,8 @@ function QuoteSourceBadge({ dossier }) {
 /** Carte mobile d'un dossier : tout se fait au pouce, sans défilement latéral. */
 function DossierCard({ dossier, pending, saveField, onDelete, expanded, onToggleExpand, documentsPanel }) {
   const commission = computeCommission(dossier);
+  // Montant connu (saisi ou calculé), modifiable ; dû seulement une fois vendu.
+  const plannedCommission = getCommissionAmount(dossier);
   const balance = computeBalance(dossier);
   const rowPending = pending.startsWith(`update:${dossier.id}`) || pending === `delete:${dossier.id}`;
 
@@ -463,12 +467,12 @@ function DossierCard({ dossier, pending, saveField, onDelete, expanded, onToggle
           value={dossier.salePrice}
           onSave={(raw) => saveField(dossier, 'salePrice', raw)}
         />
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Commission</span>
-          <p className="mt-1 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-right text-base font-bold text-slate-800">
-            {commission === null ? <span className="font-normal text-slate-300">-</span> : formatMoney(commission)}
-          </p>
-        </div>
+        <MoneyField
+          label={commission === null ? 'Commission (prévue)' : 'Commission'}
+          value={plannedCommission}
+          onSave={(raw) => saveField(dossier, 'commissionAmount', raw)}
+          tone={commission === null ? 'text-slate-500' : 'text-slate-800'}
+        />
         <MoneyField
           label="Payé par Sarange"
           value={dossier.paidAmount || null}
@@ -828,6 +832,7 @@ export default function CommissionsPage() {
                 <tbody className="divide-y divide-slate-50">
                   {list.map((dossier) => {
                     const commission = computeCommission(dossier);
+                    const plannedCommission = getCommissionAmount(dossier);
                     const balance = computeBalance(dossier);
                     const expanded = expandedId === dossier.id;
                     const rowPending =
@@ -902,8 +907,30 @@ export default function CommissionsPage() {
                               />
                             </td>
                           ))}
-                          <td className="px-3 py-2.5 text-right font-semibold text-slate-800">
-                            {commission === null ? <span className="text-slate-300">-</span> : formatMoney(commission)}
+                          <td className="px-3 py-2.5 text-right">
+                            {/* Montant saisi librement (depuis le devis ou ici), sinon prix de
+                                vente - prix SARANGE. Vider le champ revient au calcul. */}
+                            <input
+                              key={`${dossier.id}:commission:${plannedCommission}`}
+                              type="text"
+                              inputMode="decimal"
+                              defaultValue={moneyInputValue(plannedCommission)}
+                              placeholder="0,00"
+                              title={
+                                dossier.commissionAmount !== null
+                                  ? 'Montant saisi à la main (vider pour revenir à prix de vente - prix SARANGE)'
+                                  : 'Prix de vente - prix SARANGE ; saisissez un montant pour le remplacer'
+                              }
+                              onBlur={(event) => {
+                                const raw = event.target.value.trim();
+                                if (raw !== moneyInputValue(plannedCommission)) {
+                                  saveField(dossier, 'commissionAmount', raw);
+                                }
+                              }}
+                              className={`w-24 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-right font-semibold outline-none transition-colors hover:border-slate-200 focus:border-orange-300 focus:bg-white ${
+                                commission === null ? 'text-slate-500' : 'text-slate-800'
+                              }`}
+                            />
                           </td>
                           <td className="px-3 py-2.5 text-right">
                             <input
