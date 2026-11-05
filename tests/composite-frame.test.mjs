@@ -14,6 +14,9 @@ import {
   normalizeCompositeFrame,
   migrateLegacyCompositeFrame,
   validateCompositeFrame,
+  setFrameColor,
+  getFrameColorOptions,
+  mapPlacements,
 } from '../lib/composite-frame.mjs';
 
 let passed = 0;
@@ -187,6 +190,110 @@ run('migration : anciennes rangees regulieres -> grille avec placements', () => 
   const openings = openingsOf(frame);
   assert.equal(openings.length, 4);
   assert.equal(Object.keys(frame.placements).length, 4);
+});
+
+// ----------------------------------------------- COLORATION DE L'ENSEMBLE
+run('coloration d ensemble : blanc par defaut, heritee par chaque chassis place', () => {
+  const frame = createDefaultFrame(2000, 1500, 1, 0);
+  assert.equal(frame.colorOptionId, 'blanc');
+  assert.equal(frame.rawColorState, null);
+  assert.deepEqual(getFrameColorOptions(frame), { colorOptionId: 'blanc' });
+
+  const colored = setFrameColor(frame, {
+    colorOptionId: 'coloration-2f',
+    rawColorState: { color2fType: 'standard_7016', is2fPlaxage: true },
+  });
+  assert.equal(colored.colorOptionId, 'coloration-2f');
+  // L'ossature d'origine n'est pas modifiee.
+  assert.equal(frame.colorOptionId, 'blanc');
+
+  const [first, second] = openingsOf(colored);
+  const placed = placeChassis(colored, first.id, first, { productId: 'fenetre-1v' });
+  assert.equal(placed.placements[first.id].options.colorOptionId, 'coloration-2f');
+  assert.deepEqual(placed.placements[first.id].options.rawColorState, {
+    color2fType: 'standard_7016',
+    is2fPlaxage: true,
+  });
+  // Des options explicites gardent la main sur l'heritage.
+  const custom = placeChassis(placed, second.id, second, {
+    productId: 'fenetre-fixe',
+    options: { colorOptionId: 'blanc' },
+  });
+  assert.equal(custom.placements[second.id].options.colorOptionId, 'blanc');
+});
+
+run('coloration d ensemble : setFrameColor recopie sur tous les chassis deja places', () => {
+  const frame = createDefaultFrame(2000, 1500, 1, 0);
+  const [first, second] = openingsOf(frame);
+  let next = placeChassis(frame, first.id, first, {
+    productId: 'fenetre-1v',
+    options: { glazingId: 'vitrage-x', colorOptionId: 'blanc' },
+  });
+  next = placeChassis(next, second.id, second, { productId: 'fenetre-fixe' });
+
+  const colored = setFrameColor(next, {
+    colorOptionId: 'bicoloration',
+    rawColorState: { bicoType: 'standard_chene' },
+  });
+  Object.values(colored.placements).forEach((placement) => {
+    assert.equal(placement.options.colorOptionId, 'bicoloration');
+    assert.deepEqual(placement.options.rawColorState, { bicoType: 'standard_chene' });
+  });
+  // Le reste de la configuration du chassis est conserve.
+  assert.equal(colored.placements[first.id].options.glazingId, 'vitrage-x');
+  // Copies independantes : retoucher un chassis ne touche ni l'ensemble ni les autres.
+  colored.placements[first.id].options.rawColorState.bicoType = 'custom';
+  assert.equal(colored.rawColorState.bicoType, 'standard_chene');
+  assert.equal(colored.placements[second.id].options.rawColorState.bicoType, 'standard_chene');
+  // Sans nouvel etat de couleur, l'etat de l'ensemble est repris.
+  const again = setFrameColor(colored, { colorOptionId: 'coloration-2f' });
+  assert.equal(again.colorOptionId, 'coloration-2f');
+  assert.equal(again.rawColorState.bicoType, 'standard_chene');
+});
+
+run('coloration d ensemble : serialisee, et deduite des chassis des anciens composes', () => {
+  const frame = setFrameColor(createDefaultFrame(1000, 1000, 0, 0), {
+    colorOptionId: 'coloration-2f',
+    rawColorState: { color2fType: 'standard_chene' },
+  });
+  const restored = normalizeCompositeFrame(JSON.parse(JSON.stringify(frame)));
+  assert.equal(restored.colorOptionId, 'coloration-2f');
+  assert.deepEqual(restored.rawColorState, { color2fType: 'standard_chene' });
+
+  // Ancien compose (sans coloration d'ensemble) : chassis de la meme couleur.
+  const legacy = createDefaultFrame(2000, 1000, 1, 0);
+  delete legacy.colorOptionId;
+  delete legacy.rawColorState;
+  const [a, b] = openingsOf(legacy);
+  const bico = { colorOptionId: 'bicoloration', rawColorState: { bicoType: 'standard_7016' } };
+  let shared = placeChassis(legacy, a.id, a, { productId: 'fenetre-1v', options: { ...bico } });
+  shared = placeChassis(shared, b.id, b, { productId: 'fenetre-fixe', options: { ...bico } });
+  assert.equal(shared.colorOptionId, undefined);
+  const sharedRestored = serializeCompositeFrame(shared);
+  assert.equal(sharedRestored.colorOptionId, 'bicoloration');
+  assert.deepEqual(sharedRestored.rawColorState, { bicoType: 'standard_7016' });
+
+  // Couleurs differentes : l'ensemble reste blanc, chaque chassis garde la sienne.
+  const mixed = placeChassis(shared, b.id, b, {
+    productId: 'fenetre-fixe',
+    options: { colorOptionId: 'blanc' },
+  });
+  const mixedRestored = serializeCompositeFrame(mixed);
+  assert.equal(mixedRestored.colorOptionId, 'blanc');
+  assert.equal(mixedRestored.rawColorState, null);
+  assert.equal(mixedRestored.placements[a.id].options.colorOptionId, 'bicoloration');
+  assert.equal(mixedRestored.placements[b.id].options.colorOptionId, 'blanc');
+});
+
+run('mapPlacements : nouveau frame, chaque chassis transforme, l original intact', () => {
+  const frame = createDefaultFrame(2000, 1000, 1, 0);
+  const [a, b] = openingsOf(frame);
+  let placed = placeChassis(frame, a.id, a, { productId: 'fenetre-1v' });
+  placed = placeChassis(placed, b.id, b, { productId: 'fenetre-fixe' });
+  const mapped = mapPlacements(placed, (placement) => ({ ...placement, productId: 'x' }));
+  assert.notEqual(mapped, placed);
+  assert.deepEqual(Object.values(mapped.placements).map((p) => p.productId), ['x', 'x']);
+  assert.deepEqual(Object.values(placed.placements).map((p) => p.productId), ['fenetre-1v', 'fenetre-fixe']);
 });
 
 console.log(`\n${passed} OK, ${failed} FAIL`);

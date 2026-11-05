@@ -82,8 +82,12 @@ import PosePriceEditor from '@/components/PosePriceEditor';
 import VoletMonoblocCouleurPicker from '@/components/VoletMonoblocCouleurPicker';
 import VoletMonoblocPrixOptions from '@/components/VoletMonoblocPrixOptions';
 import { splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
-import { getCompositeFramePricing, getCompositeFrameModules } from '@/lib/products';
-import { createDefaultFrame, normalizeCompositeFrame } from '@/lib/composite-frame';
+import {
+  applyCompositeFrameMaterial,
+  getCompositeFramePricing,
+  getCompositeFrameModules,
+} from '@/lib/products';
+import { createDefaultFrame, normalizeCompositeFrame, setFrameColor } from '@/lib/composite-frame';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import { compressCustomImageFile } from '@/lib/image-compress';
 import {
@@ -1623,6 +1627,7 @@ export default function ProductSelector({
   const resetCompositeSelection = () => {
     setCompositeFrame(createDefaultFrame(1080, 2150, 0, 0));
     setCompositeMaterial('pvc');
+    compositeSyncRef.current = { openingId: null, productId: null };
   };
 
   const resetGlobalCommercialFields = () => {
@@ -1750,13 +1755,55 @@ export default function ProductSelector({
   const handleCompositeMaterialChange = (material) => {
     if (material === compositeMaterial) return;
     setCompositeMaterial(material);
+    // Les châssis déjà placés changent de matériau avec l'ensemble (sinon un
+    // composé alu repassé en PVC restait chiffré et désigné en aluminium).
+    setCompositeFrame((previous) => applyCompositeFrameMaterial(previous, material));
+    setSimpleConfig((previous) => ({ ...previous, glazingId: getDefaultGlazingId(material) }));
     // Données thermiques décochées par défaut en aluminium (intégrées si coché).
     setShowThermalData(material !== 'alu');
   };
 
+  // Coloration de l'ensemble du châssis composé : mémorisée sur l'ossature et
+  // recopiée sur tous les châssis placés (et héritée par les suivants).
+  const compositeFrameColorState = createDefaultColorState(compositeFrame.rawColorState || {});
+  const applyCompositeFrameColor = ({ colorOptionId, rawColorState }) => {
+    const nextColorOptionId = colorOptionId || compositeFrame.colorOptionId || 'blanc';
+    const nextColorState = createDefaultColorState(rawColorState || compositeFrameColorState);
+    setCompositeFrame((previous) =>
+      setFrameColor(previous, { colorOptionId: nextColorOptionId, rawColorState: nextColorState })
+    );
+    // Le châssis sélectionné est piloté par le formulaire simple : on l'aligne
+    // aussi, sinon sa prochaine modification réécrirait l'ancienne couleur.
+    setSimpleConfig((previous) => ({
+      ...previous,
+      colorOptionId: nextColorOptionId,
+      rawColorState: createDefaultColorState(nextColorState),
+    }));
+  };
+
+  // Fin ou abandon d'une modification (croix, article validé, changement de
+  // variante) : le formulaire repart vierge. Sans cela, le prochain châssis
+  // composé héritait des cotes et des châssis de l'article qu'on modifiait.
+  const resetAfterEditRef = useRef(null);
+  useEffect(() => {
+    resetAfterEditRef.current = () => {
+      resetCompositeSelection();
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+    };
+  });
+  const wasEditingRef = useRef(false);
+
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!editingItem) return;
+    if (!editingItem) {
+      if (wasEditingRef.current) {
+        wasEditingRef.current = false;
+        resetAfterEditRef.current?.();
+      }
+      return;
+    }
+    wasEditingRef.current = true;
 
     setQuantity(editingItem.quantity || 1);
     setIncludePose(Boolean(editingItem.includePose));
@@ -4081,6 +4128,26 @@ export default function ProductSelector({
           resolveChassisLabel={resolveCompositeChassisLabel}
           onSelectedOpeningChange={setSelectedCompositeOpeningId}
         />
+      </div>
+
+      <div className="border-t border-slate-100 p-4 md:p-6">
+        <p className="text-xs font-black uppercase tracking-widest text-slate-400">
+          Coloration de l’ensemble du châssis
+        </p>
+        <p className="mb-4 mt-1 text-xs text-slate-500">
+          Appliquée à tous les châssis placés et à ceux ajoutés ensuite. Un châssis
+          peut toujours être réglé à part dans sa propre configuration.
+        </p>
+        {buildColorOptionsFields({
+          value: compositeFrame.colorOptionId || 'blanc',
+          colorState: compositeFrameColorState,
+          onColorChange: (value) => applyCompositeFrameColor({ colorOptionId: value }),
+          onColorStateChange: (patch) =>
+            applyCompositeFrameColor({
+              rawColorState: { ...compositeFrameColorState, ...patch },
+            }),
+          availableOptions: COLOR_OPTIONS,
+        })}
       </div>
 
       {isChassisConfig && (

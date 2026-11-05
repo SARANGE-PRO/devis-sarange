@@ -38,6 +38,16 @@ export default function CompositeFrameEditor({
   const [error, setError] = useState('');
 
   const history = useRef({ stack: [frame], index: 0 });
+  // Frame remplacé de l'extérieur (nouvel article, modification d'un autre
+  // article, changement de matériau ou de coloration) : l'historique repart de
+  // là, sinon Ctrl+Z ramenait l'ossature d'un article précédent.
+  useEffect(() => {
+    const h = history.current;
+    if (h.stack[h.index] !== frame) {
+      h.stack = [frame];
+      h.index = 0;
+    }
+  }, [frame]);
 
   const commit = (nextFrame) => {
     setError('');

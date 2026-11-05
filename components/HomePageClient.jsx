@@ -400,6 +400,10 @@ export default function HomePageClient() {
   const [activeVariantId, setActiveVariantId] = useState('');
   const [variantNotice, setVariantNotice] = useState('');
   const [editingItem, setEditingItem] = useState(null);
+  // Remonte un sélecteur de produits vierge à chaque nouveau devis ou devis
+  // chargé : l'ossature d'un châssis composé en cours ne doit pas survivre
+  // d'un devis à l'autre.
+  const [productSelectorEpoch, setProductSelectorEpoch] = useState(0);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   // Suivi « Vente Ange » (administrateurs) : vrai quand le devis courant a déjà
   // un dossier /commissions synchronisé (ou a été chargé avec la case cochée),
@@ -642,6 +646,7 @@ export default function HomePageClient() {
     setActiveVariantId('');
     setVariantNotice('');
     setEditingItem(null);
+    setProductSelectorEpoch((value) => value + 1);
     setActiveQuoteId(null);
     venteAngeSyncedRef.current = false;
     setSaveMessage('');
@@ -733,6 +738,7 @@ export default function HomePageClient() {
       : 2;
     setCurrentStep(Math.min(3, Math.max(1, nextStep)));
     setEditingItem(null);
+    setProductSelectorEpoch((value) => value + 1);
     // Devis chargé avec la case « Vente Ange » : un dossier /commissions existe
     // (ou devrait), on resynchronisera même si la case est décochée ensuite.
     venteAngeSyncedRef.current =
@@ -1731,6 +1737,7 @@ export default function HomePageClient() {
               }`}
             >
               <ProductSelector
+                key={productSelectorEpoch}
                 onAddToCart={handleAddToCart}
                 cartItems={cartItems}
                 editingItem={editingItem}
