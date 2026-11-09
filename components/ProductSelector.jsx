@@ -88,6 +88,7 @@ import {
   getCompositeFrameModules,
 } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame, setFrameColor } from '@/lib/composite-frame';
+import { describeOpeningDirection } from '@/lib/menuiserie';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import { compressCustomImageFile } from '@/lib/image-compress';
 import {
@@ -222,6 +223,19 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
 
 const isColorConfigOption = (value) =>
   value === 'bicoloration' || value === 'coloration-2f';
+
+const capitalizeFirst = (text) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : '');
+
+// Sens d'ouverture en mots de fabricant (déduits du schéma) pour les deux
+// choix ; null quand le produit n'en a pas (fixe, soufflet, volet) ou quand
+// l'inversion ne change rien (disposition symétrique) : champ masqué.
+const getOpeningDirectionLabels = (sheetName) => {
+  if (!sheetName) return null;
+  const standard = describeOpeningDirection({ sheetName, openingDirection: 'standard' });
+  const inverse = describeOpeningDirection({ sheetName, openingDirection: 'inverse' });
+  if (!standard || !inverse || standard.short === inverse.short) return null;
+  return { standard: standard.short, inverse: inverse.short };
+};
 
 const parsePositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(value, 10);
@@ -1052,6 +1066,7 @@ export default function ProductSelector({
   const workingSupportsMonobloc = ['fenetres', 'portes-fenetres', 'coulissants'].includes(
     formProduct?.categoryId || ''
   );
+  const openingDirectionLabels = getOpeningDirectionLabels(formProduct?.sheet);
 
   // Menuiserie cintrée (catégorie « Formes spéciales ») : jamais en composé.
   const workingIsCintre = !isCompositeMode && formProduct?.shape === 'cintre';
@@ -2523,21 +2538,28 @@ export default function ProductSelector({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Sens d&apos;ouverture
-                    </label>
-                    <select
-                      value={simpleConfig.openingDirection}
-                      onChange={(event) =>
-                        updateSimpleOptions({ openingDirection: event.target.value })
-                      }
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
-                    >
-                      <option value="standard">Standard</option>
-                      <option value="inverse">Inverse</option>
-                    </select>
-                  </div>
+                  {openingDirectionLabels && (
+                    <div>
+                      <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                        Sens d&apos;ouverture
+                        <span className="ml-1 font-normal text-slate-400">(vue intérieure)</span>
+                      </label>
+                      <select
+                        value={simpleConfig.openingDirection}
+                        onChange={(event) =>
+                          updateSimpleOptions({ openingDirection: event.target.value })
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+                      >
+                        <option value="standard">
+                          {capitalizeFirst(openingDirectionLabels.standard)} (standard)
+                        </option>
+                        <option value="inverse">
+                          {capitalizeFirst(openingDirectionLabels.inverse)}
+                        </option>
+                      </select>
+                    </div>
+                  )}
 
                   {workingIsPorte ? (
                     // En composé, l'option reste dans la config du châssis (pas de repère

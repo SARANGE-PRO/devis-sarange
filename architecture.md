@@ -620,6 +620,7 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/MenuiserieRenderer.js` | Rendu canvas des menuiseries pour l'UI et le PDF. |
 | `lib/search.mjs` | Recherche commune aux onglets (Mes devis, Clients, Compta, Demandes, Commissions) : sans accents ni casse, chaque mot requis, numéros avec ou sans espaces et tirets. Module pur. |
 | `lib/firebase/snapshot-cache.mjs` | Sérialisation incrémentale des abonnements Firestore (seuls les documents qui changent sont re-sérialisés, document illisible ignoré) et métadonnées cache/serveur. Module pur. |
+| `lib/opening-direction.mjs` | Sens d'ouverture en mots de fabricant (tirant droit / gauche, vantail principal, vantail de service, refoulement) déduit des vantaux dessinés, vue intérieure. Module pur ; `describeOpeningDirection` (lib/menuiserie.js) le relie aux produits, pour la ligne « Sens d'ouverture » des désignations et le choix du formulaire. |
 | `lib/pdf-progress.mjs` | Avancement de la génération d'un PDF publié vers le loader (barre de progression réelle). Module pur. |
 | `lib/designation-generator.js` | Generation des designations lisibles inserees dans le PDF. |
 | `lib/pdf-generator.js` | Generation du PDF client complet et memorisation des ancres de signature. |
