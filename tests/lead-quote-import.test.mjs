@@ -19,7 +19,7 @@ const {
   principalSashIndex,
   stableStringify,
 } = await import('../lib/lead-quote-import.mjs');
-const { calculateItemPrice } = await import('../lib/products.js');
+const { calculateItemPrice, getCompositeFramePricing, normalizeCompositeFrame } = await import('../lib/products.js');
 const { computeQuoteTotals } = await import('../lib/quote-totals.mjs');
 const { buildQuoteDraftRecord } = await import('../lib/quote-cloud.js');
 const { buildPanelSelections } = await import('../lib/panel-selections.mjs');
@@ -128,23 +128,30 @@ run('sans cotes, la ligne existe a 0 avec une note ; hors grille, le tarif de re
   assert.ok(hors.leadNotes.some((n) => /hors grille/.test(n)));
 });
 
-run('porte d entree : grille reno, panneau du site repris, parties fixes en notes', () => {
-  const [item] = buildLeadCartItems(
-    project([
-      {
-        familleId: 'porte-entree', quantity: 1, title: "Porte d'entrée, mixte pvc / alu, panneau REVA 62, 90 × 215 cm, + tierce 40 cm",
-        productId: 'porte-reno', glazingId: null, colorOptionId: 'coloration-2f', couleur: 'Gris Anthracite (RAL 7016) - 2 faces',
-        widthMm: 900, heightMm: 2150, horsCatalogue: false, panneau: 'REVA 62, Gris Anthracite (RAL 7016) - 2 faces',
-        options: { tierce: true, tierceWidthMm: 400, imposte: false, imposteHeightMm: 0 },
-        notes: ['grille rénovation par défaut, à confirmer', 'tierce de 400 mm'],
-      },
-    ])
-  );
-  assert.equal(item.productId, 'porte-reno');
-  assert.equal(item.unitPrice, 1027);
+run('porte d entree avec tierce : le produit « Porte + tierce », composé porte + fixe, panneau du site repris, pose porte', () => {
+  const porte = {
+    familleId: 'porte-entree', quantity: 1, title: "Porte d'entrée, mixte pvc / alu, panneau REVA 62, 90 × 215 cm, + tierce 40 cm",
+    productId: 'porte-reno', glazingId: null, colorOptionId: 'coloration-2f', couleur: 'Gris Anthracite (RAL 7016) - 2 faces',
+    widthMm: 900, heightMm: 2150, horsCatalogue: false, panneau: 'REVA 62, Gris Anthracite (RAL 7016) - 2 faces',
+    options: { tierce: true, tierceWidthMm: 400, imposte: false, imposteHeightMm: 0 },
+    notes: ['grille rénovation par défaut, à confirmer', 'tierce de 400 mm'],
+  };
+  const [item] = buildLeadCartItems(project([porte]), { now: 7 });
+  assert.equal(item.productId, 'porte-tierce');
+  assert.equal(item.isComposite, true);
+  assert.equal(item.id, 'lead-7-1');
+  assert.deepEqual(item.doorComposite, { doorWidthMm: 900, doorHeightMm: 2150, tierceWidthMm: 400, imposteHeightMm: 0, tierceSide: 'right' });
+  assert.equal(item.widthMm, 1300);
+  assert.equal(item.heightMm, 2150);
+  // Prix : celui du composé (porte 1027 + panneau décoratif, tierce fixe 400 x 2150 à 259, coloration +10 %).
+  assert.equal(item.unitPrice, getCompositeFramePricing(normalizeCompositeFrame(item.compositeFrame)).totalPrice);
+  assert.ok(item.unitPrice > 1027 * 1.1 + 259);
+  const [porteSeule] = buildLeadCartItems(project([{ ...porte, options: { tierce: false, tierceWidthMm: 0, imposte: false, imposteHeightMm: 0 } }]));
+  assert.equal(porteSeule.productId, 'porte-reno');
+  assert.ok(item.unitPrice > calculateItemPrice(porteSeule).unitPriceWithOptions);
+  assert.equal(item.colorOption.id, 'coloration-2f');
   // Demande antérieure (libellé seul) : le panneau est quand même repris.
   assert.equal(item.panneauDecoratif, true);
-  assert.equal(item.glazingOption, null, 'une porte à panneau décoratif n a pas de vitrage de formulaire');
   assert.equal(item.panelChoice.panelName, 'REVA 62');
   assert.equal(item.panelChoice.couleur, 'Gris Anthracite (RAL 7016) - 2 faces');
   // REVA 62 est premium : la plus-value du sélecteur est reprise pour la signature.
@@ -153,7 +160,54 @@ run('porte d entree : grille reno, panneau du site repris, parties fixes en note
   assert.equal('plusValueInconnue' in item.panelChoice, false);
   assert.ok(item.leadNotes.some((n) => /Panneau choisi sur le site : REVA 62/.test(n)));
   assert.ok(item.leadNotes.some((n) => /tierce de 400 mm/.test(n)));
+  assert.ok(item.leadNotes.some((n) => /Tierce placée à droite/.test(n)));
+  assert.ok(!item.leadNotes.some((n) => /grille rénovation/.test(n)), 'une seule grille porte : la mention du site disparaît');
   assert.equal(calculateItemPrice(item).posePrice, 400);
+  // La porte du composé est une porte à panneau : présélectionnée à la
+  // signature, nommée dans la désignation de porte avec sa tierce.
+  const [selection] = buildPanelSelections([item]);
+  assert.equal(selection.preset.panelName, 'REVA 62');
+  assert.match(selection.lineId, /^lead-7-1:/);
+  const designation = generateDesignation(item);
+  assert.match(designation, /^Porte d'entrée Hybride Premium \(Aluminium \/ PVC\) avec tierce\n/);
+  assert.match(designation, /Tierce fixe à droite 400 x 2150 mm/);
+  assert.match(designation, /Panneau REVA 62/);
+  // La ligne survit à la normalisation du devis.
+  const record = buildQuoteDraftRecord({ title: 'x', clientData: { nom: 'a' }, cartItems: [item], tvaRate: 10, currentStep: 2 });
+  assert.equal(record.payload.cartItems[0].doorComposite.tierceWidthMm, 400);
+  assert.equal(record.payload.cartItems[0].compositeFrame.version, 2);
+});
+
+run('porte d entree : imposte sans cote (proportion par défaut et note), tierce et imposte, alu, porte sans cotes, hors grille', () => {
+  const base = { familleId: 'porte-entree', quantity: 2, title: 'Porte', productId: 'porte-reno-alu', glazingId: null, colorOptionId: 'blanc', couleur: 'blanc', widthMm: 900, heightMm: 2150, horsCatalogue: false, notes: [] };
+  const [imposte] = buildLeadCartItems(project([{ ...base, options: { tierce: false, tierceWidthMm: 0, imposte: true, imposteHeightMm: 0 } }]));
+  assert.equal(imposte.productId, 'porte-imposte-alu');
+  assert.equal(imposte.material, 'alu');
+  assert.equal(imposte.quantity, 2);
+  assert.deepEqual(imposte.doorComposite, { doorWidthMm: 900, doorHeightMm: 2150, tierceWidthMm: 0, imposteHeightMm: 300, tierceSide: null });
+  assert.equal(imposte.heightMm, 2450);
+  assert.ok(imposte.leadNotes.some((n) => /Hauteur de l'imposte à relever \(300 mm par défaut\)/.test(n)));
+  assert.equal(imposte.panneauDecoratif, false);
+  assert.equal(imposte.showThermalData, false);
+  const [both] = buildLeadCartItems(project([{ ...base, productId: 'porte-reno', options: { tierce: true, tierceWidthMm: 350, imposte: true, imposteHeightMm: 250 } }]));
+  assert.equal(both.productId, 'porte-tierce-imposte');
+  assert.equal(both.widthMm, 1250);
+  assert.equal(both.heightMm, 2400);
+  assert.ok(both.unitPrice > 0);
+  assert.equal(both.includePose, true);
+  // Sans cotes de porte : porte seule à 0, avec une note pour passer sur le bon produit après métré.
+  const [sans] = buildLeadCartItems(project([{ ...base, productId: 'porte-reno', widthMm: undefined, heightMm: undefined, options: { tierce: true, tierceWidthMm: 400, imposte: false, imposteHeightMm: 0 } }]));
+  assert.equal(sans.productId, 'porte-reno');
+  assert.equal(sans.isComposite, undefined);
+  assert.equal(sans.unitPrice, 0);
+  assert.ok(sans.leadNotes.some((n) => /Tierce \/ imposte demandée/.test(n)));
+  assert.ok(sans.leadNotes.some((n) => /Cotes à relever/.test(n)));
+  // Hors grille (porte de 1200 de large) : tarif de repli signalé, comme pour la porte seule.
+  const [hors] = buildLeadCartItems(project([{ ...base, productId: 'porte-reno', widthMm: 1200, options: { tierce: true, tierceWidthMm: 400, imposte: false, imposteHeightMm: 0 } }]));
+  assert.equal(hors.productId, 'porte-tierce');
+  assert.equal(hors.outOfGridPricing, true);
+  assert.ok(hors.unitPrice > 0);
+  assert.ok(hors.leadNotes.some((n) => /hors grille/.test(n)));
 });
 
 run('porte d entree : le choix complet du sélecteur arrive pré-sélectionné à la signature', () => {

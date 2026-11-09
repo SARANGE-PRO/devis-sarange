@@ -48,6 +48,24 @@ run('classifie une porte d\'entrée en ENTRY_DOOR, même si un Uw a été calcul
   );
 });
 
+run('classifie une porte d\'entrée avec tierce ou imposte (composé construit) en ENTRY_DOOR', () => {
+  assert.equal(
+    classifyVatLine({
+      isComposite: true,
+      sheetName: 'Châssis composé',
+      doorComposite: { doorWidthMm: 900, doorHeightMm: 2150, tierceWidthMm: 400, imposteHeightMm: 0 },
+      thermalUw: 1.3,
+      thermalSw: 0.4,
+    }),
+    VAT_LINE_CATEGORIES.ENTRY_DOOR
+  );
+  // Un composé ordinaire reste une fenêtre.
+  assert.equal(
+    classifyVatLine({ isComposite: true, sheetName: 'Châssis composé', thermalUw: 1.3, thermalSw: 0.4 }),
+    VAT_LINE_CATEGORIES.WINDOW
+  );
+});
+
 run('classifie un volet en NOT_APPLICABLE', () => {
   assert.equal(classifyVatLine({ sheetName: 'Volet Battant PVC' }), VAT_LINE_CATEGORIES.NOT_APPLICABLE);
 });

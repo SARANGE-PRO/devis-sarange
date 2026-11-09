@@ -67,6 +67,15 @@ run('libellés adaptés au produit : matériau, vantaux, rails, motorisation', (
   assert.equal(buildPoseLabel({ isComposite: true }), 'Pose châssis composé');
   assert.equal(buildPoseLabel({ productId: 'porte-reno', productLabel: "Porte d'entrée rénovation" }), "Pose porte d'entrée");
   assert.equal(buildPoseLabel({ productId: 'porte-neuf-alu', productLabel: "Porte d'entrée neuf" }), "Pose porte d'entrée");
+  // Porte avec parties fixes (composé construit par lib/door-composite.mjs) : posée comme une porte.
+  assert.equal(
+    buildPoseLabel({ isComposite: true, productId: 'porte-tierce-imposte', doorComposite: { tierceWidthMm: 400, imposteHeightMm: 300 } }),
+    "Pose porte d'entrée avec tierce et imposte"
+  );
+  assert.equal(
+    buildPoseLabel({ isComposite: true, productId: 'porte-imposte', doorComposite: { tierceWidthMm: 0, imposteHeightMm: 300 } }),
+    "Pose porte d'entrée avec imposte"
+  );
   assert.equal(buildPoseLabel({ productId: 'volet-radio', productLabel: 'Volet roulant radio' }), 'Pose volet roulant motorisé radio');
   assert.equal(buildPoseLabel({ productId: 'volet-filaire', productLabel: 'Volet roulant filaire' }), 'Pose volet roulant motorisé filaire');
   assert.equal(buildPoseLabel({ productId: 'volet-solaire', productLabel: 'Volet roulant solaire' }), 'Pose volet roulant solaire');

@@ -41,6 +41,7 @@ import {
   SPARE_PART_PRODUCT_IDS,
 } from '@/lib/products';
 import MenuiserieVisual from '@/components/MenuiserieVisual';
+import { describeDoorCompositeParts } from '@/lib/door-composite.mjs';
 import WasteRecycleIcon from '@/components/icons/WasteRecycleIcon';
 import RemiseCommercialeIcon from '@/components/icons/RemiseCommercialeIcon';
 import { computeQuoteTotals, formatTvaRateLabel, getItemTvaCorrection } from '@/lib/quote-totals.mjs';
@@ -400,10 +401,16 @@ function SortableCartItem({
                 {item.remise > 0 && (
                   <span className="ml-1 font-bold text-orange-500">· -{item.remise}%</span>
                 )}
-                {item.isComposite && compositeCount > 0 && (
-                  <span className="ml-1">
-                    · {formatCompositeModules(item.compositionTree ?? item.composition ?? item.modules)}
-                  </span>
+                {item.doorComposite ? (
+                  // Porte avec parties fixes : les parties plutôt que la liste des châssis.
+                  <span className="ml-1">· {describeDoorCompositeParts(item.doorComposite)}</span>
+                ) : (
+                  item.isComposite &&
+                  compositeCount > 0 && (
+                    <span className="ml-1">
+                      · {formatCompositeModules(item.compositionTree ?? item.composition ?? item.modules)}
+                    </span>
+                  )
                 )}
                 {cintrageLabel && (
                   <span className="ml-1 font-bold text-orange-600">· {cintrageLabel}</span>

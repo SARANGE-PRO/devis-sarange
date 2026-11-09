@@ -141,8 +141,12 @@ export default function CataloguePage() {
         CONFIGURABLE_CATEGORY_IDS.includes(category.id)
       ).map((category) => ({
         ...category,
-        // Les coefficients aluminium seront ajoutés avec les tarifs alu.
-        products: category.products.filter((product) => product.material !== 'alu'),
+        // Les coefficients aluminium seront ajoutés avec les tarifs alu. Les
+        // portes avec parties fixes n'ont pas de grille propre (porte + fixes,
+        // chacun à son coefficient) : rien à régler ici.
+        products: category.products.filter(
+          (product) => product.material !== 'alu' && !product.doorComposite
+        ),
       })),
     []
   );

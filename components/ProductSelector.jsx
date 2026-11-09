@@ -84,11 +84,18 @@ import VoletMonoblocPrixOptions from '@/components/VoletMonoblocPrixOptions';
 import { splitVoletMonoblocPricing } from '@/lib/volet-monobloc.mjs';
 import {
   applyCompositeFrameMaterial,
+  buildCompositeCartModules,
   getCompositeFramePricing,
-  getCompositeFrameModules,
 } from '@/lib/products';
 import { createDefaultFrame, normalizeCompositeFrame, setFrameColor } from '@/lib/composite-frame';
 import { describeOpeningDirection } from '@/lib/menuiserie';
+import {
+  DOOR_COMPOSITE_DEFAULTS,
+  buildDoorCompositeCartItem,
+  buildDoorCompositeFrame,
+  describeDoorCompositeFrame,
+  getDoorCompositePreset,
+} from '@/lib/door-composite.mjs';
 import { getEffectiveHandleHeightMm, getNormativeHandleHeightMm } from '@/lib/handle-height';
 import { compressCustomImageFile } from '@/lib/image-compress';
 import {
@@ -215,6 +222,14 @@ const createSimpleConfig = (overrides = {}, material = 'pvc') => ({
   cintrageFlecheMm: '',
   cintrageImpostePriceHt: '',
   cintrageManualPriceHt: '',
+  // Porte d'entrée avec parties fixes (produits préconfigurés de l'onglet
+  // Portes, lib/door-composite.mjs) : cotes de la tierce et de l'imposte, côté
+  // de la tierce (vue intérieure), vitrage des parties fixes ('' = celui de la
+  // porte vitrée, sinon le standard du matériau).
+  tierceWidthMm: '',
+  imposteHeightMm: '',
+  tierceSide: 'right',
+  fixesGlazingId: '',
   ...overrides,
   ...buildPetitsBoisState(overrides),
   rawColorState: createDefaultColorState(overrides.rawColorState),
@@ -240,6 +255,29 @@ const getOpeningDirectionLabels = (sheetName) => {
 const parsePositiveInt = (value, fallback = 0) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+// Vignette et aperçu par défaut d'une porte avec parties fixes : ossature aux
+// cotes du site (porte 900 × 2150, tierce 400, imposte 300), une par produit.
+const DOOR_PRESET_FRAMES = new Map();
+const getDoorPresetFrame = (product) => {
+  if (!product?.doorComposite) return null;
+  if (!DOOR_PRESET_FRAMES.has(product.id)) {
+    const material = product.material || 'pvc';
+    DOOR_PRESET_FRAMES.set(
+      product.id,
+      buildDoorCompositeFrame({
+        doorWidthMm: 900,
+        doorHeightMm: 2150,
+        tierceWidthMm: product.doorComposite.tierce ? DOOR_COMPOSITE_DEFAULTS.tierceWidthMm : 0,
+        imposteHeightMm: product.doorComposite.imposte ? DOOR_COMPOSITE_DEFAULTS.imposteHeightMm : 0,
+        material,
+        doorOptions: { glazingId: getDefaultGlazingId(material) },
+        fixeOptions: { glazingId: getDefaultGlazingId(material) },
+      })
+    );
+  }
+  return DOOR_PRESET_FRAMES.get(product.id);
 };
 
 const EMPTY_FILLING_PRICING = {
@@ -1058,6 +1096,10 @@ export default function ProductSelector({
   const workingSashCount = getSashCount(formProduct?.sheet);
   const workingIsVolet = Boolean(formProduct?.sheet?.startsWith('Volet'));
   const workingIsPorte = Boolean(formProduct?.sheet?.startsWith('Porte Entr'));
+  // Porte d'entrée avec tierce et/ou imposte : formulaire de porte, article
+  // composé construit automatiquement (lib/door-composite.mjs).
+  const workingDoorPreset = !isCompositeMode ? getDoorCompositePreset(formProduct?.id) : null;
+  const isDoorCompositeProduct = Boolean(workingDoorPreset);
   const workingIsGlazed =
     isGlazedProduct(formProduct) ||
     (workingIsPorte && !workingConfig?.panneauDecoratif);
@@ -1109,6 +1151,62 @@ export default function ProductSelector({
       }
     : {};
 
+  // Porte avec parties fixes : l'article composé est reconstruit à chaque
+  // saisie (aperçu, prix, hors grille), exactement comme il sera ajouté.
+  const doorCompositeDraft =
+    isDoorCompositeProduct &&
+    parsePositiveInt(simpleConfig.widthMm) > 0 &&
+    parsePositiveInt(simpleConfig.heightMm) > 0
+      ? buildDoorCompositeCartItem({
+          id: editingItem ? editingItem.id : 'apercu',
+          productId: product.id,
+          doorWidthMm: parsePositiveInt(simpleConfig.widthMm),
+          doorHeightMm: parsePositiveInt(simpleConfig.heightMm),
+          tierceWidthMm: parsePositiveInt(
+            simpleConfig.tierceWidthMm,
+            DOOR_COMPOSITE_DEFAULTS.tierceWidthMm
+          ),
+          imposteHeightMm: parsePositiveInt(
+            simpleConfig.imposteHeightMm,
+            DOOR_COMPOSITE_DEFAULTS.imposteHeightMm
+          ),
+          tierceSide: simpleConfig.tierceSide,
+          material: product.material || selectedMaterial,
+          doorOptions: {
+            panneauDecoratif: Boolean(simpleConfig.panneauDecoratif),
+            glazingId: simpleConfig.glazingId,
+            openingDirection: simpleConfig.openingDirection,
+            sashOptions: simpleConfig.sashOptions,
+            hasSousBassement: simpleConfig.hasSousBassement,
+            sousBassementHeight: simpleConfig.sousBassementHeight,
+            hasTraverse: simpleConfig.hasTraverse,
+            traverseHeights: simpleConfig.traverseHeights,
+            handleHeightMm: simpleConfig.handleHeightMm,
+            allegeHeightMm: simpleConfig.allegeHeightMm,
+            ...buildPetitsBoisState(simpleConfig),
+          },
+          fixesGlazingId: simpleConfig.fixesGlazingId || null,
+          colorOptionId: simpleConfig.colorOptionId,
+          rawColorState: simpleConfig.rawColorState,
+          quantity,
+          includePose,
+          posePriceOverride,
+          remise,
+          netAdjustmentMode,
+          netMarginWanted,
+          netDiscountWanted,
+          repere,
+          showThermalData,
+          manualUd: Number.isFinite(Number.parseFloat(simpleConfig.manualUd))
+            ? Number.parseFloat(simpleConfig.manualUd)
+            : null,
+          // Panneau choisi par le client sur le site : conservé tant que la
+          // porte reste à panneau décoratif.
+          panelChoice: simpleConfig.panneauDecoratif ? editingItem?.panelChoice || null : null,
+        })
+      : null;
+  const doorCompositePricing = doorCompositeDraft?.pricing || null;
+
   const simplePriceData =
     !isCompositeMode &&
     product &&
@@ -1152,7 +1250,9 @@ export default function ProductSelector({
     !isSparePartProduct &&
     !isTablierProduct &&
     // Cintre intégré : prix manuel, la grille tarifaire ne s'applique pas.
-    !isCintreManualPrice;
+    !isCintreManualPrice &&
+    // Porte avec parties fixes : chiffrée comme un composé (voir plus bas).
+    !isDoorCompositeProduct;
   const isSimpleOutOfGrid =
     isDimensionedCatalogProduct &&
     Boolean(simpleConfig.widthMm && simpleConfig.heightMm) &&
@@ -1175,13 +1275,25 @@ export default function ProductSelector({
     compositePricing.hasOutOfGrid &&
     compositePricing.isGeometryValid &&
     !compositePricing.isEmpty;
-  const isOutOfGrid = isSimpleOutOfGrid || isCompositeOutOfGrid;
+  // Porte avec parties fixes : même règle que le composé (une partie hors
+  // grille, porte, tierce ou imposte, est forçable au tarif de repli).
+  const isDoorCompositeOutOfGrid =
+    Boolean(doorCompositePricing) &&
+    doorCompositePricing.hasOutOfGrid &&
+    doorCompositePricing.isGeometryValid &&
+    !doorCompositePricing.isEmpty;
+  const outOfGridFramePricing = isCompositeOutOfGrid
+    ? compositePricing
+    : isDoorCompositeOutOfGrid
+      ? doorCompositePricing
+      : null;
+  const isOutOfGrid = isSimpleOutOfGrid || isCompositeOutOfGrid || isDoorCompositeOutOfGrid;
   // La validation ne vaut QUE pour la configuration validée : changer de
   // produit, de dimension ou de châssis hors grille la redemande.
   const outOfGridKey = isSimpleOutOfGrid
     ? `simple|${product?.id}|${simpleConfig.widthMm}x${simpleConfig.heightMm}`
-    : isCompositeOutOfGrid
-      ? `composite|${compositePricing.modules
+    : outOfGridFramePricing
+      ? `composite|${product?.id || ''}|${outOfGridFramePricing.modules
           .filter((module) => module.unitPrice === null)
           .map((module) => `${module.productId}:${module.widthMm}x${module.heightMm}`)
           .join(',')}`
@@ -1190,14 +1302,14 @@ export default function ProductSelector({
   // Sans tarif calculable (feuille absente), rien à forcer.
   const hasOutOfGridFallback = isSimpleOutOfGrid
     ? Boolean(simpleFallbackPriceData)
-    : isCompositeOutOfGrid && compositePricing.forcedTotalPrice !== null;
+    : Boolean(outOfGridFramePricing) && outOfGridFramePricing.forcedTotalPrice !== null;
   const canForceOutOfGrid = isOutOfGrid && hasOutOfGridFallback && isOutOfGridAcknowledged;
   // Prix hors grille calculé, affiché dans l'alerte et la confirmation.
   const outOfGridPrice = isSimpleOutOfGrid
     ? simpleFallbackPriceData?.price ?? 0
-    : compositePricing.forcedTotalPrice ?? 0;
-  const outOfGridCompositeModules = isCompositeOutOfGrid
-    ? compositePricing.modules.filter((module) => module.unitPrice === null)
+    : outOfGridFramePricing?.forcedTotalPrice ?? 0;
+  const outOfGridCompositeModules = outOfGridFramePricing
+    ? outOfGridFramePricing.modules.filter((module) => module.unitPrice === null)
     : [];
   // Détail du calcul : tarif de référence + hausse par cote dépassée.
   const describeOutOfGridPricing = (priceData) => {
@@ -1223,11 +1335,19 @@ export default function ProductSelector({
     canForceOutOfGrid && isCompositeOutOfGrid
       ? compositePricing.forcedTotalPrice
       : compositePricing.totalPrice;
+  // Porte avec parties fixes : total du composé, ou total forcé (hors grille validé).
+  const doorCompositeUnitPrice = !doorCompositePricing
+    ? null
+    : canForceOutOfGrid && isDoorCompositeOutOfGrid
+      ? doorCompositePricing.forcedTotalPrice
+      : doorCompositePricing.totalPrice;
 
   const isAddDisabled =
     (isOutOfGrid && !canForceOutOfGrid) ||
     (isCompositeMode && compositeUnitPrice === null) ||
+    (isDoorCompositeProduct && doorCompositeUnitPrice === null) ||
     (!isCompositeMode &&
+      !isDoorCompositeProduct &&
       !isWasteManagement &&
       !isCustomProduct &&
       !isRemiseCommerciale &&
@@ -1467,6 +1587,14 @@ export default function ProductSelector({
     }
 
     if (!product) return null;
+    if (isDoorCompositeProduct) {
+      if (!doorCompositeDraft || doorCompositeUnitPrice === null) return null;
+      return {
+        ...doorCompositeDraft.item,
+        unitPrice: doorCompositeUnitPrice,
+        outOfGridPricing: canForceOutOfGrid && isDoorCompositeOutOfGrid,
+      };
+    }
     if (isCintreManualPrice) {
       // Cintre intégré : prix total manuel, aucune grille à respecter.
       if (!cintrageGeometry || !isCintragePriceValid) return null;
@@ -1837,6 +1965,50 @@ export default function ProductSelector({
       editingItem.showThermalData !== undefined ? editingItem.showThermalData : true
     );
 
+    // Porte d'entrée avec parties fixes : on rouvre le formulaire de porte
+    // (produit préconfiguré, cotes des parties) plutôt que le constructeur.
+    const doorStructure =
+      editingItem.isComposite && editingItem.doorComposite && getDoorCompositePreset(editingItem.productId)
+        ? describeDoorCompositeFrame(editingItem.compositeFrame)
+        : null;
+    if (doorStructure) {
+      setIsCompositeMode(false);
+      setSelectedCategory(getProductCategory(editingItem.productId) || 'portes');
+      setSelectedMaterial(doorStructure.material);
+      setSelectedProduct(getMaterialVariantId(editingItem.productId, doorStructure.material));
+      const doorOptions = doorStructure.door.options || {};
+      const fixeOptions = (doorStructure.tierce || doorStructure.imposte)?.options || {};
+      setSimpleConfig(
+        createSimpleConfig(
+          {
+            widthMm: String(doorStructure.doorWidthMm),
+            heightMm: String(doorStructure.doorHeightMm),
+            tierceWidthMm: doorStructure.tierceWidthMm ? String(doorStructure.tierceWidthMm) : '',
+            imposteHeightMm: doorStructure.imposteHeightMm ? String(doorStructure.imposteHeightMm) : '',
+            tierceSide: doorStructure.tierceSide || 'right',
+            fixesGlazingId: fixeOptions.glazingId || '',
+            colorOptionId: doorOptions.colorOptionId || editingItem.colorOption?.id || 'blanc',
+            rawColorState:
+              doorOptions.rawColorState || editingItem.rawColorState || createDefaultColorState(),
+            ...buildPetitsBoisState(doorOptions),
+            panneauDecoratif: Boolean(doorOptions.panneauDecoratif),
+            manualUd: Number.isFinite(editingItem.manualUd) ? String(editingItem.manualUd) : '',
+            hasSousBassement: Boolean(doorOptions.hasSousBassement),
+            sousBassementHeight: doorOptions.sousBassementHeight || 400,
+            hasTraverse: Boolean(doorOptions.hasTraverse),
+            traverseHeights: doorOptions.traverseHeights,
+            sashOptions: doorOptions.sashOptions || {},
+            openingDirection: doorOptions.openingDirection || 'standard',
+            glazingId: doorOptions.glazingId || getDefaultGlazingId(doorStructure.material),
+            handleHeightMm: doorOptions.handleHeightMm ?? '',
+            allegeHeightMm: doorOptions.allegeHeightMm ?? '',
+          },
+          doorStructure.material
+        )
+      );
+      return;
+    }
+
     if (editingItem.isComposite) {
       const frame = normalizeCompositeFrame(
         editingItem.compositeFrame ??
@@ -1981,36 +2153,7 @@ export default function ProductSelector({
       if (compositeUnitPrice === null) return;
       if (canForceOutOfGrid && !confirmOutOfGrid()) return;
 
-      const frameModules = getCompositeFrameModules(compositeFrame).map((frameModule) => {
-        const productDefinition = getProductById(frameModule.productId);
-        const marketing = getMarketingDetails({
-          product: productDefinition,
-          colorOptionId: frameModule.options.colorOptionId,
-          colorState: frameModule.options.rawColorState,
-          hasLockingHandle: frameModule.options.hasLockingHandle,
-          panneauDecoratif: frameModule.options.panneauDecoratif,
-        });
-        return {
-          ...frameModule,
-          productLabel: productDefinition?.label || frameModule.productId,
-          rawColorState: frameModule.options.rawColorState,
-          ...buildPetitsBoisState(frameModule.options),
-          panneauDecoratif: frameModule.options.panneauDecoratif,
-          hasSousBassement: frameModule.options.hasSousBassement,
-          sousBassementHeight: frameModule.options.sousBassementHeight,
-          hasTraverse: frameModule.options.hasTraverse,
-          traverseHeights: frameModule.options.traverseHeights,
-          traverseHeight: frameModule.options.traverseHeight,
-          sashOptions: frameModule.options.sashOptions,
-          openingDirection: frameModule.options.openingDirection,
-          hasLockingHandle: frameModule.options.hasLockingHandle,
-          handleHeightMm: frameModule.options.handleHeightMm,
-          allegeHeightMm: frameModule.options.allegeHeightMm,
-          marketingBase: marketing.marketingBase,
-          marketingFinition: marketing.marketingFinition,
-          svgColor: marketing.svgColor,
-        };
-      });
+      const frameModules = buildCompositeCartModules(compositeFrame);
 
       const nextCompositeItem = {
         id: editingItem ? editingItem.id : createCartItemId(),
@@ -2299,6 +2442,21 @@ export default function ProductSelector({
       return;
     }
 
+    // Porte avec parties fixes : l'article composé du brouillon, tel quel.
+    if (isDoorCompositeProduct) {
+      if (!doorCompositeDraft || doorCompositeUnitPrice === null) return;
+      if (canForceOutOfGrid && !confirmOutOfGrid()) return;
+      onAddToCart({
+        ...doorCompositeDraft.item,
+        id: editingItem ? editingItem.id : createCartItemId(),
+        unitPrice: doorCompositeUnitPrice,
+        outOfGridPricing: canForceOutOfGrid && isDoorCompositeOutOfGrid,
+      });
+      resetSimpleSelection();
+      resetGlobalCommercialFields();
+      return;
+    }
+
     if (workingIsCintre && (!cintrageGeometry || !isCintragePriceValid)) return;
     // Cintre intégré : prix total manuel, pas de contrôle de grille tarifaire.
     if (!isCintreManualPrice) {
@@ -2388,6 +2546,121 @@ export default function ProductSelector({
     resetSimpleSelection();
     resetGlobalCommercialFields();
   };
+
+  // Porte avec parties fixes : cotes de la tierce et de l'imposte, côté de la
+  // tierce (vue intérieure), vitrage des parties fixes quand la porte est à
+  // panneau décoratif (sinon elles reprennent le vitrage de la porte).
+  const doorPartsMaterial = product?.material || selectedMaterial;
+  const doorPartsGlazingOptions = isDoorCompositeProduct
+    ? filterGlazingOptionsForMaterial(glazingOptions, {
+        material: doorPartsMaterial,
+        selectedId: simpleConfig.fixesGlazingId || undefined,
+      }).filter((glazing) => {
+        if (glazing.id === PANEL_SANDWICH_GLAZING_ID) return doorPartsMaterial !== 'alu';
+        if (glazing.id === PANEL_SANDWICH_ALU_GLAZING_ID) return doorPartsMaterial === 'alu';
+        return true;
+      })
+    : [];
+  const doorPartsFields = isDoorCompositeProduct ? (
+    <div className="rounded-2xl border border-orange-200 bg-orange-50/40 p-4">
+      <p className="text-sm font-bold text-slate-800">Parties fixes</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Les cotes ci-dessus sont celles de la porte seule : la tierce et l’imposte s’ajoutent,
+        comme sur le configurateur du site. Champ vide = {DOOR_COMPOSITE_DEFAULTS.tierceWidthMm} mm
+        de tierce, {DOOR_COMPOSITE_DEFAULTS.imposteHeightMm} mm d’imposte.
+      </p>
+      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        {workingDoorPreset.tierce && (
+          <>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Largeur de la tierce (mm)
+              </label>
+              <input
+                type="number"
+                min={1}
+                {...NUMERIC_INPUT_PROPS}
+                value={simpleConfig.tierceWidthMm}
+                onChange={(event) => updateSimpleOptions({ tierceWidthMm: event.target.value })}
+                placeholder={`Ex : ${DOOR_COMPOSITE_DEFAULTS.tierceWidthMm}`}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+                Côté de la tierce (vue intérieure)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'left', label: 'À gauche' },
+                  { id: 'right', label: 'À droite' },
+                ].map((side) => (
+                  <button
+                    key={side.id}
+                    type="button"
+                    onClick={() => updateSimpleOptions({ tierceSide: side.id })}
+                    className={`rounded-xl border px-3 py-3 text-sm font-bold transition-all ${
+                      simpleConfig.tierceSide === side.id
+                        ? 'border-orange-500 bg-orange-500 text-white shadow-sm'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300'
+                    }`}
+                  >
+                    {side.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+        {workingDoorPreset.imposte && (
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+              Hauteur de l’imposte (mm)
+            </label>
+            <input
+              type="number"
+              min={1}
+              {...NUMERIC_INPUT_PROPS}
+              value={simpleConfig.imposteHeightMm}
+              onChange={(event) => updateSimpleOptions({ imposteHeightMm: event.target.value })}
+              placeholder={`Ex : ${DOOR_COMPOSITE_DEFAULTS.imposteHeightMm}`}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+            />
+          </div>
+        )}
+      </div>
+      {simpleConfig.panneauDecoratif ? (
+        <div className="mt-4">
+          <label className="mb-1.5 block text-sm font-semibold text-slate-700">
+            Vitrage des parties fixes
+          </label>
+          <select
+            value={simpleConfig.fixesGlazingId || getDefaultGlazingId(doorPartsMaterial)}
+            onChange={(event) => updateSimpleOptions({ fixesGlazingId: event.target.value })}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-200"
+          >
+            {doorPartsGlazingOptions.map((glazing) => (
+              <option key={glazing.id} value={glazing.id}>
+                {glazing.shortLabel || glazing.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-slate-500">
+          Les parties fixes reprennent le vitrage de la porte.
+        </p>
+      )}
+      {doorCompositeDraft && (
+        <p className="mt-3 text-xs font-semibold text-slate-600">
+          Hors tout : {doorCompositeDraft.item.widthMm} × {doorCompositeDraft.item.heightMm} mm ·{' '}
+          {doorCompositePricing.modules
+            .map((module) => `${module.shortLabel || module.productLabel} ${module.widthMm}×${module.heightMm}`)
+            .join(' · ')}
+        </p>
+      )}
+    </div>
+  ) : null;
 
   // Champs de configuration menuiserie (réutilisés tels quels par le composé).
   const menuiserieConfigFields = (
@@ -3255,6 +3528,10 @@ export default function ProductSelector({
                     width={entry.sheet.startsWith('Porte Entr') ? 900 : 1200}
                     height={entry.sheet.startsWith('Porte Entr') ? 2150 : 1250}
                     options={{
+                      // Portes avec parties fixes : vignette de l'ossature (porte + tierce / imposte).
+                      ...(entry.doorComposite
+                        ? { isComposite: true, compositeFrame: getDoorPresetFrame(entry) }
+                        : {}),
                       productId: entry.id,
                       colorOption: { id: 'blanc' },
                       // Formes spéciales : vignette avec un fixe cintré en imposte.
@@ -3395,6 +3672,13 @@ export default function ProductSelector({
               width={simpleConfig.widthMm || (workingIsPorte ? 900 : 1200)}
               height={simpleConfig.heightMm || (workingIsPorte ? 2150 : 1250)}
               options={{
+                // Porte avec parties fixes : l'ossature saisie (ou celle par défaut).
+                ...(isDoorCompositeProduct
+                  ? {
+                      isComposite: true,
+                      compositeFrame: doorCompositeDraft?.frame || getDoorPresetFrame(product),
+                    }
+                  : {}),
                 colorOption: workingColorOption,
                 glazingId: simpleConfig.glazingId,
                 petitsBoisH: simpleConfig.petitsBoisH,
@@ -4098,10 +4382,17 @@ export default function ProductSelector({
                       : 'Hauteur de la partie basse, hors imposte cintrée.'}
                   </p>
                 )}
+                {isDoorCompositeProduct && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Porte seule, cadre compris : la tierce et l’imposte s’ajoutent.
+                  </p>
+                )}
               </div>
             </div>
           </details>
           )}
+
+          {isDoorCompositeProduct && doorPartsFields}
 
           {workingIsCintre && cintrageFields}
 
@@ -4288,7 +4579,9 @@ export default function ProductSelector({
           <p className="font-semibold">
             {isCompositeOutOfGrid
               ? 'Au moins un châssis du composé est hors de la grille tarifaire.'
-              : 'Les dimensions saisies sont hors de la grille tarifaire pour ce produit.'}
+              : isDoorCompositeOutOfGrid
+                ? 'Une partie de la porte (porte, tierce ou imposte) est hors de la grille tarifaire.'
+                : 'Les dimensions saisies sont hors de la grille tarifaire pour ce produit.'}
           </p>
           <p className="text-red-600">
             Le prix est <strong>estimé automatiquement</strong> : tarif le plus élevé de
@@ -4302,7 +4595,7 @@ export default function ProductSelector({
             </p>
           )}
 
-          {isCompositeOutOfGrid && outOfGridCompositeModules.length > 0 && (
+          {outOfGridCompositeModules.length > 0 && (
             <ul className="space-y-1 rounded-lg bg-white/70 px-3 py-2 font-semibold text-red-800">
               {outOfGridCompositeModules.map((module) => (
                 <li key={module.leafId || module.id}>

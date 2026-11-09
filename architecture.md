@@ -616,6 +616,7 @@ Remarque : le menu principal contient aussi un lien `/parametres`, mais `app/par
 | `lib/petits-bois.mjs` | Petits bois integres : profils et teintes Riou, prix d'achat au ml, vente = achat x coefficient catalogue (`petitsBoisMarkupCoefficient`), forfait teinte hors standard. Module pur. |
 | `lib/menuiserie.js` | Construction de configurations de rendu a partir des options produit. |
 | `lib/cintrage.mjs` | Menuiseries cintrees (categorie « Formes speciales ») : geometrie de l'arc (rayon, fleche bornee a L/2, hauteur totale), regle de prix (fixe cintre en imposte ajoute au calcul standard, ou prix total manuel qui desactive le calcul automatique en cintre integre sous-traite), lignes de designation. Module pur, teste dans `tests/cintrage.test.mjs`. |
+| `lib/door-composite.mjs` | Portes d'entrée avec tierce et/ou imposte : produits préconfigurés de l'onglet Portes (porte-tierce, porte-imposte, porte-tierce-imposte, jumeaux alu) construits en châssis composé « ossature » (porte sur la grille porte, parties fixes sur la grille Fenêtre Fixe, prix = somme des châssis comme un composé, pose et TVA de porte), relecture d'une ossature, résumé `doorComposite` sur la ligne (lu par la désignation, la pose, la TVA, le panier), article du panier partagé par le formulaire et l'import des demandes du site. Une seule grille porte depuis le 09/11/2026 (alias `porte-neuf` et feuille NEUF vers RENO dans lib/products.js). Testé dans `tests/door-composite.test.mjs`. |
 | `lib/traverses.mjs` | Soubassement et traverses intermediaires : hauteurs visibles normalisees (`traverseHeights`, jusqu'a 4 traverses, ancien champ `traverseHeight` encore lu), libelles de designation, et decoupe verticale partagee par le SVG et le canvas (le soubassement est la barre la plus basse, seule sa partie basse etant un panneau opaque ; les traverses se placent au-dessus de lui). Module pur. |
 | `lib/MenuiserieRenderer.js` | Rendu canvas des menuiseries pour l'UI et le PDF. |
 | `lib/search.mjs` | Recherche commune aux onglets (Mes devis, Clients, Compta, Demandes, Commissions) : sans accents ni casse, chaque mot requis, numéros avec ou sans espaces et tirets. Module pur. |
@@ -1181,7 +1182,9 @@ un devis BROUILLON dans `users/{SITE_LEADS_OWNER_UID}/quotes` :
    `handleVeluxValidate` (reference, description, image, gamme, thermique),
    prix a saisir. Garage, veranda, reparation, pieces detachees, porte de
    service, bois, references inconnues : lignes libres a 0 avec leur
-   designation. Panneau de porte, tierce, imposte, cintrage : notes.
+   designation. Panneau de porte repris ; tierce et imposte : produit
+   « Porte + tierce / imposte » aux cotes donnees (lib/door-composite.mjs),
+   proportion par defaut et note sans cote ; cintrage : note.
 2. `lib/lead-quote-service.js` (serveur) ecrit le document via
    `buildQuoteDraftRecord` (titre « Site · Nom », `currentStep` 2, TVA par
    defaut, sans numero de devis) et un bloc `leadImport` : `leadId`,
