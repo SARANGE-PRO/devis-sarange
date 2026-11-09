@@ -5,7 +5,7 @@
 //
 // Les lignes produites doivent être celles que le sélecteur de produits
 // aurait fabriquées au bureau (prix de grille, vitrage, coloration, options
-// sur le vantail principal, volet monobloc, box domotique) ; tout ce qui ne
+// sur le vantail principal, volet lié en ligne séparée, box domotique) ; tout ce qui ne
 // se devine pas reste une note ou une ligne libre à chiffrer.
 import assert from 'node:assert/strict';
 
@@ -84,7 +84,7 @@ run('une fenetre ordinaire devient une ligne catalogue au prix de grille, posee,
 });
 
 run('options, vitrage acoustique, couleur, petits bois et volet lie : les memes champs que le formulaire', () => {
-  const [item] = buildLeadCartItems(
+  const [item, volet] = buildLeadCartItems(
     project([
       fenetre({
         productId: 'fenetre-2v-alu',
@@ -108,12 +108,50 @@ run('options, vitrage acoustique, couleur, petits bois et volet lie : les memes 
   // OB et grille sur le vantail principal (celui de la poignée) seulement.
   assert.deepEqual(item.sashOptions, { 1: { ob: true, vent: true } });
   assert.deepEqual([item.petitsBoisH, item.petitsBoisV, item.petitsBoisType], [2, 1, '26x8-teinte-hors-standard']);
-  assert.equal(item.voletMonobloc, true);
-  assert.equal(item.voletMonoblocManoeuvre, 'solaire');
-  assert.ok(item.leadNotes.some((n) => /monobloc/.test(n)));
+  // Volet demandé avec la fenêtre : jamais monobloc d'office, mais une ligne
+  // « Volet roulant » séparée juste après, aux cotes et à la couleur de la fenêtre.
+  assert.equal(item.voletMonobloc, false);
+  assert.equal(item.voletMonoblocManoeuvre, 'manuel');
+  assert.ok(item.leadNotes.some((n) => /ligne « Volet roulant » séparée/.test(n)));
+  assert.ok(!item.leadNotes.some((n) => /à trancher/.test(n)), 'la note du site « monobloc ou séparé » disparaît');
+  assert.equal(volet.productId, 'volet-solaire');
+  assert.equal(volet.sheetName, 'Volet Filaire');
+  assert.equal(volet.quantity, 2);
+  assert.equal(volet.widthMm, 1200);
+  assert.equal(volet.heightMm, 1250);
+  assert.equal(volet.colorOption.id, 'coloration-2f');
+  assert.equal(volet.marketingFinition, 'Finition : Gris Anthracite RAL 7016');
+  assert.equal(volet.includePose, true);
+  assert.ok(volet.unitPrice > 0);
+  assert.ok(volet.leadNotes.some((n) => /Couleur reprise de la fenêtre/.test(n)));
+  assert.match(volet.leadTitle, /^Volet roulant avec la fenêtre : /);
+  assert.equal(volet.leadId, 'abc123');
+  assert.deepEqual(volet.leadPhotos, []);
   // Pas de grille alu pour ces cotes : la ligne existe, à 0, et le dit.
   assert.equal(item.unitPrice, 0);
   assert.ok(item.leadNotes.some((n) => /à chiffrer|hors grille/.test(n)));
+});
+
+run('volet lie : couleur exterieure d une bicoloration, manoeuvre absente = manuel, fenetre bois en ligne libre garde son volet', () => {
+  const [, chene] = buildLeadCartItems(
+    project([fenetre({ colorOptionId: 'bicoloration', couleur: 'Blanc 9016 int / Chêne doré ext', voletLie: { manoeuvre: null, label: null } })])
+  );
+  assert.equal(chene.productId, 'volet-manuel');
+  assert.equal(chene.colorOption.id, 'coloration-2f');
+  assert.equal(chene.rawColorState.color2fType, 'standard_chene');
+  assert.ok(chene.leadNotes.some((n) => /volet manuel par défaut/.test(n)));
+  const items = buildLeadCartItems(
+    project([fenetre({ productId: 'custom-product', horsCatalogue: true, designation: 'Fenêtre bois 2 vantaux', voletLie: { manoeuvre: 'FILAIRE' } })])
+  );
+  assert.equal(items.length, 2);
+  assert.equal(items[0].productId, 'custom-product');
+  assert.equal(items[1].productId, 'volet-filaire');
+  assert.equal(items[1].colorOption.id, 'blanc');
+  // Un volet seul du site n'en engendre pas un second.
+  const seul = buildLeadCartItems(
+    project([{ familleId: 'volet-roulant', quantity: 1, title: 'Volet', productId: 'volet-radio', colorOptionId: 'blanc', widthMm: 1000, heightMm: 1400, notes: [] }])
+  );
+  assert.equal(seul.length, 1);
 });
 
 run('sans cotes, la ligne existe a 0 avec une note ; hors grille, le tarif de repli est signale', () => {
@@ -275,7 +313,8 @@ run('volet seul : grille Volet Filaire, couleur volet, et la box domotique GAPOS
   assert.equal(box.unitPrice, 179);
   assert.equal(box.hasDimensions, false);
   // Une fenêtre avec volet radio et box : CHERUBINI.
-  const [, boxRadio] = buildLeadCartItems(project([fenetre({ voletLie: { manoeuvre: 'RADIO' }, extraLines: ['volet-box-domotique'] })]));
+  const [, voletRadio, boxRadio] = buildLeadCartItems(project([fenetre({ voletLie: { manoeuvre: 'RADIO' }, extraLines: ['volet-box-domotique'] })]));
+  assert.equal(voletRadio.productId, 'volet-radio');
   assert.equal(boxRadio.productVariantId, 'box_domotique_cherubini_metahome');
 });
 
