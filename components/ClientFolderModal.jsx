@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { Printer, X } from 'lucide-react';
+import AddressAutocomplete from '@/components/AddressAutocomplete';
 import { buildClientFolderFields, buildClientFolderHtml } from '@/lib/client-folder.mjs';
+import { formatPhoneNumber, formatPhoneWhileTyping } from '@/lib/phone.mjs';
 
 const PREVIEW_WIDTH_PX = 300;
 // Couverture 210 × 297 mm : même rapport pour la hauteur de l'aperçu.
@@ -49,8 +51,20 @@ export default function ClientFolderModal({ client, onClose }) {
     const { value } = event.target;
     setFields((previous) => ({
       ...previous,
-      [name]: name === 'letter' ? value.slice(-1).toUpperCase() : value,
+      [name]:
+        name === 'letter'
+          ? value.slice(-1).toUpperCase()
+          : name === 'phone'
+            ? // Espacement automatique pendant la frappe, comme le reste de l'app.
+              formatPhoneWhileTyping(value, event.target.selectionStart)
+            : value,
     }));
+  };
+
+  // Sortie du champ : on remet en forme une correction faite au milieu du numéro.
+  const handlePhoneBlur = (event) => {
+    const formatted = formatPhoneNumber(event.target.value);
+    setFields((previous) => (previous.phone === formatted ? previous : { ...previous, phone: formatted }));
   };
 
   const inputClasses =
@@ -99,17 +113,39 @@ export default function ClientFolderModal({ client, onClose }) {
                 <span className={labelClasses}>Nom sur la chemise</span>
                 <input value={fields.name} onChange={update('name')} className={inputClasses} />
               </label>
-              <label className="block sm:col-span-2">
-                <span className={labelClasses}>Adresse</span>
-                <input value={fields.addressLine1} onChange={update('addressLine1')} className={inputClasses} />
-              </label>
+              {/* Adresse : suggestions de la Base Adresse Nationale (comme la fiche
+                  client). Une suggestion choisie remplit aussi code postal et ville. */}
+              <div className="block sm:col-span-2">
+                <label htmlFor="folder-address" className={labelClasses}>Adresse</label>
+                <AddressAutocomplete
+                  id="folder-address"
+                  value={fields.addressLine1}
+                  onChange={(value) => setFields((previous) => ({ ...previous, addressLine1: value }))}
+                  onSelect={({ adresse, codePostal, ville }) =>
+                    setFields((previous) => ({
+                      ...previous,
+                      addressLine1: adresse || previous.addressLine1,
+                      addressLine2: [codePostal, ville].filter(Boolean).join(' ') || previous.addressLine2,
+                    }))
+                  }
+                  placeholder="Numéro et nom de rue, ville…"
+                />
+              </div>
               <label className="block sm:col-span-2">
                 <span className={labelClasses}>Code postal et ville</span>
                 <input value={fields.addressLine2} onChange={update('addressLine2')} className={inputClasses} />
               </label>
               <label className="block sm:col-span-2">
                 <span className={labelClasses}>Téléphone</span>
-                <input value={fields.phone} onChange={update('phone')} className={inputClasses} type="tel" />
+                <input
+                  value={fields.phone}
+                  onChange={update('phone')}
+                  onBlur={handlePhoneBlur}
+                  className={inputClasses}
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="06 12 34 56 78"
+                />
               </label>
               <label className="block sm:col-span-2">
                 <span className={labelClasses}>E-mail</span>
@@ -148,7 +184,9 @@ export default function ClientFolderModal({ client, onClose }) {
         <div className="border-t border-slate-100 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <p className="flex-1 text-xs text-slate-500">
-              Format A3 paysage, sans marges : choisissez le papier A3 dans la fenêtre d&apos;impression.
+              Le navigateur ne peut pas choisir le papier à votre place : dans la fenêtre
+              d&apos;impression, ouvrez <strong>Plus de paramètres → Taille du papier → A3</strong>,
+              échelle 100 %. Chrome le garde ensuite en mémoire pour cette imprimante.
             </p>
             <div className="flex gap-3">
               <button
