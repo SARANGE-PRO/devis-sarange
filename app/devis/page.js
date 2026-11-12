@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import { buildClientSearchText, getClientDisplayName, getClientFullLocation } from '@/lib/client-cloud';
@@ -12,8 +13,8 @@ import { subscribeToUserClients } from '@/lib/firebase/clients';
 import {
   moveQuoteToTrash,
   permanentlyDeleteTrashedQuote,
+  duplicateQuote,
   restoreQuoteFromTrash,
-  saveQuoteDraft,
   setQuoteFollowUpExclusion,
   subscribeToTrashedQuotes,
   subscribeToUserQuotes,
@@ -36,6 +37,7 @@ import {
   getQuoteSignatureReminderMeta,
   getQuoteSignatureStatusMeta,
   getQuoteSignatureWorkflow,
+  isQuoteSigned,
   quoteNeedsResend,
 } from '@/lib/quote-signature';
 import {
@@ -66,6 +68,7 @@ import {
   FileDown,
   FolderOpen,
   Link2,
+  Lock,
   Loader2,
   LogOut,
   Mail,
@@ -420,6 +423,7 @@ function QuoteCard({
 }) {
   const workflow = getQuoteSignatureWorkflow(quote);
   const displayStatus = getQuoteDisplayStatus(quote);
+  const isSigned = isQuoteSigned(quote);
   const statusMeta =
     getQuoteSignatureStatusMeta(displayStatus) ||
     STATUS_META[displayStatus] ||
@@ -740,14 +744,28 @@ function QuoteCard({
 
         {/* Action row */}
         <div className="mt-3 flex items-center justify-between gap-2">
-          {/* Modifier — primary action */}
-          <Link
-            href={`/?quote=${quote.id}`}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-orange-600"
-          >
-            <Pencil size={15} />
-            <span>Modifier</span>
-          </Link>
+          {/* Modifier — primary action. Un devis signé est verrouillé : la
+              seule façon de le faire évoluer est d'en créer une copie. */}
+          {isSigned ? (
+            <button
+              type="button"
+              onClick={() => onDuplicate(quote, { openCopy: true })}
+              disabled={isWorking}
+              title="Devis signé : non modifiable. Crée une copie modifiable."
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-900 disabled:opacity-50"
+            >
+              {isWorking && !workingKind ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />}
+              <span>Dupliquer pour modifier</span>
+            </button>
+          ) : (
+            <Link
+              href={`/?quote=${quote.id}`}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-orange-600"
+            >
+              <Pencil size={15} />
+              <span>Modifier</span>
+            </Link>
+          )}
 
           {/* Secondary icon actions */}
           <div className="flex items-center gap-1">
@@ -867,6 +885,7 @@ function TrashQuoteCard({ quote, isWorking, onRestore, onDeletePermanently }) {
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SavedQuotesPage() {
   const { user, initializing, isConfigured, signOut } = useFirebaseAuth();
+  const router = useRouter();
   const [quotes, setQuotes]           = useState([]);
   const [clients, setClients]         = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
@@ -985,20 +1004,17 @@ export default function SavedQuotesPage() {
     } finally { setActionId(null); }
   };
 
-  const handleDuplicate = async (quote) => {
+  // `openCopy` : « Dupliquer pour modifier » (devis signé) ouvre directement la
+  // copie dans l'éditeur ; l'icône Dupliquer reste sur la liste.
+  const handleDuplicate = async (quote, { openCopy = false } = {}) => {
     if (!user) return;
     setActionId(quote.id); setActionError(''); setActionMessage('');
     try {
-      await saveQuoteDraft({
-        userId: user.uid,
-        title: `${quote.title || 'Devis'} copie`,
-        clientData: quote.payload?.clientData,
-        cartItems: quote.payload?.cartItems,
-        tvaRate: quote.payload?.tvaRate,
-        quoteSettings: quote.payload?.quoteSettings,
-        currentStep: quote.payload?.currentStep,
-        reference: quote.payload?.reference || quote.referenceDevis,
-      });
+      const copy = await duplicateQuote({ userId: user.uid, quote });
+      if (openCopy && copy?.id) {
+        router.push(`/?quote=${copy.id}`);
+        return;
+      }
       setActionMessage('Copie créée.');
     } catch (e) {
       setActionError(e.message || 'Duplication impossible.');

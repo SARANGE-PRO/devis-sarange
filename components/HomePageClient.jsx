@@ -44,7 +44,8 @@ import {
   uploadQuoteDeliveryFile,
   uploadQuoteDeliveryPdf,
 } from '@/lib/quote-delivery-upload';
-import { getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
+import { duplicateQuote, getQuoteById, saveQuoteDraft } from '@/lib/firebase/quotes';
+import { isQuoteSigned } from '@/lib/quote-signature';
 import {
   ArrowLeft,
   AlertTriangle,
@@ -54,6 +55,7 @@ import {
   FileText,
   FolderOpen,
   Loader2,
+  Lock,
   Plus,
   RotateCcw,
   ShoppingCart,
@@ -405,6 +407,10 @@ export default function HomePageClient() {
   // d'un devis à l'autre.
   const [productSelectorEpoch, setProductSelectorEpoch] = useState(0);
   const [activeQuoteId, setActiveQuoteId] = useState(null);
+  // Devis SIGNÉ demandé dans l'URL : il n'est jamais chargé dans l'éditeur
+  // (verrouillé) — on propose seulement d'en créer une copie modifiable.
+  const [lockedSignedQuote, setLockedSignedQuote] = useState(null);
+  const [isDuplicatingLocked, setIsDuplicatingLocked] = useState(false);
   // Suivi « Vente Ange » (administrateurs) : vrai quand le devis courant a déjà
   // un dossier /commissions synchronisé (ou a été chargé avec la case cochée),
   // pour resynchroniser aussi après un décochage.
@@ -761,6 +767,7 @@ export default function HomePageClient() {
     }
 
     if (requestedQuoteId === activeQuoteId) return;
+    if (lockedSignedQuote?.id === requestedQuoteId) return;
 
     let cancelled = false;
 
@@ -781,6 +788,11 @@ export default function HomePageClient() {
           return;
         }
 
+        if (isQuoteSigned(savedQuote)) {
+          setLockedSignedQuote(savedQuote);
+          return;
+        }
+
         applySavedQuote(savedQuote);
       } catch (error) {
         if (!cancelled) {
@@ -798,7 +810,7 @@ export default function HomePageClient() {
     return () => {
       cancelled = true;
     };
-  }, [activeQuoteId, authInitializing, firebaseConfigured, requestedQuoteId, user]);
+  }, [activeQuoteId, authInitializing, firebaseConfigured, lockedSignedQuote, requestedQuoteId, user]);
 
   useEffect(() => {
     if (!firebaseConfigured || authInitializing || !requestedClientId || requestedQuoteId) return;
@@ -1276,6 +1288,25 @@ export default function HomePageClient() {
     }
   };
 
+  const isViewingLockedQuote = Boolean(
+    lockedSignedQuote && requestedQuoteId && lockedSignedQuote.id === requestedQuoteId
+  );
+
+  const handleDuplicateLockedQuote = async () => {
+    if (!user || !lockedSignedQuote) return;
+    setIsDuplicatingLocked(true);
+    setQuoteLoadError('');
+    try {
+      const copy = await duplicateQuote({ userId: user.uid, quote: lockedSignedQuote });
+      // La copie est un brouillon ordinaire : l'effet de chargement l'ouvre.
+      router.replace(`/?quote=${copy.id}`);
+    } catch (error) {
+      setQuoteLoadError(error.message || 'Duplication impossible.');
+    } finally {
+      setIsDuplicatingLocked(false);
+    }
+  };
+
   const handleSaveQuote = async () => {
     await persistQuoteToCloud({ origin: 'manual' });
   };
@@ -1562,7 +1593,7 @@ export default function HomePageClient() {
     clientData || cartItems.length > 0 || activeQuoteId
   );
 
-  const headerActions = (
+  const headerActions = isViewingLockedQuote ? null : (
     <div className="flex items-center gap-2">
       {hasQuoteInProgress && (
         <button
@@ -1654,7 +1685,42 @@ export default function HomePageClient() {
         </div>
       )}
 
-      {draftRestored && !activeQuoteId && (
+      {isViewingLockedQuote && (
+        <div className="mx-auto mb-8 max-w-xl px-4 sm:px-0">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+              <Lock size={22} />
+            </div>
+            <h2 className="mt-4 text-lg font-black text-slate-900">Devis signé, non modifiable</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {lockedSignedQuote.title || 'Ce devis'} a été signé par le client : son contenu est figé.
+              Pour le faire évoluer, créez une copie — elle repart en brouillon avec un nouveau numéro,
+              variantes comprises.
+            </p>
+            <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleDuplicateLockedQuote}
+                disabled={isDuplicatingLocked}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600 disabled:opacity-50"
+              >
+                {isDuplicatingLocked ? <Loader2 size={15} className="animate-spin" /> : <FilePlus2 size={15} />}
+                Dupliquer pour modifier
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/devis')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                <FolderOpen size={15} />
+                Retour à Mes devis
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isViewingLockedQuote && draftRestored && !activeQuoteId && (
         <div className="mx-auto mb-4 max-w-3xl px-4 sm:px-0">
           <div className="flex items-center justify-between gap-3 rounded-xl border border-orange-100 bg-orange-50 px-4 py-2.5">
             <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-orange-700">
@@ -1682,6 +1748,8 @@ export default function HomePageClient() {
         </div>
       )}
 
+      {!isViewingLockedQuote && (
+      <>
       <div className="mx-auto mb-5 flex max-w-3xl items-center justify-center gap-1 sm:mb-8 sm:gap-2">
         {STEPS.map((step, index) => {
           const Icon = step.icon;
@@ -1882,6 +1950,8 @@ export default function HomePageClient() {
           companyInsurance={companyInsurance}
         />
         </>
+      )}
+      </>
       )}
     </AppShell>
   );
