@@ -749,13 +749,12 @@ function QuoteCard({
           {isSigned ? (
             <button
               type="button"
-              onClick={() => onDuplicate(quote, { openCopy: true })}
-              disabled={isWorking}
-              title="Devis signé : non modifiable. Crée une copie modifiable."
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-900 disabled:opacity-50"
+              disabled
+              title="Devis signé : il ne peut plus être modifié"
+              className="flex flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-400"
             >
-              {isWorking && !workingKind ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />}
-              <span>Dupliquer pour modifier</span>
+              <Lock size={15} />
+              <span>Modifier</span>
             </button>
           ) : (
             <Link
@@ -799,12 +798,20 @@ function QuoteCard({
             </button>
             <button
               type="button"
-              title="Dupliquer"
-              onClick={() => onDuplicate(quote)}
+              title={isSigned ? 'Dupliquer pour modifier' : 'Dupliquer'}
+              onClick={() => onDuplicate(quote, { openCopy: isSigned })}
               disabled={isWorking}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:bg-slate-50 disabled:opacity-50"
+              className={`flex h-10 w-10 items-center justify-center rounded-xl border transition-colors disabled:opacity-50 ${
+                isSigned
+                  ? 'border-orange-300 bg-orange-50 text-orange-600 ring-2 ring-orange-200 hover:bg-orange-100'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+              }`}
             >
-              <Copy size={15} />
+              {isSigned && isWorking && !workingKind ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Copy size={15} />
+              )}
             </button>
             <button
               type="button"
@@ -817,6 +824,18 @@ function QuoteCard({
             </button>
           </div>
         </div>
+
+        {/* Devis signé : bulle qui pointe vers l'icône Dupliquer (3e icône depuis
+            la droite : 40 px + 4 px d'écart + moitié de 40 px = 64 px). */}
+        {isSigned && (
+          <div className="relative mt-2 flex justify-end">
+            <p className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1 text-[11px] font-semibold text-orange-700">
+              <Lock size={11} className="shrink-0" />
+              Devis signé : dupliquez-le pour le modifier
+            </p>
+            <span className="absolute -top-1 right-[60px] z-10 h-2 w-2 rotate-45 border-l border-t border-orange-200 bg-orange-50" />
+          </div>
+        )}
       </div>
     </div>
   );
