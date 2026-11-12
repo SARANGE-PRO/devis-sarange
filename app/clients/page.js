@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useDeferredValue, useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
+import ClientFolderModal from '@/components/ClientFolderModal';
 import { useFirebaseAuth } from '@/components/FirebaseProvider';
 import {
   EMPTY_CLIENT_DATA,
@@ -30,6 +31,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  Printer,
   Save,
   Search,
   Trash2,
@@ -178,7 +180,7 @@ function EditDrawer({ isOpen, isCreating, editingClientData, workingClientId, ed
 }
 
 /* ─── Client Card ────────────────────────────────────────────────────────── */
-function ClientCard({ client, isWorking, onEdit, onDelete }) {
+function ClientCard({ client, isWorking, onEdit, onPrintFolder, onDelete }) {
   const clientLabel = client.displayName || getClientDisplayName(client.payload);
 
   return (
@@ -226,6 +228,15 @@ function ClientCard({ client, isWorking, onEdit, onDelete }) {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => onPrintFolder(client)}
+              disabled={isWorking}
+              title="Imprimer le dossier client (chemise A3)"
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-orange-300 hover:text-orange-600 disabled:opacity-50"
+            >
+              <Printer size={15} />
+            </button>
+            <button
+              type="button"
               onClick={() => onEdit(client)}
               disabled={isWorking}
               title="Modifier"
@@ -260,6 +271,7 @@ export default function ClientsPage() {
   const [editingClientId, setEditingClientId] = useState('');
   const [editingClientData, setEditingClientData] = useState({ ...EMPTY_CLIENT_DATA });
   const [workingClientId, setWorkingClientId] = useState('');
+  const [folderClient, setFolderClient] = useState(null);
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const normalizedSearchTerm = deferredSearchTerm.trim();
@@ -539,6 +551,7 @@ export default function ClientsPage() {
                   client={client}
                   isWorking={workingClientId === client.id}
                   onEdit={startEditClient}
+                  onPrintFolder={setFolderClient}
                   onDelete={handleDeleteClient}
                 />
               ))}
@@ -559,6 +572,14 @@ export default function ClientsPage() {
         onSave={() => void handleSaveClient()}
         onCancel={cancelEdit}
       />
+
+      {folderClient && (
+        <ClientFolderModal
+          key={folderClient.id}
+          client={folderClient}
+          onClose={() => setFolderClient(null)}
+        />
+      )}
     </AppShell>
   );
 }
